@@ -69,13 +69,18 @@ document.addEventListener("DOMContentLoaded", () => {
         addMessage(text, "user");
         input.value = "";
 
-        addMessage("Estoy consultando a LexIA...", "bot");
+        const loadingMessage = document.createElement("div");
+        loadingMessage.className = "message bot loading";
+        loadingMessage.textContent = "Consultando a LexIA...";
+        messages.appendChild(loadingMessage);
+        messages.scrollTop = messages.scrollHeight;
 
         const backendUrl = (window.BACKEND_URL || "").replace(/\/$/, "");
         const useBackend = backendUrl !== "";
 
         if (!useBackend) {
             const botAnswer = getBotResponse(text);
+            loadingMessage.remove();
             addMessage(botAnswer, "bot");
             return;
         }
@@ -96,9 +101,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await response.json();
             const botAnswer = data.answer || getBotResponse(text);
+            loadingMessage.remove();
             addMessage(botAnswer, "bot");
         } catch (error) {
             console.error(error);
+            loadingMessage.remove();
             const botAnswer = getBotResponse(text);
             addMessage(botAnswer, "bot");
         }
