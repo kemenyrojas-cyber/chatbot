@@ -64,7 +64,8 @@ document.addEventListener("DOMContentLoaded", () => {
         addMessage("Estoy consultando a LexIA...", "bot");
 
         try {
-            const response = await fetch("/api/chat", {
+            const base = (window.BACKEND_URL || "").replace(/\/$/, "");
+            const response = await fetch(`${base}/api/chat`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
