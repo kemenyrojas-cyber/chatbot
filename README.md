@@ -41,6 +41,8 @@ Configurar el frontend
 
 - Si decides servir el frontend desde el mismo server Express (default), no necesitas cambiar `BACKEND_URL`.
 
+- Si no tienes backend, deja `window.BACKEND_URL = "";` y el chat funcionará en modo demo local con respuestas simuladas de derecho.
+
 Render config
 - El repositorio incluye `render.yaml` para que Render pueda detectar la configuración del servicio y desplegarlo como app Node.js.
 
