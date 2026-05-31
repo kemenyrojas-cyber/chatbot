@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const path = require("path");
+const fs = require('fs');
+const fetch = global.fetch || require("node-fetch");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -12,6 +14,19 @@ if (!openAiKey) {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
+
+// Cargar base de conocimientos (si existe) y truncar para evitar exceso de contexto
+let kbContent = "";
+try {
+  const kbPath = path.join(__dirname, 'kb', 'legal_faqs.md');
+  if (fs.existsSync(kbPath)) {
+    const raw = fs.readFileSync(kbPath, 'utf8');
+    kbContent = raw.replace(/\s+/g, ' ').trim().slice(0, 3000); // mantener hasta 3000 chars
+    console.log('LexIA: KB cargada,', kbContent.length, 'caracteres');
+  }
+} catch (e) {
+  console.warn('LexIA: no se pudo cargar KB', e.message);
+}
 
 app.post("/api/chat", async (req, res) => {
   try {
@@ -34,7 +49,7 @@ app.post("/api/chat", async (req, res) => {
       body: JSON.stringify({
         model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: "Eres un asistente experto en derecho. Responde siempre en español con claridad y profesionalismo." },
+          { role: "system", content: kbContent ? `Eres un asistente experto en derecho. Responde siempre en español con claridad y profesionalismo.\n\nReferencias de conocimiento:\n${kbContent}` : "Eres un asistente experto en derecho. Responde siempre en español con claridad y profesionalismo." },
           { role: "user", content: prompt }
         ],
         max_tokens: 500,
@@ -45,7 +60,16 @@ app.post("/api/chat", async (req, res) => {
     if (!response.ok) {
       const errorBody = await response.text();
       console.error("Error de OpenAI:", errorBody);
-      return res.status(502).json({ error: "Error al conectar con la API de OpenAI." });
+      let errorMessage = "Error al conectar con la API de OpenAI.";
+      try {
+        const parsedError = JSON.parse(errorBody);
+        if (parsedError?.error?.message) {
+          errorMessage = parsedError.error.message;
+        }
+      } catch {
+        // Mantener mensaje genérico si no es JSON.
+      }
+      return res.status(502).json({ error: errorMessage });
     }
 
     const data = await response.json();
