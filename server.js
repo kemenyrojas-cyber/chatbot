@@ -46,11 +46,28 @@ try {
 function dot(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
 function norm(a) { return Math.sqrt(a.reduce((s, v) => s + v * v, 0)); }
 
+// Detector sencillo de consultas jurídicas (basado en palabras clave)
+function isLegalQuery(text) {
+  if (!text) return false;
+  const keywords = ['contrato','compraventa','derecho','juzgado','demanda','abogado','inmueble','despido','salario','laboral','tribut','penal','delito','fiscal','familia','alimentos','divorcio','custodia','testamento','herencia','responsabilidad','juicio','sentencia','reclam','arrendamiento','saneamiento','vicios'];
+  const t = text.toLowerCase();
+  let hits = 0;
+  for (const k of keywords) {
+    if (t.includes(k)) hits++;
+  }
+  return hits > 0;
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
     if (!openAiKey) return res.status(500).json({ error: 'La API key no está configurada en el servidor.' });
+
+    // Rechazar consultas que no sean sobre derecho
+    if (!isLegalQuery(prompt)) {
+      return res.json({ answer: 'Lo siento, solo respondo consultas relacionadas con derecho. Por favor reformula la pregunta como una consulta jurídica o incluye términos legales.' });
+    }
 
     // Config
     const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
