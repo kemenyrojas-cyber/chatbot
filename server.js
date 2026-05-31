@@ -50,13 +50,16 @@ app.post("/api/chat", async (req, res) => {
         "Authorization": `Bearer ${openAiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-3.5-turbo",
+const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+const systemBase = `Eres LexIA, un asistente experto en derecho (civil, laboral, penal, administrativo y de familia). Responde siempre en español con claridad y profesionalismo. Antes de dar una respuesta sustantiva, pide aclaraciones necesarias (por ejemplo: jurisdicción/pais, fechas o documentos relevantes) si la consulta es ambigua. Entrega respuestas estructuradas en cuatro secciones cuando sea pertinente: 1) Resumen breve, 2) Pasos prácticos recomendados, 3) Riesgos y advertencias legales, 4) Referencias generales. No proporciones asesoramiento jurídico vinculante; siempre sugiere consultar a un abogado para casos concretos. Si no conoces la jurisdicción, pregunta o indica que las reglas pueden variar según el país.`;
+const systemFull = kbContent ? systemBase + "\n\nContexto de conocimiento:\n" + kbContent : systemBase;
+        model: model,
         messages: [
           { role: "system", content: kbContent ? `Eres un asistente experto en derecho. Responde siempre en español con claridad y profesionalismo.\n\nReferencias de conocimiento:\n${kbContent}` : "Eres un asistente experto en derecho. Responde siempre en español con claridad y profesionalismo." },
           { role: "user", content: prompt }
         ],
-        max_tokens: 500,
-        temperature: 0.2,
+        max_tokens: 800,
+        temperature: Number(process.env.OPENAI_TEMPERATURE || 0.0),
       }),
     });
 
