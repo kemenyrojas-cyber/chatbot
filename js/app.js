@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return "He recibido tu consulta. Estoy listo para ser conectado a una IA real.";
     }
 
-    function sendMessage() {
+    async function sendMessage() {
 
         const text =
             input.value.trim();
@@ -59,17 +59,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         addMessage(text, "user");
-
         input.value = "";
 
-        setTimeout(() => {
+        addMessage("Estoy consultando a LexIA...", "bot");
 
-            addMessage(
-                getBotResponse(text),
-                "bot"
-            );
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ prompt: text })
+            });
 
-        }, 500);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Error en la solicitud");
+            }
+
+            const data = await response.json();
+            const botAnswer = data.answer || "No recibí respuesta de la API.";
+            addMessage(botAnswer, "bot");
+        } catch (error) {
+            console.error(error);
+            addMessage("No pude conectar con el servicio. Intenta de nuevo más tarde.", "bot");
+        }
     }
 
     sendBtn.addEventListener(
