@@ -3,6 +3,7 @@ const express = require("express");
 const path = require("path");
 const fs = require('fs');
 const fetch = global.fetch || require("node-fetch");
+const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,6 +14,8 @@ if (!openAiKey) {
 }
 
 app.use(express.json());
+// Habilitar CORS para permitir que el frontend en GitHub Pages (u otros origenes) haga peticiones
+app.use(cors());
 app.use(express.static(path.join(__dirname)));
 
 // Cargar base de conocimientos (si existe) y truncar para evitar exceso de contexto
