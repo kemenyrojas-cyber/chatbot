@@ -41,6 +41,9 @@ Configurar el frontend
 
 - Si decides servir el frontend desde el mismo server Express (default), no necesitas cambiar `BACKEND_URL`.
 
+Render config
+- El repositorio incluye `render.yaml` para que Render pueda detectar la configuración del servicio y desplegarlo como app Node.js.
+
 Probar localmente
 1. Crea `.env` en la raíz del proyecto con:
 
