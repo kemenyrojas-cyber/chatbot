@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexIA</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <div class="chat-card">
+
+        <div class="welcome-section">
+
+            <img
+                src="img/robot.png.png"
+                alt="LexIA"
+                class="robot-avatar"
+            >
+
+            <h1>Hola, soy LexIA</h1>
+
+            <p>¿En qué puedo ayudarte hoy?</p>
+
+            <div class="quick-actions">
+
+                <button class="quick-btn">📄 Analizar contrato</button>
+                <button class="quick-btn">⚖️ Consulta laboral</button>
+                <button class="quick-btn">🏠 Derecho civil</button>
+                <button class="quick-btn">📝 Redactar documento</button>
+
+            </div>
+
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+
+            <div class="message bot">
+                Hola 👋 Soy LexIA. ¿Cómo puedo ayudarte?
+            </div>
+
+        </div>
+
+        <div class="chat-input">
+
+            <input
+                type="text"
+                id="messageInput"
+                placeholder="Escribe tu consulta legal..."
+            >
+
+            <button id="sendBtn">
+                ➜
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>

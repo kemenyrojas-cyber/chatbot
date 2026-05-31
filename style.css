@@ -1,0 +1,240 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:'Segoe UI',sans-serif;
+}
+
+body{
+    background:
+    linear-gradient(
+        135deg,
+        #06162f,
+        #0c2a5c
+    );
+
+    min-height:100vh;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    padding:20px;
+}
+
+.app{
+    width:100%;
+    max-width:900px;
+}
+
+.chat-card{
+
+    background:#0b1f44;
+
+    border-radius:35px;
+
+    overflow:hidden;
+
+    box-shadow:
+    0 25px 60px rgba(0,0,0,.35);
+}
+
+.welcome-section{
+
+    padding:50px;
+
+    text-align:center;
+}
+
+.robot-avatar{
+
+    width:220px;
+
+    margin-bottom:25px;
+
+    filter:
+    drop-shadow(
+        0 10px 25px rgba(0,0,0,.4)
+    );
+}
+
+.welcome-section h1{
+
+    color:white;
+
+    font-size:48px;
+
+    margin-bottom:15px;
+}
+
+.welcome-section p{
+
+    color:#b8c7e6;
+
+    font-size:22px;
+
+    margin-bottom:35px;
+}
+
+.quick-actions{
+
+    display:flex;
+
+    flex-wrap:wrap;
+
+    justify-content:center;
+
+    gap:15px;
+}
+
+.quick-btn{
+
+    background:#163567;
+
+    color:white;
+
+    border:none;
+
+    border-radius:50px;
+
+    padding:14px 22px;
+
+    cursor:pointer;
+
+    transition:.3s;
+}
+
+.quick-btn:hover{
+
+    background:#1f4a8f;
+
+    transform:translateY(-2px);
+}
+
+.chat-messages{
+
+    background:#07162f;
+
+    max-height:350px;
+
+    overflow-y:auto;
+
+    padding:30px;
+}
+
+.message{
+
+    padding:16px 20px;
+
+    border-radius:18px;
+
+    margin-bottom:18px;
+
+    max-width:75%;
+
+    line-height:1.6;
+
+    animation:fadeIn .3s ease;
+}
+
+.bot{
+
+    background:white;
+
+    color:#222;
+}
+
+.user{
+
+    background:#2563eb;
+
+    color:white;
+
+    margin-left:auto;
+}
+
+.chat-input{
+
+    background:#0b1f44;
+
+    padding:25px;
+
+    display:flex;
+
+    gap:15px;
+}
+
+.chat-input input{
+
+    flex:1;
+
+    border:none;
+
+    height:65px;
+
+    border-radius:40px;
+
+    padding:0 25px;
+
+    font-size:17px;
+
+    outline:none;
+}
+
+.chat-input button{
+
+    width:65px;
+
+    height:65px;
+
+    border:none;
+
+    border-radius:50%;
+
+    background:#2563eb;
+
+    color:white;
+
+    font-size:24px;
+
+    cursor:pointer;
+
+    transition:.3s;
+}
+
+.chat-input button:hover{
+
+    transform:scale(1.05);
+}
+
+@keyframes fadeIn{
+
+    from{
+        opacity:0;
+        transform:translateY(10px);
+    }
+
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
+@media(max-width:768px){
+
+    .robot-avatar{
+        width:160px;
+    }
+
+    .welcome-section h1{
+        font-size:34px;
+    }
+
+    .welcome-section p{
+        font-size:18px;
+    }
+
+    .quick-actions{
+        flex-direction:column;
+    }
+}
