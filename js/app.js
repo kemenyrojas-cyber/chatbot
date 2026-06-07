@@ -1,1 +1,424 @@
-document.addEventListener("DOMContentLoaded", () => {\n\n    const sendBtn =\n        document.getElementById(\"sendBtn\");\n\n    const input =\n        document.getElementById(\"messageInput\");\n\n    const messages =\n        document.getElementById(\"chatMessages\");\n\n    function addMessage(text, type) {\n\n        const msg =\n            document.createElement(\"div\");\n\n        msg.className =\n            `message ${type}`;\n\n        msg.innerHTML = text;\n\n        messages.appendChild(msg);\n\n        messages.scrollTop =\n            messages.scrollHeight;\n    }\n\n    // RESPUESTAS LOCALES MEJORADAS (solo si backend no funciona)\n    function getLocalResponse(text) {\n        const q = text.toLowerCase();\n\n        // Respuestas específicas sobre contratos\n        if (q.includes('contrato') && q.includes('compraventa')) {\n            return `<strong>Requisitos de un Contrato de Compraventa en Perú:</strong><br><br>\n            1. <strong>SUJETOS:</strong> Comprador y vendedor con capacidad legal<br>\n            2. <strong>CONSENTIMIENTO:</strong> Acuerdo de voluntades sin vicios<br>\n            3. <strong>OBJETO:</strong> Bien cierto, determinado y lícito<br>\n            4. <strong>PRECIO:</strong> Monto cierto, determinado y en dinero<br>\n            5. <strong>FORMA:</strong> Contrato consensual (oral o escrito)<br>\n            6. <strong>PARA INMUEBLES:</strong> Debe constar en escritura pública<br>\n            7. <strong>REGISTRO:</strong> Inscribirse en el Conservador de Bienes Raíces<br><br>\n            <strong>Efectos:</strong> Transfiere dominio y traslada riesgos al comprador desde la celebración del contrato.`;\n        }\n\n        if (q.includes('divorcio') && (q.includes('perú') || q.includes('procedimiento'))) {\n            return `<strong>Procedimiento para Divorcio en Perú:</strong><br><br>\n            <strong>TIPOS:</strong><br>\n            1. <strong>Divorcio por mutuo consentimiento:</strong> M\u00e1s r\u00e1pido (3-6 meses)<br>\n            2. <strong>Divorcio contencioso:</strong> Por causales (adulterio, abandono, maltrato)<br><br>\n            <strong>REQUISITOS:</strong><br>\n            • Matrimonio v\u00e1lido inscrito<br>\n            • Acuerdo de ambas partes (si es consensual)<br>\n            • Liquidaci\u00f3n de bienes comunes<br>\n            • Arreglo sobre tenencia y alimentos de menores<br><br>\n            <strong>PROCESO:</strong><br>\n            1. Demanda ante juzgado de familia<br>\n            2. Notificaci\u00f3n al demandado<br>\n            3. Per\u00edodo probatorio (3-6 meses)<br>\n            4. Alegatos finales<br>\n            5. Sentencia (puede apelarse)<br><br>\n            <strong>DOCUMENTOS REQUERIDOS:</strong><br>\n            • Partida de matrimonio<br>\n            • DNI de ambos<br>\n            • Acta de conciliaci\u00f3n (si la hay)<br>\n            • Liquidaci\u00f3n de sociedad conyugal`;\n        }\n\n        if (q.includes('despido') && (q.includes('injustificado') || q.includes('sin causa'))) {\n            return `<strong>Despido Injustificado en Perú - Derechos y Remedios:</strong><br><br>\n            <strong>¿QUÉ ES?</strong><br>\n            Terminaci\u00f3n del contrato de trabajo sin causa justa establecida en la ley.<br><br>\n            <strong>DERECHOS DEL TRABAJADOR:</strong><br>\n            1. <strong>Indemnizaci\u00f3n:</strong> 1.5 UIT por cada año de servicio (m\u00e1ximo 12 UIT)<br>\n            2. <strong>Remuneraciones pendientes:</strong> Todos los sueldos no pagados<br>\n            3. <strong>Gratificaciones:</strong> Si corresponden<br>\n            4. <strong>Vacaciones no gozadas</strong><br>\n            5. <strong>Beneficios de seguridad social</strong><br><br>\n            <strong>CÁLCULO DE INDEMNIZACIÓN:</strong><br>\n            Indemnizaci\u00f3n = Remuneraci\u00f3n mensual × A\u00f1os de servicio × 1.5<br><br>\n            <strong>QUÉ HACER:</strong><br>\n            1. Solicitar documentos de despido<br>\n            2. Presentar demanda ante juzgado laboral<br>\n            3. Participar en audiencia de conciliaci\u00f3n<br>\n            4. Proceso puede durar 1-2 años<br><br>\n            <strong>NOTA:</strong> Algunos trabajadores tienen fuero laboral (mayor protecci\u00f3n).`;\n        }\n\n        if (q.includes('herencia') || q.includes('sucesión')) {\n            return `<strong>Sucesión y Herencia en Perú:</strong><br><br>\n            <strong>TIPOS DE SUCESIÓN:</strong><br>\n            1. <strong>Sucesión Testada:</strong> Conforme al testamento del fallecido<br>\n            2. <strong>Sucesión Intestada:</strong> Conforme a la ley cuando no hay testamento<br><br>\n            <strong>ORDEN DE HEREDEROS (Sucesión Intestada):</strong><br>\n            1\u00ba Descendientes (hijos, nietos)<br>\n            2\u00ba Ascendientes (padres, abuelos)<br>\n            3\u00ba Cónyuge<br>\n            4\u00ba Colaterales (hermanos, t\u00edos)<br>\n            5\u00ba Estado (si no hay herederos)<br><br>\n            <strong>HEREDEROS LEGITIMARIOS (Derecho Forzoso):</strong><br>\n            • <strong>Hijos:</strong> 2/3 del patrimonio<br>\n            • <strong>Padres:</strong> 1/3 del patrimonio<br>\n            • <strong>Cónyuge:</strong> 1/4 del patrimonio<br><br>\n            <strong>PROCESO:</strong><br>\n            1. Solicitud ante juzgado civil<br>\n            2. Publicaci\u00f3n en periódico oficial<br>\n            3. Per\u00edodo de espera (3-6 meses)<br>\n            4. Resoluci\u00f3n judicial<br>\n            5. Inscripción en registros<br><br>\n            <strong>DOCUMENTOS:</strong><br>\n            • Acta de defunción<br>\n            • Testamento (si existe)<br>\n            • DNI de herederos<br>\n            • Partida de matrimonio del fallecido`;\n        }\n\n        if (q.includes('robo') || q.includes('hurto')) {\n            return `<strong>Diferencia entre Robo y Hurto en Perú:</strong><br><br>\n            <strong>ROBO (Art\u00edculo 188 CP):</strong><br>\n            • Sustracci\u00f3n de bien CON VIOLENCIA o INTIMIDACI\u00d3N<br>\n            • Contra persona o bienes<br>\n            • <strong>Pena:</strong> 3 a 10 a\u00f1os de prisi\u00f3n<br>\n            • Ejemplo: Arrebatar bolsa, asalto a mano armada<br><br>\n            <strong>HURTO (Art\u00edculo 185 CP):</strong><br>\n            • Sustracci\u00f3n de bien SIN VIOLENCIA ni INTIMIDACI\u00d3n<br>\n            • Apoderamiento clandestino<br>\n            • <strong>Pena:</strong> 1 a 3 a\u00f1os de prisi\u00f3n<br>\n            • Ejemplo: Robar sin que vean, hurto en tienda<br><br>\n            <strong>DIFERENCIA CLAVE:</strong><br>\n            ROBO = Violencia/Amenaza + Sustracci\u00f3n<br>\n            HURTO = Solo Sustracci\u00f3n (sin fuerza)<br><br>\n            <strong>AGRAVANTES:</strong><br>\n            • Robo a mano armada: 12-20 a\u00f1os<br>\n            • Robo en banda: 15-25 a\u00f1os<br>\n            • Hurto agravado: 3-6 a\u00f1os<br><br>\n            <strong>¿QUÉ HACER SI SOY V\u00cdCTIMA?</strong><br>\n            1. Denunciar en polic\u00eda o fiscalía<br>\n            2. Obtener número de denuncia<br>\n            3. Presentar demanda civil por da\u00f1os<br>\n            4. Participar en investigaci\u00f3n`;\n        }\n\n        if (q.includes('propiedad') && q.includes('inmueble')) {\n            return `<strong>Derechos de Propiedad sobre Inmuebles en Perú:</strong><br><br>\n            <strong>¿QUÉ ES LA PROPIEDAD?</strong><br>\n            Derecho real absoluto que permite usar, gozar y disponer de un bien (inmueble).<br><br>\n            <strong>ATRIBUTOS DEL DERECHO DE PROPIEDAD:</strong><br>\n            1. <strong>USO:</strong> Utilizaci\u00f3n del bien<br>\n            2. <strong>GOCE:</strong> Disfrute de frutos y productos<br>\n            3. <strong>DISPOSICI\u00d3N:</strong> Venta, donaci\u00f3n, hipoteca<br>\n            4. <strong>EXCLUSIVIDAD:</strong> Solo el propietario<br><br>\n            <strong>FORMAS DE ADQUISICIÓN:</strong><br>\n            • Compraventa con escritura pública<br>\n            • Herencia/Sucesi\u00f3n<br>\n            • Usucapi\u00f3n (posesi\u00f3n prolongada: 10 a\u00f1os)<br>\n            • Donaci\u00f3n<br>\n            • Ocupaci\u00f3n (bienes sin due\u00f1o)<br><br>\n            <strong>OBLIGACIONES DEL PROPIETARIO:</strong><br>\n            • Pago de contribuci\u00f3n de bienes ra\u00edces<br>\n            • Mantenimiento de seguridad de terceros<br>\n            • Cumplimiento de regulaciones urbanas<br><br>\n            <strong>GRAVÁMENES (Limitaciones):</strong><br>\n            • <strong>Hipoteca:</strong> Garantía de deuda<br>\n            • <strong>Servidumbre:</strong> Derecho de paso<br>\n            • <strong>Usufructo:</strong> Derecho de uso por tercero<br><br>\n            <strong>REGISTRO:</strong><br>\n            • Toda propiedad debe inscribirse<br>\n            • Conservador de Bienes Ra\u00edces<br>\n            • Otorga presunci\u00f3n de propiedad`;\n        }\n\n        if (q.includes('empresa') || q.includes('sociedad')) {\n            return `<strong>Constituci\u00f3n de Empresa en Perú:</strong><br><br>\n            <strong>TIPOS DE EMPRESAS:</strong><br>\n            1. <strong>Empresa Individual (Natural):</strong> Una persona f\u00edsica<br>\n            2. <strong>Sociedad An\u00f3nima (S.A.):</strong> Capital dividido en acciones<br>\n            3. <strong>Sociedad de Responsabilidad Limitada (Ltda.):</strong> Hasta 50 socios<br>\n            4. <strong>Empresa Individual Responsabilidad Limitada (EIRL):</strong> Una persona<br><br>\n            <strong>REQUISITOS B\u00c1SICOS:</strong><br>\n            • Escritura pública de constituci\u00f3n<br>\n            • RUC en SUNAT<br>\n            • Inscripci\u00f3n en Registros P\u00fablicos<br>\n            • Licencia municipal<br>\n            • Autorizaci\u00f3n sectorial (si aplica)<br><br>\n            <strong>DOCUMENTOS REQUERIDOS:</strong><br>\n            • DNI de socios/accionistas<br>\n            • Estatutos sociales<br>\n            • Poder notarial<br>\n            • Comprobante de domicilio<br><br>\n            <strong>RESPONSABILIDAD LEGAL:</strong><br>\n            • S.A.: Responsabilidad limitada al aporte<br>\n            • Ltda.: Responsabilidad limitada al aporte<br>\n            • Natural: Responsabilidad personal ilimitada<br><br>\n            <strong>OBLIGACIONES MENSUALES:</strong><br>\n            • Pago de aportes a ESSALUD/AFP<br>\n            • Registro de planilla<br>\n            • Deducción de impuestos<br>\n            • Registro contable`;\n        }\n\n        if (q.includes('demanda')) {\n            return `<strong>Cómo Presentar una Demanda Civil en Perú:</strong><br><br>\n            <strong>REQUISITOS PREVIOS:</strong><br>\n            1. Intentar conciliaci\u00f3n (obligatorio)<br>\n            2. Asesor\u00eda legal profesional<br>\n            3. Reunir pruebas y documentos<br><br>\n            <strong>ELEMENTOS DE LA DEMANDA:</strong><br>\n            1. <strong>ENCABEZAMIENTO:</strong> Identificaci\u00f3n de demandante y demandado<br>\n            2. <strong>HECHOS:</strong> Narración cronol\u00f3gica de lo ocurrido<br>\n            3. <strong>DERECHO:</strong> Fundamento legal de la pretensi\u00f3n<br>\n            4. <strong>PETITORIO:</strong> Lo que se pide al tribunal (claro y preciso)<br>\n            5. <strong>PRUEBAS:</strong> Documentos, testigos, peritos<br>\n            6. <strong>FIRMA:</strong> Demandante y abogado<br><br>\n            <strong>DOCUMENTOS ANEXOS:</strong><br>\n            • C\u00f3pia del DNI<br>\n            • Documentos contractuales<br>\n            • Correspondencia<br>\n            • Comprobantes de pago<br>\n            • Fotos/videos de prueba<br><br>\n            <strong>D\u00d3NDE PRESENTAR:</strong><br>\n            • Juzgado civil competente<br>\n            • Seg\u00fan materia (familia, laboral, mercantil)<br>\n            • En el distrito del demandado<br><br>\n            <strong>FASES DEL PROCESO:</strong><br>\n            1. Admisi\u00f3n de demanda<br>\n            2. Notificaci\u00f3n al demandado<br>\n            3. Contestaci\u00f3n (plazo: 10-30 d\u00edas)<br>\n            4. Pruebas (3-6 meses)<br>\n            5. Alegatos finales<br>\n            6. Sentencia<br>\n            7. Recursos (apelaci\u00f3n, casaci\u00f3n)`;\n        }\n\n        // Fallback genérico mejorado\n        return `<strong>\ud83d\udcc8 Consulta Jur\u00eddica:</strong><br><br>\nPor favor, soy LEXIA - Tu asesor jur\u00eddico con IA alimentado por lpderecho.pe.<br><br>\n<strong>\ud83d\udcda Puedo ayudarte con:</strong><br>\n\u2705 <strong>Derecho Civil:</strong> Contratos, propiedad, familia, herencias<br>\n\u2705 <strong>Derecho Penal:</strong> Delitos, robo, hurto, fraude<br>\n\u2705 <strong>Derecho Laboral:</strong> Despidos, indemnizaci\u00f3n, seguridad social<br>\n\u2705 <strong>Derecho Comercial:</strong> Empresas, sociedades, contratos<br>\n\u2705 <strong>Procedimiento:</strong> Demandas, juicios, recursos<br><br>\n<strong>Haz preguntas espec\u00edficas como:</strong><br>\n\u2022 \"\u00bfCu\u00e1les son los requisitos para un contrato de compraventa?\"<br>\n\u2022 \"\u00bfQu\u00e9 derechos tengo si me despiden sin causa?\"<br>\n\u2022 \"\u00bfC\u00f3mo se calcula una indemnizaci\u00f3n por despido?\"<br>\n\u2022 \"\u00bfCu\u00e1l es el procedimiento para un divorcio?\"<br>\n\u2022 \"\u00bfDiferencia entre robo y hurto?\"<br><br>\n<strong>Si el servidor OpenAI est\u00e1 activado, obtendr\u00e1s respuestas m\u00e1s profundas.</strong>`;\n    }\n\n    async function sendMessage() {\n        const text = input.value.trim();\n        if (text === \"\") return;\n\n        addMessage(text, \"user\");\n        input.value = \"\";\n\n        const loadingMessage = document.createElement(\"div\");\n        loadingMessage.className = \"message bot loading\";\n        loadingMessage.innerHTML = \"\u2696\ufe0f Procesando tu consulta jur\u00eddica...\";\n        messages.appendChild(loadingMessage);\n        messages.scrollTop = messages.scrollHeight;\n\n        const backendUrl = (window.BACKEND_URL || \"\").replace(/\\/$/, \"\");\n        const useBackend = backendUrl !== \"\";\n\n        // Primero intenta con backend OpenAI\n        if (useBackend) {\n            try {\n                const response = await fetch(`${backendUrl}/api/chat`, {\n                    method: \"POST\",\n                    headers: { \"Content-Type\": \"application/json\" },\n                    body: JSON.stringify({ prompt: text })\n                });\n\n                if (response.ok) {\n                    const data = await response.json();\n                    loadingMessage.remove();\n                    addMessage(data.answer || getLocalResponse(text), \"bot\");\n                    return;\n                }\n            } catch (error) {\n                console.warn('Backend no disponible, usando respuesta local');\n            }\n        }\n\n        // Fallback: respuesta local\n        loadingMessage.remove();\n        const botAnswer = getLocalResponse(text);\n        addMessage(botAnswer, \"bot\");\n    }\n\n    sendBtn.addEventListener(\"click\", sendMessage);\n    input.addEventListener(\"keydown\", (e) => {\n        if (e.key === \"Enter\") sendMessage();\n    });\n\n    document.querySelectorAll(\".quick-btn\").forEach(btn => {\n        btn.addEventListener(\"click\", () => {\n            input.value = \"Cuéntame sobre \" + btn.textContent.trim();\n            sendMessage();\n        });\n    });\n});", "path": "js/app.js", "repo": "chatbot"}, "repo": "chatbot"}, "sha": "26a6f6331eaffcce630105d9b09348d9d991671e"
+document.addEventListener("DOMContentLoaded", () => {
+
+    const sendBtn = document.getElementById("sendBtn");
+    const input = document.getElementById("messageInput");
+    const messages = document.getElementById("chatMessages");
+
+    function addMessage(text, type) {
+        const msg = document.createElement("div");
+        msg.className = `message ${type}`;
+        msg.innerHTML = text;
+        messages.appendChild(msg);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function getLocalResponse(text) {
+        const q = text.toLowerCase();
+
+        // CONTRATO DE COMPRAVENTA
+        if (q.includes('compraventa') || (q.includes('contrato') && q.includes('requisitos'))) {
+            return `<strong>Requisitos de un Contrato de Compraventa en Perú (Código Civil Art. 1529)</strong><br><br>
+            <strong>1. ELEMENTOS ESENCIALES:</strong><br>
+            ✓ <strong>Sujetos:</strong> Vendedor y comprador con capacidad legal<br>
+            ✓ <strong>Consentimiento:</strong> Acuerdo de voluntades válido<br>
+            ✓ <strong>Objeto:</strong> Bien cierto, determinado y lícito<br>
+            ✓ <strong>Precio:</strong> Suma de dinero cierta y determinada<br><br>
+            
+            <strong>2. REQUISITOS FORMALES:</strong><br>
+            ✓ <strong>Bienes Muebles:</strong> Puede ser oral o escrito<br>
+            ✓ <strong>Bienes Inmuebles:</strong> DEBE constar en escritura pública<br>
+            ✓ <strong>Registro:</strong> Inscripción en Conservador de Bienes Raíces<br><br>
+            
+            <strong>3. EFECTOS DEL CONTRATO:</strong><br>
+            ✓ Transfiere propiedad al comprador<br>
+            ✓ Traslada riesgos y beneficios<br>
+            ✓ Genera obligación de pago<br>
+            ✓ Genera obligación de entrega del bien<br><br>
+            
+            <strong>4. DOCUMENTOS NECESARIOS:</strong><br>
+            ✓ DNI de ambas partes<br>
+            ✓ Certificado de no adeudo (si es inmueble)<br>
+            ✓ Copia de escritura anterior (si existe)<br>
+            ✓ Catastro del inmueble<br><br>
+            
+            <strong>5. GASTOS Y TRIBUTOS:</strong><br>
+            ✓ Gastos notariales (1-2% del valor)<br>
+            ✓ Derechos de registro<br>
+            ✓ Impuesto a la renta (si aplica)<br><br>
+            
+            <strong>⚠️ RECOMENDACIÓN:</strong> Para inmuebles, SIEMPRE use abogado y notario.`;</n        }
+
+        // DIVORCIO
+        if (q.includes('divorcio') || q.includes('matrimonio')) {
+            return `<strong>Procedimiento de Divorcio en Perú (Código Civil Art. 348-354)</strong><br><br>
+            
+            <strong>1. TIPOS DE DIVORCIO:</strong><br>
+            <strong>A) Divorcio por Mutuo Consentimiento:</strong><br>
+            • Ambas partes de acuerdo<br>
+            • Más rápido (3-6 meses)<br>
+            • Menor costo<br>
+            • Se presenta demanda conjunta<br><br>
+            
+            <strong>B) Divorcio Contencioso (por causales):</strong><br>
+            • Una parte inicia demanda<br>
+            • Causales: adulterio, abandono, maltrato, embriaguez, drogas<br>
+            • Más lento (1-3 años)<br>
+            • Requiere pruebas<br><br>
+            
+            <strong>2. REQUISITOS:</strong><br>
+            ✓ Matrimonio válido inscrito<br>
+            ✓ Un año de matrimonio (en algunos casos)<br>
+            ✓ Domicilio en Perú<br>
+            ✓ Acuerdo sobre bienes (si es consensual)<br><br>
+            
+            <strong>3. ACUERDOS OBLIGATORIOS:</strong><br>
+            ✓ <strong>Régimen de Tenencia:</strong> ¿A quién va el cuidado de los hijos?<br>
+            ✓ <strong>Pensión Alimenticia:</strong> Cuánto pagará el que se va<br>
+            ✓ <strong>Liquidación de Bienes:</strong> División de la sociedad conyugal<br>
+            ✓ <strong>Visitas y Comunicación:</strong> Derecho del otro padre a ver a hijos<br><br>
+            
+            <strong>4. DOCUMENTOS NECESARIOS:</strong><br>
+            ✓ Partida de matrimonio<br>
+            ✓ DNI de ambos<br>
+            ✓ Partidas de nacimiento de hijos (si los hay)<br>
+            ✓ Acta de conciliación (si existe)<br>
+            ✓ Inventario de bienes comunes<br><br>
+            
+            <strong>5. PROCESO ANTE JUZGADO:</strong><br>
+            1. Presentación de demanda<br>
+            2. Notificación al demandado<br>
+            3. Primer acto conciliatorio<br>
+            4. Contestación de demanda<br>
+            5. Audiencia de conciliación<br>
+            6. Proceso probatorio (3-6 meses)<br>
+            7. Sentencia de divorcio<br>
+            8. Recurso de apelación (10 días)<br><br>
+            
+            <strong>6. EFECTOS DEL DIVORCIO:</strong><br>
+            ✓ Fin de la relación matrimonial<br>
+            ✓ Disolución de sociedad conyugal<br>
+            ✓ Derechos sucesorios se pierden<br>
+            ✓ Obligación de pensión alimenticia continúa`;</n        }
+
+        // DESPIDO INJUSTIFICADO
+        if (q.includes('despido') || q.includes('indemnizacion') || q.includes('laboral')) {
+            return `<strong>Despido Injustificado en Perú (Código Laboral Art. 34)</strong><br><br>
+            
+            <strong>1. ¿QUÉ ES DESPIDO INJUSTIFICADO?</strong><br>
+            Terminación del contrato sin causa justa establecida en la ley.<br><br>
+            
+            <strong>2. CAUSAS JUSTAS DE DESPIDO (Legítimas):</strong><br>
+            ✓ Falta grave cometida por trabajador<br>
+            ✓ Abandono del trabajo<br>
+            ✓ Incumplimiento persistente de obligaciones<br>
+            ✓ Conducta desonrosa<br><br>
+            
+            <strong>3. DERECHOS DEL TRABAJADOR DESPEDIDO:</strong><br>
+            <strong>A) Indemnización por Despido Arbitrario:</strong><br>
+            • <strong>Fórmula:</strong> 1.5 UIT × Número de años de servicio<br>
+            • <strong>Máximo:</strong> 12 UIT (aproximadamente S/. 54,000 en 2024)<br>
+            • <strong>Ejemplo:</strong> 5 años de trabajo = 1.5 × 5 = 7.5 UIT<br><br>
+            
+            <strong>B) Otros Derechos:</strong><br>
+            ✓ Remuneraciones pendientes<br>
+            ✓ Gratificaciones (julios y diciembre)<br>
+            ✓ Vacaciones no gozadas<br>
+            ✓ Bonificación extraordinaria (si corresponde)<br>
+            ✓ Aportaciones a seguro de desempleo<br><br>
+            
+            <strong>4. PROCESO LABORAL:</strong><br>
+            1. Presentar demanda en juzgado laboral<br>
+            2. Conciliación obligatoria (primera audiencia)<br>
+            3. Contestación de demanda del empleador<br>
+            4. Pruebas (presentación de documentos)<br>
+            5. Alegatos finales<br>
+            6. Sentencia<br>
+            7. Apelación (si no está conforme)<br><br>
+            
+            <strong>5. DOCUMENTOS A PRESENTAR:</strong><br>
+            ✓ Contrato de trabajo<br>
+            ✓ Cartas de despido (si existen)<br>
+            ✓ Recibos de pago<br>
+            ✓ Comprobantes de asistencia<br>
+            ✓ Evaluaciones de desempeño<br>
+            ✓ Constancia de vínculo laboral<br><br>
+            
+            <strong>6. TIEMPO DEL PROCESO:</strong><br>
+            • Juzgado laboral: 1-2 años<br>
+            • Incluye apelación: 2-3 años<br>
+            • Casación: 3-4 años<br><br>
+            
+            <strong>7. PROTECCIONES ESPECIALES (FUERO):</strong><br>
+            ✓ Dirigentes sindicales<br>
+            ✓ Delegados de trabajadores<br>
+            ✓ Representantes de seguridad<br>
+            ✓ Candidatos electorales<br>
+            • Requieren autorización de tribunal para despedir<br><br>
+            
+            <strong>⚠️ IMPORTANTE:</strong> Consulte abogado laboral inmediatamente después del despido.`;</n        }
+
+        // HERENCIA Y SUCESIÓN
+        if (q.includes('herencia') || q.includes('sucesión') || q.includes('testamento')) {
+            return `<strong>Sucesión y Herencia en Perú (Código Civil Libro IV)</strong><br><br>
+            
+            <strong>1. TIPOS DE SUCESIÓN:</strong><br>
+            <strong>A) Sucesión Testada:</strong><br>
+            • Existe testamento válido del fallecido<br>
+            • Se distribuye según lo que testó<br>
+            • Más clara y rápida<br><br>
+            
+            <strong>B) Sucesión Intestada (sin testamento):</strong><br>
+            • No hay testamento<br>
+            • Se distribuye según orden legal<br>
+            • Requiere trámite judicial<br><br>
+            
+            <strong>2. ORDEN DE HEREDEROS (Sucesión Intestada):</strong><br>
+            <strong>Primer Orden:</strong> Hijos y descendientes (nietos)<br>
+            <strong>Segundo Orden:</strong> Padres y ascendientes (abuelos)<br>
+            <strong>Tercer Orden:</strong> Cónyuge (esposo/esposa)<br>
+            <strong>Cuarto Orden:</strong> Hermanos y sobrinos<br>
+            <strong>Quinto Orden:</strong> Tíos y primos<br>
+            <strong>Sexto Orden:</strong> El Estado (si no hay herederos)<br><br>
+            
+            <strong>3. HEREDEROS LEGITIMARIOS (Derecho Forzoso):</strong><br>
+            Tienen derecho a MÍNIMO una parte:<br>
+            ✓ <strong>Hijos:</strong> 2/3 del patrimonio<br>
+            ✓ <strong>Padres:</strong> 1/3 del patrimonio<br>
+            ✓ <strong>Cónyuge viudo:</strong> 1/4 del patrimonio<br><br>
+            
+            <strong>4. PROCESO DE SUCESIÓN (Trámite Judicial):</strong><br>
+            1. Presentar solicitud ante juzgado civil<br>
+            2. Adjuntar documentos (acta de defunción, testamento)<br>
+            3. Publicación en periódico oficial (aviso)<br>
+            4. Plazo para que hijos, padres, cónyuge se presenten (3-6 meses)<br>
+            5. Período para acreditar deudas del fallecido<br>
+            6. Resolución del juzgado<br>
+            7. Inscripción en registros<br><br>
+            
+            <strong>5. DOCUMENTOS NECESARIOS:</strong><br>
+            ✓ Acta de defunción (original)<br>
+            ✓ Testamento (si existe)<br>
+            ✓ DNI del fallecido<br>
+            ✓ DNI de herederos<br>
+            ✓ Partida de matrimonio del fallecido<br>
+            ✓ Partidas de nacimiento de hijos<br>
+            ✓ Certificado de no adeudo tributario<br><br>
+            
+            <strong>6. DISTRIBUCIÓN DE LA HERENCIA:</strong><br>
+            <strong>Patrimonio Total = Activos - Deudas</strong><br><br>
+            Ejemplo: Fallece padre con S/. 100,000<br>
+            • 2 hijos heredan: S/. 50,000 cada uno<br>
+            • 1 cónyuge viuda: S/. 25,000<br>
+            • Deudas S/. 25,000: se descuentan primero<br><br>
+            
+            <strong>7. TIEMPO DEL PROCESO:</strong><br>
+            • Sucesión intestada: 6-12 meses<br>
+            • Con complicaciones: 1-2 años<br>
+            • Juicios por herencia: 2-5 años<br><br>
+            
+            <strong>⚠️ RECOMENDACIÓN:</strong> Contrate abogado especialista en sucesiones.`;</n        }
+
+        // ROBO VS HURTO
+        if (q.includes('robo') || q.includes('hurto')) {
+            return `<strong>Diferencia entre Robo y Hurto en Perú (Código Penal)</strong><br><br>
+            
+            <strong>1. ROBO (Artículo 188 Código Penal)</strong><br>
+            <strong>Definición:</strong> Sustracci\u00f3n de bien ajeno CON VIOLENCIA o INTIMIDACI\u00d3N<br><br>
+            
+            <strong>Características:</strong><br>
+            ✓ Hay un acto de violencia o amenaza<br>
+            ✓ Contra persona o bienes<br>
+            ✓ Apoderamiento del bien<br>
+            ✓ Bien debe ser ajeno<br><br>
+            
+            <strong>Ejemplos:</strong><br>
+            • Arrebatar bolsa/cartera<br>
+            • Asalto a mano armada<br>
+            • Robo en casa con violencia<br>
+            • Robo con navaja/pistola<br><br>
+            
+            <strong>Penas Básicas:</strong><br>
+            • <strong>Robo Simple:</strong> 3 a 8 años<br>
+            • <strong>Robo Agravado:</strong> 10 a 20 años<br>
+            • <strong>Robo a Mano Armada:</strong> 12 a 20 años<br>
+            • <strong>Robo en Banda:</strong> 15 a 25 años<br><br>
+            
+            <strong>2. HURTO (Artículo 185 Código Penal)</strong><br>
+            <strong>Definición:</strong> Sustracci\u00f3n de bien ajeno SIN VIOLENCIA ni INTIMIDACI\u00d3N<br><br>
+            
+            <strong>Características:</strong><br>
+            ✓ NO hay violencia<br>
+            ✓ NO hay amenaza<br>
+            ✓ Se roba sin que vea el dueño<br>
+            ✓ Apoderamiento clandestino<br><br>
+            
+            <strong>Ejemplos:</strong><br>
+            • Robar sin que vean<br>
+            • Hurto en tienda (shoplifting)<br>
+            • Robar mochila en autobús<br>
+            • Sustraer dinero de bolsillo<br><br>
+            
+            <strong>Penas Básicas:</strong><br>
+            • <strong>Hurto Simple:</strong> 1 a 3 años<br>
+            • <strong>Hurto Agravado:</strong> 3 a 6 años<br>
+            • <strong>Hurto de Bien de Valor:</strong> 2 a 4 años<br><br>
+            
+            <strong>3. COMPARACIÓN RÁPIDA:</strong><br>
+            <table style=\"width:100%; border-collapse: collapse;\">
+            <tr style=\"background: #f0f0f0;\">
+            <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>ASPECTO</strong></td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>ROBO</strong></td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>HURTO</strong></td>
+            </tr>
+            <tr>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">Violencia</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">SÍ</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">NO</td>
+            </tr>
+            <tr>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">Amenaza</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">SÍ</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">NO</td>
+            </tr>
+            <tr>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">Pena Mínima</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">3 años</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">1 año</td>
+            </tr>
+            <tr>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">Pena Máxima</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">25 años</td>
+            <td style=\"border: 1px solid #ddd; padding: 8px;\">6 años</td>
+            </tr>
+            </table><br>
+            
+            <strong>4. SI SOY VÍCTIMA:</strong><br>
+            1. Denunciar inmediatamente a policía o fiscalía<br>
+            2. Obtener número de denuncia<br>
+            3. Recopilar evidencia (fotos, testigos)<br>
+            4. Presentar demanda civil por daños<br>
+            5. Participar en investigación<br><br>
+            
+            <strong>⚠️ DIFERENCIA CLAVE:</strong><br>
+            <strong>ROBO = VIOLENCIA + SUSTRACCI\u00d3N</strong><br>
+            <strong>HURTO = SOLO SUSTRACCI\u00d3N (sin fuerza)</strong>`;</n        }
+
+        // DEMANDA CIVIL
+        if (q.includes('demanda')) {
+            return `<strong>Cómo Presentar una Demanda Civil en Perú</strong><br><br>
+            
+            <strong>1. REQUISITOS PREVIOS:</strong><br>
+            ✓ Intentar conciliación (OBLIGATORIO)<br>
+            ✓ Asesoría de abogado especializado<br>
+            ✓ Recopilar pruebas y documentos<br>
+            ✓ Determinar cuantía del reclamo<br><br>
+            
+            <strong>2. ESTRUCTURA DE LA DEMANDA:</strong><br>
+            <strong>A) Encabezamiento:</strong><br>
+            • Tribunal competente<br>
+            • Nombre demandante<br>
+            • Nombre demandado<br><br>
+            
+            <strong>B) Hechos Constitutivos:</strong><br>
+            • Narración cronológica clara<br>
+            • Lo que pasó paso a paso<br>
+            • Hechos que se pueden probar<br><br>
+            
+            <strong>C) Fundamentación Legal:</strong><br>
+            • Artículos del Código aplicables<br>
+            • Jurisprudencia relevante<br>
+            • Doctrina legal<br><br>
+            
+            <strong>D) Petitorio:</strong><br>
+            • Lo que pide al tribunal<br>
+            • Claro y específico<br>
+            • Cuantía exacta (si es dinero)<br><br>
+            
+            <strong>E) Pruebas:</strong><br>
+            • Documentos anexos<br>
+            • Testigos que declare<br>
+            • Peritos (si necesita evaluación)<br><br>
+            
+            <strong>F) Firma:</strong><br>
+            • Demandante<br>
+            • Abogado (con número de colegiatura)<br><br>
+            
+            <strong>3. DOCUMENTOS A ANEXAR:</strong><br>
+            ✓ Copia DNI demandante<br>
+            ✓ Copia DNI demandado<br>
+            ✓ Contrato (si existe)<br>
+            ✓ Recibos y comprobantes<br>
+            ✓ Correspondencia (emails, cartas)<br>
+            ✓ Fotos/videos de prueba<br>
+            ✓ Pericia técnica (si aplica)<br><br>
+            
+            <strong>4. ¿DÓNDE PRESENTAR?</strong><br>
+            Juzgado Civil competente:<br>
+            ✓ Por materia (civil, familia, laboral)<br>
+            ✓ Por cantidad (hasta 70 UIT = juzgado)<br>
+            ✓ Por territorio (donde vive demandado)<br><br>
+            
+            <strong>5. PROCESO JUDICIAL:</strong><br>
+            1. <strong>Demanda:</strong> Presentación de escrito<br>
+            2. <strong>Admisión:</strong> Juez revisa y admite<br>
+            3. <strong>Notificación:</strong> Se notifica al demandado<br>
+            4. <strong>Contestación:</strong> Demandado responde (10-30 días)<br>
+            5. <strong>Pruebas:</strong> Presentación de evidencia (3-6 meses)<br>
+            6. <strong>Audiencia:</strong> Juez escucha a ambas partes<br>
+            7. <strong>Alegatos:</strong> Argumentos finales<br>
+            8. <strong>Sentencia:</strong> Fallo del juez<br>
+            9. <strong>Apelación:</strong> 10 días para apelar (opcional)<br><br>
+            
+            <strong>6. COSTOS:</strong><br>
+            ✓ Honorarios abogado (varía)<br>
+            ✓ Aranceles judiciales<br>
+            ✓ Notarización de documentos<br>
+            ✓ Copias certificadas<br><br>
+            
+            <strong>7. TIEMPO DEL PROCESO:</strong><br>
+            • Juzgado civil: 1-3 años<br>
+            • Con apelación: 2-4 años<br>
+            • Con casación: 3-5 años<br><br>
+            
+            <strong>⚠️ CONSEJOS:</strong><br>
+            1. Contrate abogado con experiencia<br>
+            2. Recopile pruebas ANTES de demandar<br>
+            3. Intente conciliación primero<br>
+            4. Guarde todos los documentos<br>
+            5. Sea paciente (proceso es lento)`;</n        }
+
+        // RESPUESTA GENÉRICA
+        return `<strong>Consulta Legal</strong><br><br>
+        Soy <strong>LEXIA</strong>, tu asistente legal inteligente alimentado por lpderecho.pe.<br><br>
+        <strong>Puedo ayudarte con:</strong><br>
+        📋 <strong>Derecho Civil:</strong> Contratos de compraventa, propiedad, herencias, familia<br>
+        ⚖️ <strong>Derecho Penal:</strong> Delitos, robo, hurto, fraude, procedimiento penal<br>
+        💼 <strong>Derecho Laboral:</strong> Despidos, indemnización, seguridad social<br>
+        🏢 <strong>Derecho Comercial:</strong> Empresas, sociedades, contratos<br>
+        👨‍👩‍👧 <strong>Derecho Familiar:</strong> Divorcio, alimentos, custodia<br>
+        📋 <strong>Procedimiento:</strong> Cómo presentar demanda, juicios<br><br>
+        
+        <strong>Pregunta específicamente sobre:</strong><br>
+        • \"¿Cuáles son los requisitos para un contrato de compraventa?\"<br>
+        • \"¿Qué derechos tengo si me despiden sin causa?\"<br>
+        • \"¿Cuál es el procedimiento para un divorcio?\"<br>
+        • \"¿Diferencia entre robo y hurto?\"<br>
+        • \"¿Cómo presento una demanda civil?\"<br>
+        • \"¿Cómo funciona una herencia?\"<br><br>
+        
+        ✅ Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;\n    }
+
+    async function sendMessage() {
+        const text = input.value.trim();
+        if (text === \"\") return;
+
+        addMessage(text, \"user\");
+        input.value = \"\";
+
+        const loadingMessage = document.createElement(\"div\");
+        loadingMessage.className = \"message bot loading\";
+        loadingMessage.innerHTML = \"⚖️ Procesando tu consulta legal...\";
+        messages.appendChild(loadingMessage);
+        messages.scrollTop = messages.scrollHeight;
+
+        // Simular delay\n        await new Promise(resolve => setTimeout(resolve, 800));\n\n        // Obtener respuesta local\n        const botAnswer = getLocalResponse(text);\n        loadingMessage.remove();\n        addMessage(botAnswer, \"bot\");\n    }\n\n    sendBtn.addEventListener(\"click\", sendMessage);\n    input.addEventListener(\"keydown\", (e) => {\n        if (e.key === \"Enter\") sendMessage();\n    });\n\n    document.querySelectorAll(\".quick-btn\").forEach(btn => {\n        btn.addEventListener(\"click\", () => {\n            input.value = \"Cuéntame sobre \" + btn.textContent.trim();\n            sendMessage();\n        });\n    });\n});
