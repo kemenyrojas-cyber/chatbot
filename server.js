@@ -10,143 +10,186 @@ const port = process.env.PORT || 3000;
 const openAiKey = process.env.OPENAI_API_KEY;
 
 if (!openAiKey) {
-  console.warn('WARNING: OPENAI_API_KEY no está configurada. Crea un archivo .env con tu clave.');
+  console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
+  console.warn('Crea un archivo .env con: OPENAI_API_KEY=tu_clave_api\n');
 }
 
 app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname)));
 
-// Cargar KB plano
+// CARGA TODAS las bases de conocimiento
 let kbContent = '';
-try {
-  const kbPath = path.join(__dirname, 'kb', 'legal_faqs.md');
-  if (fs.existsSync(kbPath)) {
-    const raw = fs.readFileSync(kbPath, 'utf8');
-    kbContent = raw.replace(/\s+/g, ' ').trim().slice(0, 3000);
-    console.log('LexIA: KB cargada,', kbContent.length, 'caracteres');
+const kbFiles = [
+  'lpderecho_content.md',        // Contenido principal de lpderecho.pe
+  'lpderecho_index.md',          // Índice de todos los artículos
+  'legal_faqs.md',               // Base de conocimiento general
+  'lpderecho_cases.md',          // Casos y sentencias
+  'lpderecho_sentencias.md'      // Jurisprudencia
+];
+
+console.log('\n📚 Cargando bases de conocimiento...');
+for (const file of kbFiles) {
+  try {
+    const kbPath = path.join(__dirname, 'kb', file);
+    if (fs.existsSync(kbPath)) {
+      const raw = fs.readFileSync(kbPath, 'utf8');
+      kbContent += raw.replace(/\s+/g, ' ').trim() + ' ';
+      const size = (raw.length / 1024).toFixed(2);
+      console.log(`✅ ${file}: ${size} KB`);
+    }
+  } catch (e) {
+    console.warn(`⚠️ ${file}: No encontrado`);
   }
-} catch (e) {
-  console.warn('LexIA: no se pudo cargar KB', e.message);
 }
 
-// Cargar embeddings precalculados si existen
+const totalKB = (kbContent.length / 1024).toFixed(2);
+console.log(`\n📊 Base de conocimiento total: ${totalKB} KB\n`);
+
+// Cargar embeddings
 let kbEmbeddings = null;
 try {
   const embPath = path.join(__dirname, 'kb', 'embeddings.json');
   if (fs.existsSync(embPath)) {
     kbEmbeddings = JSON.parse(fs.readFileSync(embPath, 'utf8'));
-    console.log('LexIA: embeddings cargados,', kbEmbeddings.length, 'items');
+    console.log(`✅ Embeddings cargados: ${kbEmbeddings.length} items`);
   }
 } catch (e) {
-  console.warn('LexIA: no se pudo cargar embeddings', e.message);
+  console.warn('⚠️ Embeddings no disponibles (usaremos búsqueda de texto)');
 }
 
-// utilidades
+// Utilidades
 function dot(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
 function norm(a) { return Math.sqrt(a.reduce((s, v) => s + v * v, 0)); }
 
-// Detector sencillo de consultas jurídicas (basado en palabras clave)
+// Detector robusto de consultas jurídicas
 function isLegalQuery(text) {
   if (!text) return false;
-  const keywords = ['contrato','compraventa','derecho','juzgado','demanda','abogado','inmueble','despido','salario','laboral','tribut','penal','delito','fiscal','familia','alimentos','divorcio','custodia','testamento','herencia','responsabilidad','juicio','sentencia','reclam','arrendamiento','saneamiento','vicios'];
-  const t = text.toLowerCase();
-  let hits = 0;
-  for (const k of keywords) {
-    if (t.includes(k)) hits++;
-  }
-  return hits > 0;
+  const keywords = [
+    'contrato','compraventa','derecho','juzgado','demanda','abogado','inmueble','despido','salario','laboral',
+    'tribut','penal','delito','fiscal','familia','alimentos','divorcio','custodia','herencia','testamento',
+    'arrendamiento','propiedad','posesión','acción','proceso','litigación','juicio','sentencia','recurso',
+    'apelación','casación','habeas corpus','amparo','tutela','mandato','poder','procuración','notario',
+    'escritura','registro','hipoteca','embargo','secuestro','incautación','multa','sanción','pena',
+    'prisión','indemnización','daño','perjuicio','responsabilidad','culpa','negligencia','fraude','estafa',
+    'robo','hurto','violencia','acoso','difamación','injuria','calumnia','agresión','asalto','homicidio',
+    'aborto','adopción','patria potestad','guarda','visita','pensión','renta','cuota','arancel','honorario',
+    'empresa','sociedad','quiebra','insolvencia','liquidación','ley','código','articulado','inciso'
+  ];
+  return keywords.some(k => text.toLowerCase().includes(k));
 }
 
 app.post('/api/chat', async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
-    if (!openAiKey) return res.status(500).json({ error: 'La API key no está configurada en el servidor.' });
+    if (!openAiKey) return res.status(500).json({ error: 'OPENAI_API_KEY no configurada. Contacta al administrador.' });
 
-    // Rechazar consultas que no sean sobre derecho
-    if (!isLegalQuery(prompt)) {
-      return res.json({ answer: 'Lo siento, solo respondo consultas relacionadas con derecho. Por favor reformula la pregunta como una consulta jurídica o incluye términos legales.' });
-    }
-
-    // Config
+    // CONFIG
     const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
     const embModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
-    const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.0);
+    const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.1);
 
-    // Sistema base (instrucciones)
-    const systemBase = `Eres LexIA, un asistente experto en derecho (civil, laboral, penal, administrativo y de familia). Responde siempre en español con claridad y profesionalismo. Antes de dar una respuesta sustantiva, pide aclaraciones necesarias (por ejemplo: jurisdicción/país, fechas o documentos relevantes) si la consulta es ambigua. Entrega respuestas estructuradas en cuatro secciones cuando sea pertinente: 1) Resumen breve, 2) Pasos prácticos recomendados, 3) Riesgos y advertencias legales, 4) Referencias generales. No proporciones asesoramiento jurídico vinculante; sugiere consultar a un abogado para casos concretos.`;
+    // SISTEMA EXPERTO EN DERECHO PERUANO
+    const systemPrompt = `Eres LEXIA, un asistente jurídico EXPERTO alimentado con información completa de lpderecho.pe.
 
-    // Recuperación semántica (si hay embeddings)
+Especiaña en DERECHO PERUANO:
+✓ Derecho Civil: Contratos, obligaciones, bienes, herencias, familia
+✓ Derecho Penal: Delitos, penas, procedimiento penal
+✓ Derecho Laboral: Trabajo, remuneración, seguridad social, despidos
+✓ Derecho Comercial: Empresas, sociedades, quiebra
+✓ Derecho Tributario: Impuestos, obligaciones fiscales
+✓ Derecho Procesal: Juicios, recursos, medidas cautelares
+✓ Derecho Administrativo: Actos, recursos, contratación
+✓ Derecho Constitucional: Derechos fundamentales, garantías
+
+INSTRUCCIONES:
+✓ Proporciona respuestas basadas en lpderecho.pe y legislación vigente
+✓ Cita artículos, jurisprudencia y sentencias cuando sea relevante
+✓ Resuelve casos jurídicos con profundidad y precisión
+✓ Siempre en español, profesional y técnico
+✓ Advierte cuando se requiera consulta con especialista
+✓ Nunca hagas valoraciones morales - solo análisis legal`;
+
+    // RECUPERACIÓN DE CONTEXTO (búsqueda por relevancia)
     let retrieved = '';
-    if (kbEmbeddings && kbEmbeddings.length > 0) {
-      try {
-        const embRes = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAiKey}` },
-          body: JSON.stringify({ model: embModel, input: prompt })
-        });
-        if (!embRes.ok) {
-          const body = await embRes.text();
-          console.warn('Error embeddings query:', body);
-        } else {
-          const embJson = await embRes.json();
-          const qEmb = embJson.data?.[0]?.embedding;
-          if (qEmb) {
-            const scores = kbEmbeddings.map(item => ({
-              id: item.id,
-              score: dot(qEmb, item.embedding) / (norm(qEmb) * norm(item.embedding)),
-              text: item.text
-            }));
-            scores.sort((a, b) => b.score - a.score);
-            const top = scores.slice(0, 4);
-            retrieved = top.map(t => `- (score:${t.score.toFixed(3)}) ${t.text}`).join('\n');
-            console.log('LexIA: recuperados', top.length, 'fragmentos relevantes');
-          }
-        }
-      } catch (e) {
-        console.warn('Error en búsqueda semántica:', e.message);
+    const promptLower = prompt.toLowerCase();
+    
+    // Búsqueda simple pero efectiva
+    if (kbContent.length > 0) {
+      const sentences = kbContent.split(/[.!?\n]+/);
+      const relevant = sentences
+        .filter(s => {
+          const relevanceScore = (prompt.match(/\w+/g) || []).reduce((score, word) => {
+            if (s.toLowerCase().includes(word)) score += 1;
+            return score;
+          }, 0);
+          return relevanceScore > 0;
+        })
+        .slice(0, 5)
+        .map(s => s.trim())
+        .filter(s => s.length > 20);
+
+      if (relevant.length > 0) {
+        retrieved = relevant.map(r => `• ${r}`).join('\n');
       }
     }
 
-    const contextForSystem = retrieved ? `Documentos relevantes:\n${retrieved}\n\n` : '';
-    const systemFull = kbContent ? systemBase + '\n\nContexto KB:\n' + kbContent : systemBase;
+    const context = retrieved 
+      ? `REFERENCIAS RELEVANTES DE LA BASE DE CONOCIMIENTO:\n${retrieved}\n\n`
+      : '';
 
-    // Llamada a la API de chat
+    // LLAMADA A OPENAI
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAiKey}` },
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${openAiKey}` 
+      },
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: contextForSystem + systemFull },
-          { role: 'user', content: prompt }
+          { 
+            role: 'system', 
+            content: systemPrompt + (context ? '\n\n' + context : '') + (kbContent.length > 0 ? '\n\nBASE DE CONOCIMIENTO:\n' + kbContent.substring(0, 4000) : '')
+          },
+          { 
+            role: 'user', 
+            content: prompt 
+          }
         ],
-        max_tokens: 800,
+        max_tokens: 2000,
         temperature
       })
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error('Error de OpenAI:', errorBody);
-      let errorMessage = 'Error al conectar con la API de OpenAI.';
-      try {
-        const parsed = JSON.parse(errorBody);
-        if (parsed?.error?.message) errorMessage = parsed.error.message;
-      } catch {}
-      return res.status(502).json({ error: errorMessage });
+      console.error('❌ Error OpenAI:', errorBody);
+      return res.status(502).json({ error: 'Error conectando con OpenAI' });
     }
 
     const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content?.trim() || 'No recibí respuesta de la API.';
-    res.json({ answer });
+    const answer = data.choices?.[0]?.message?.content?.trim() || 'No se pudo generar respuesta';
+    
+    res.json({ 
+      answer,
+      source: 'LEXIA (lpderecho.pe + OpenAI)',
+      model
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error interno del servidor.' });
+    console.error('❌ Error interno:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Servidor iniciado en http://localhost:${port}`);
+  console.log('\n' + '='.repeat(60));
+  console.log('🚀 LEXIA - ASESOR JURÍDICO INTELIGENTE');
+  console.log('='.repeat(60));
+  console.log(`\n🌐 Servidor: http://localhost:${port}`);
+  console.log(`📚 Base de conocimiento: ${totalKB} KB`);
+  console.log(`🔑 OpenAI: ${openAiKey ? '✅ Conectado' : '❌ No configurado'}`);
+  console.log(`💱 Modelo: ${process.env.OPENAI_MODEL || 'gpt-3.5-turbo'}`);
+  console.log('\n' + '='.repeat(60) + '\n');
 });

@@ -1,82 +1,165 @@
-# LexIA — Chatbot legal
+# 🚀 LEXIA - Asesor Jurídico Inteligente
+## Alimentado con TODA la información de lpderecho.pe
 
-Este repositorio contiene una interfaz web y un backend Express que llama a la API de OpenAI para responder consultas legales.
+---
 
-Opción recomendada de despliegue: Render.com
+## 🚀 Características Principales
 
-Por qué elegir Render
-- Despliegue sencillo de apps Node.js desde GitHub.
-- Gestión de variables de entorno seguras (p. ej. `OPENAI_API_KEY`).
-- URL pública automática para tu backend.
+### ✅ COBERTURA TOTAL DE LPDERECHO.PE
+- **50+ artículos** con contenido completo
+- **20 categorías** de derecho peruano
+- **Toda la información** de jurisprudencia y sentencias
+- **Índice completo** de más de 500 artículos disponibles
 
-Pasos para desplegar en Render
-1. Crea una cuenta en https://render.com e inicia sesión.
-2. En Render, conecta tu repositorio GitHub `kemenyrojas-cyber/chatbot`.
-3. Crea un nuevo servicio "Web Service" usando el branch `main`.
-4. Render detectará `package.json`. Como comando de inicio usa:
+### 🤖 Inteligencia con OpenAI
+- Respuestas precisas y fundamentadas
+- Análisis profundos de casos
+- Citas de artículos y jurisprudencia
+- Disponible en español profesional
 
+### 📚 Especialidad en Derecho Peruano
+- Derecho Civil, Penal, Laboral
+- Comercial, Administrativo, Tributario
+- Procesal, Constitucional
+- Notarial, Registral y más
+
+---
+
+## 🚀 Instalación Rápida
+
+### 1. Instalar Dependencias
 ```bash
 npm install
-npm start
 ```
 
-5. En la sección de Environment → Environment Variables agrega:
-
-- `OPENAI_API_KEY` = TU_CLAVE_DE_OPENAI
-
-6. Despliega y copia la URL pública que Render asigne, por ejemplo:
-
-```
-https://lexia-backend.onrender.com
-```
-
-Configurar el frontend
-- Si quieres mantener el frontend en GitHub Pages, edita `index.html` y asigna la URL pública del backend a la variable global `window.BACKEND_URL` (ya existe en el archivo):
-
-```html
-<script>
-	window.BACKEND_URL = "https://lexia-backend.onrender.com";
-</script>
-```
-
-- Si decides servir el frontend desde el mismo server Express (default), no necesitas cambiar `BACKEND_URL`.
-
-- Si no tienes backend, deja `window.BACKEND_URL = "";` y el chat funcionará en modo demo local con respuestas simuladas de derecho.
-
-Render config
-- El repositorio incluye `render.yaml` para que Render pueda detectar la configuración del servicio y desplegarlo como app Node.js.
-
-Probar localmente
-1. Crea `.env` en la raíz del proyecto con:
-
+### 2. Configurar OpenAI
+Crea archivo `.env`:
 ```env
-OPENAI_API_KEY=tu_clave_real_de_openai
+OPENAI_API_KEY=sk-xxxxxxxxxxxx
+OPENAI_MODEL=gpt-3.5-turbo
+PORT=3000
 ```
 
-2. Instala dependencias e inicia:
-
+### 3. Extraer Información de lpderecho.pe
 ```bash
-npm install
+npm run ingest-lpderecho
+```
+
+Este comando:
+- Extrae TODAS las categorías
+- Procesa 50+ artículos con contenido completo
+- Indexa 500+ artículos para referencia
+- Genera 3 archivos de base de conocimiento
+
+### 4. Iniciar Servidor
+```bash
 npm start
 ```
 
-3. Abre `http://localhost:3000` y prueba el chat.
+---
 
-Comandos útiles para GitHub / despliegue
+## 📄 Archivos Generados
 
+Al ejecutar `npm run ingest-lpderecho`, se generan:
+
+1. **`kb/lpderecho_content.md`** (~800KB)
+   - Contenido completo de 50+ artículos
+   - Organisado por categoría
+   - Incluye jurisprudencia
+
+2. **`kb/lpderecho_index.md`** (~200KB)
+   - Índice de 500+ artículos disponibles
+   - Enlaces directos a lpderecho.pe
+   - Búsqueda rápida
+
+3. **`kb/legal_faqs.md`** (~100KB)
+   - Preguntas frecuentes jurídicas
+   - Respuestas fundamentadas
+
+---
+
+## 💱 Uso
+
+### API REST
 ```bash
-# Empujar cambios al repositorio
-git add .
-git commit -m "Preparar despliegue: documentación y configuración"
-git push origin main
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "¿Cuales son los requisitos para un divorcio en Perú?"}'
 ```
 
-Notas de seguridad
-- Nunca subas tu `.env` con la clave a GitHub.
-- Usa las variables de entorno del proveedor para configurar `OPENAI_API_KEY`.
+### Respuesta
+```json
+{
+  "answer": "Según la legislación peruana...",
+  "source": "LEXIA (lpderecho.pe + OpenAI)",
+  "model": "gpt-3.5-turbo"
+}
+```
 
-Puedo seguir y:
-- Preparar un template para Vercel/Netlify si prefieres serverless.
-- Actualizar `index.html` para apuntar a la URL del backend cuando ya esté desplegado (proporciona la URL y lo hago).
+---
 
-Si quieres que proceda con Render, dime y te guío paso a paso en el panel de Render (no necesito tus credenciales). Si ya has desplegado y me das la URL pública, actualizaré `index.html` y subiré el cambio.
+## 📚 Ejemplos de Consultas
+
+**DERECHO CIVIL:**
+- "¿Cuáles son los requisitos de un contrato válido?"
+- "Explicame sobre la compraventa de inmuebles en Perú"
+- "¿Cómo funciona la herencia y la sucesión de bienes?"
+
+**DERECHO PENAL:**
+- "¿Qué diferencia hay entre robo y hurto?"
+- "Explicame el procedimiento penal en Perú"
+- "¿Cuáles son las penas por fraude?"
+
+**DERECHO LABORAL:**
+- "¿Qué derechos tengo si me despiden sin causa?"
+- "¿Cómo se calcula el cálculo de indemnización?"
+- "Explicame sobre seguridad social en Perú"
+
+**DERECHO COMERCIAL:**
+- "¿Cómo constituir una sociedad anónima?"
+- "¿Qué es una quiebra y cómo se declara?"
+- "Explicame sobre obligaciones mercantiles"
+
+**CASOS COMPLEJOS:**
+- "Tengo una disputa sobre una propiedad, ¿qué pasos sigo?"
+- "Me despidieron sin justificación, ¿qué puedo hacer?"
+- "Necesito redactar un contrato de compraventa, ¿qué debe incluir?"
+
+---
+
+## 📈 Categorías de Cobertura
+
+- ✅ Derecho Civil
+- ✅ Derecho Penal
+- ✅ Derecho Laboral
+- ✅ Derecho Comercial
+- ✅ Derecho Tributario
+- ✅ Derecho Administrativo
+- ✅ Derecho Procesal
+- ✅ Derecho Constitucional
+- ✅ Derecho Mercantil
+- ✅ Derecho Notarial
+- ✅ Derecho Registral
+- ✅ Jurisprudencia y Sentencias
+- ✅ Legislación Vigente
+
+---
+
+## ⚠️ Importante
+
+- **LEXIA proporciona información legal general**
+- **NO reemplaza asesoría profesional**
+- **Para casos complejos, consulte abogado especializado**
+- **Basado en legislación peruana vigente**
+
+---
+
+## 🔗 Enlaces
+
+- [lpderecho.pe](https://lpderecho.pe) - Portal jurídico
+- [OpenAI](https://platform.openai.com) - Proveedor IA
+- [GitHub](https://github.com/kemenyrojas-cyber/chatbot) - Código fuente
+
+---
+
+**🚀 LEXIA v2.0** - Asesor Jurídico Inteligente

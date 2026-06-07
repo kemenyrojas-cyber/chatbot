@@ -1,16 +1,23 @@
 {
   "name": "lexia",
-  "version": "1.0.0",
-  "description": "Chatbot legal con OpenAI",
+  "version": "2.0.0",
+  "description": "Chatbot legal con OpenAI - Asesor jurídico inteligente alimentado por lpderecho.pe",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "ingest": "node scripts/ingest.js"
+    "ingest": "node scripts/ingest.js",
+    "ingest-lpderecho": "node scripts/ingest-lpderecho.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.4",
     "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }
