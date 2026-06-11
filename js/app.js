@@ -7,6 +7,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const roleResourceList = document.getElementById("roleResourceList");
     const roleToolsGrid = document.getElementById("roleToolsGrid");
     const roleStats = document.getElementById("roleStats");
+    const notificationButton = document.getElementById("notificationButton");
+    const notificationBadge = document.getElementById("notificationBadge");
+    const notificationPanel = document.getElementById("notificationPanel");
+    const notificationList = document.getElementById("notificationList");
+    const markNotificationsRead = document.getElementById("markNotificationsRead");
+    const clearHistoryButton = document.getElementById("clearHistoryButton");
     const greeting = document.getElementById("dashboardGreeting");
     const dashboardSubtitle = document.getElementById("dashboardSubtitle");
     const accountLabel = document.getElementById("accountLabel");
@@ -64,13 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["#icon-file", "Resumen de expediente", "Sintetiza hechos y anexos"],
                 ["#icon-scale", "Matriz de argumentos", "Ordena pretensiones y pruebas"]
             ],
-            stats: [["Clientes activos", "18"], ["Documentos analizados", "24"], ["Plazos próximos", "7"]],
-            features: ["Consultas ilimitadas", "Gestión de clientes", "Control de vencimientos", "Generación de escritos"],
-            activity: [
-                ["Demanda de desalojo por ocupación precaria", "Hoy, 10:45 a.m."],
-                ["Revisión de contrato de arrendamiento", "Ayer, 4:30 p.m."],
-                ["Indemnización por despido arbitrario", "Ayer, 11:20 a.m."]
-            ]
+            features: ["Consultas ilimitadas", "Gestión de clientes", "Control de vencimientos", "Generación de escritos"]
         },
         "estudio-juridico": {
             label: "Estudio Jurídico",
@@ -100,13 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["#icon-clipboard", "Checklist de revisión", "Control de calidad"],
                 ["#icon-file-search", "Buscador interno", "Criterios reutilizables"]
             ],
-            stats: [["Expedientes activos", "42"], ["Pendientes críticos", "6"], ["Revisiones cerradas", "29"]],
-            features: ["Roles y permisos", "Bandeja compartida", "Plantillas del estudio", "Trazabilidad de revisiones"],
-            activity: [
-                ["Revisión asignada al área contractual", "Hoy, 8:40 a.m."],
-                ["Actualización de plantilla laboral", "Ayer, 5:00 p.m."],
-                ["Alerta de vencimiento procesal", "Ayer, 12:30 p.m."]
-            ]
+            features: ["Roles y permisos", "Bandeja compartida", "Plantillas del estudio", "Trazabilidad de revisiones"]
         },
         "estudiante-derecho": {
             label: "Estudiante de Derecho",
@@ -136,13 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["#icon-search", "Glosario jurídico", "Términos explicados"],
                 ["#icon-star", "Repaso rápido", "Preguntas frecuentes"]
             ],
-            stats: [["Temas estudiados", "12"], ["Casos practicados", "8"], ["Apuntes guardados", "31"]],
-            features: ["Resúmenes por materia", "Casos prácticos guiados", "Glosario jurídico", "Ruta de aprendizaje"],
-            activity: [
-                ["Resumen de contrato de compraventa", "Hoy, 9:15 a.m."],
-                ["Caso práctico sobre hurto y robo", "Ayer, 6:20 p.m."],
-                ["Ficha de sucesiones", "Ayer, 2:10 p.m."]
-            ]
+            features: ["Resúmenes por materia", "Casos prácticos guiados", "Glosario jurídico", "Ruta de aprendizaje"]
         },
         "entidad-publica": {
             label: "Entidad Pública",
@@ -172,13 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["#icon-file-search", "Análisis de expediente", "Resumen y observaciones"],
                 ["#icon-shield-check", "Control normativo", "Cumplimiento y riesgos"]
             ],
-            stats: [["Expedientes revisados", "33"], ["Informes generados", "15"], ["Plazos próximos", "11"]],
-            features: ["Informes legales", "Seguimiento de expedientes", "Normativa pública", "Alertas administrativas"],
-            activity: [
-                ["Informe sobre procedimiento sancionador", "Hoy, 10:10 a.m."],
-                ["Revisión de expediente administrativo", "Ayer, 4:05 p.m."],
-                ["Alerta por vencimiento de recurso", "Ayer, 9:20 a.m."]
-            ]
+            features: ["Informes legales", "Seguimiento de expedientes", "Normativa pública", "Alertas administrativas"]
         },
         "empresa-corporativo": {
             label: "Empresa / Corporativo",
@@ -208,15 +190,57 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["#icon-calendar", "Calendario legal", "Obligaciones y renovaciones"],
                 ["#icon-briefcase", "Consultas internas", "Soporte para áreas"]
             ],
-            stats: [["Contratos revisados", "36"], ["Riesgos abiertos", "9"], ["Obligaciones próximas", "14"]],
-            features: ["Revisión contractual", "Alertas de compliance", "Soporte laboral", "Reporte de riesgos"],
-            activity: [
-                ["Contrato de servicios con riesgo medio", "Hoy, 11:05 a.m."],
-                ["Obligación regulatoria pendiente", "Ayer, 3:35 p.m."],
-                ["Consulta laboral de RR. HH.", "Ayer, 9:50 a.m."]
-            ]
+            features: ["Revisión contractual", "Alertas de compliance", "Soporte laboral", "Reporte de riesgos"]
         }
     };
+
+    const storageKeys = {
+        history: "lexiaHistory",
+        notifications: "lexiaNotifications",
+        documents: "lexiaDocuments",
+        deadlines: "lexiaDeadlines",
+        favorites: "lexiaFavorites"
+    };
+
+    let currentRole = "abogado-independiente";
+
+    function loadList(key) {
+        try {
+            const value = JSON.parse(localStorage.getItem(key) || "[]");
+            return Array.isArray(value) ? value : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function saveList(key, value) {
+        localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    function formatDate(value) {
+        return new Intl.DateTimeFormat("es-PE", {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit"
+        }).format(new Date(value));
+    }
+
+    function textOnly(html) {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = html;
+        return tmp.textContent.replace(/\s+/g, " ").trim();
+    }
+
+    function escapeHtml(value) {
+        const tmp = document.createElement("div");
+        tmp.textContent = value || "";
+        return tmp.innerHTML;
+    }
+
+    function createId() {
+        return window.crypto?.randomUUID ? window.crypto.randomUUID() : String(Date.now() + Math.random());
+    }
 
     function normalizeRole(value) {
         if (!value) return "";
@@ -231,6 +255,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderRole(role) {
         const selectedRole = roleDashboards[role] ? role : "abogado-independiente";
         const config = roleDashboards[selectedRole];
+        currentRole = selectedRole;
         localStorage.setItem("lexiaRole", selectedRole);
 
         greeting.textContent = config.greeting;
@@ -246,9 +271,8 @@ document.addEventListener("DOMContentLoaded", () => {
         roleQuickGrid.innerHTML = config.quick.map(item => renderIconArticle(item, "quick-card")).join("");
         roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["#icon-file", item[0], item[1]], "")).join("");
         roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
-        roleStats.innerHTML = config.stats.map(([label, value]) => `<div class="stat-row"><span>${label}</span><strong>${value}</strong></div>`).join("");
         planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
-        messages.innerHTML = config.activity.map(([title, time]) => `<article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>${title}</p><time>${time}</time></article>`).join("");
+        renderAppState();
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -256,12 +280,112 @@ document.addEventListener("DOMContentLoaded", () => {
     const initialRole = normalizeRole(params.get("role") || params.get("profile")) || savedRole || "abogado-independiente";
     renderRole(initialRole);
 
+    function getHistory() {
+        return loadList(storageKeys.history).filter(item => item.role === currentRole);
+    }
+
+    function getNotifications() {
+        return loadList(storageKeys.notifications).filter(item => item.role === currentRole);
+    }
+
+    function addNotification(title, detail) {
+        const notifications = loadList(storageKeys.notifications);
+        notifications.unshift({
+            id: createId(),
+            role: currentRole,
+            title,
+            detail,
+            read: false,
+            createdAt: new Date().toISOString()
+        });
+        saveList(storageKeys.notifications, notifications.slice(0, 50));
+    }
+
+    function renderHistory() {
+        const history = getHistory();
+
+        if (!history.length) {
+            messages.innerHTML = `<div class="empty-state"><strong>No hay historial todavía.</strong><span>Cuando realices una consulta, aparecerá aquí con fecha y respuesta.</span></div>`;
+            return;
+        }
+
+        messages.innerHTML = history.slice(0, 8).map(item => `
+            <article class="history-item">
+                <span><svg class="icon"><use href="#icon-new-chat"></use></svg></span>
+                <details ${item.id === history[0].id ? "open" : ""}>
+                    <summary>
+                        <strong>${escapeHtml(item.question)}</strong>
+                        <small>${escapeHtml(item.answerPreview)}</small>
+                    </summary>
+                    <div class="history-answer">${item.answer}</div>
+                </details>
+                <time>${formatDate(item.createdAt)}</time>
+            </article>
+        `).join("");
+    }
+
+    function renderNotifications() {
+        const notifications = getNotifications();
+        const unreadCount = notifications.filter(item => !item.read).length;
+
+        notificationBadge.textContent = unreadCount;
+        notificationBadge.hidden = unreadCount === 0;
+
+        if (!notifications.length) {
+            notificationList.innerHTML = `<div class="empty-state compact"><strong>Sin notificaciones.</strong><span>Las alertas aparecerán cuando haya una acción real que reportar.</span></div>`;
+            return;
+        }
+
+        notificationList.innerHTML = notifications.slice(0, 10).map(item => `
+            <article class="${item.read ? "" : "unread"}">
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.detail)}</span>
+                <time>${formatDate(item.createdAt)}</time>
+            </article>
+        `).join("");
+    }
+
+    function renderStats() {
+        const history = getHistory();
+        const documents = loadList(storageKeys.documents).filter(item => item.role === currentRole);
+        const deadlines = loadList(storageKeys.deadlines).filter(item => item.role === currentRole);
+        const unreadNotifications = getNotifications().filter(item => !item.read);
+
+        roleStats.innerHTML = [
+            ["Consultas realizadas", history.length],
+            ["Documentos cargados", documents.length],
+            ["Plazos registrados", deadlines.length],
+            ["Notificaciones pendientes", unreadNotifications.length]
+        ].map(([label, value]) => `<div class="stat-row"><span>${label}</span><strong>${value}</strong></div>`).join("");
+    }
+
+    function renderAppState() {
+        renderHistory();
+        renderNotifications();
+        renderStats();
+    }
+
     function addMessage(text, type) {
         const msg = document.createElement("div");
         msg.className = `message ${type}`;
         msg.innerHTML = text;
         messages.appendChild(msg);
         messages.scrollTop = messages.scrollHeight;
+    }
+
+    function addHistoryEntry(question, answer) {
+        const history = loadList(storageKeys.history);
+        history.unshift({
+            id: createId(),
+            role: currentRole,
+            question,
+            answer,
+            answerPreview: textOnly(answer).slice(0, 120),
+            createdAt: new Date().toISOString()
+        });
+        saveList(storageKeys.history, history.slice(0, 100));
+        addNotification("Consulta guardada en historial", question);
+        renderAppState();
     }
 
     function getLocalResponse(text) {
@@ -687,6 +811,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const botAnswer = getLocalResponse(text);
         loadingMessage.remove();
         addMessage(botAnswer, "bot");
+        addHistoryEntry(text, botAnswer);
     }
 
     sendBtn.addEventListener("click", sendMessage);
@@ -698,6 +823,55 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", () => {
             input.value = "Cuéntame sobre " + btn.textContent.trim();
             sendMessage();
+        });
+    });
+
+    notificationButton.addEventListener("click", () => {
+        const isHidden = notificationPanel.hidden;
+        notificationPanel.hidden = !isHidden;
+        notificationButton.setAttribute("aria-expanded", String(isHidden));
+    });
+
+    markNotificationsRead.addEventListener("click", () => {
+        const notifications = loadList(storageKeys.notifications).map(item => (
+            item.role === currentRole ? { ...item, read: true } : item
+        ));
+        saveList(storageKeys.notifications, notifications);
+        renderAppState();
+    });
+
+    clearHistoryButton.addEventListener("click", () => {
+        const currentHistory = getHistory();
+        if (!currentHistory.length) return;
+        const remaining = loadList(storageKeys.history).filter(item => item.role !== currentRole);
+        saveList(storageKeys.history, remaining);
+        addNotification("Historial limpiado", "Se eliminaron las consultas guardadas para este rol.");
+        renderAppState();
+    });
+
+    document.querySelectorAll("[data-action]").forEach(item => {
+        item.addEventListener("click", event => {
+            const action = item.dataset.action;
+            if (action === "new-query") {
+                event.preventDefault();
+                input.focus();
+            }
+            if (action === "history") {
+                event.preventDefault();
+                document.getElementById("historial").scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+            if (action === "notifications") {
+                event.preventDefault();
+                notificationPanel.hidden = false;
+                notificationButton.setAttribute("aria-expanded", "true");
+            }
+            if (["documents", "favorites", "deadlines", "profile", "settings"].includes(action)) {
+                event.preventDefault();
+                addNotification("Sección sin datos registrados", "Todavía no hay información creada para esta sección.");
+                renderAppState();
+                notificationPanel.hidden = false;
+                notificationButton.setAttribute("aria-expanded", "true");
+            }
         });
     });
 });

@@ -289,6 +289,10 @@ button {
     font-size: 22px;
 }
 
+.notification-wrap {
+    position: relative;
+}
+
 .icon-button strong {
     position: absolute;
     top: -8px;
@@ -302,6 +306,71 @@ button {
     place-items: center;
     font-size: 11px;
     font-weight: 700;
+}
+
+.notification-panel {
+    position: absolute;
+    top: 58px;
+    right: 0;
+    z-index: 20;
+    width: min(360px, calc(100vw - 40px));
+    padding: 14px;
+    border: 1px solid #DCE7F7;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #0F172A;
+    box-shadow: 0 18px 42px rgba(3, 12, 28, 0.24);
+}
+
+.notification-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.notification-head h3 {
+    font-size: 14px;
+}
+
+.notification-head button {
+    border: 0;
+    background: transparent;
+    color: #0B5CFF;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.notification-list {
+    display: grid;
+    gap: 10px;
+    max-height: 320px;
+    overflow: auto;
+}
+
+.notification-list article {
+    padding: 11px 12px;
+    border: 1px solid #E4ECF7;
+    border-radius: 8px;
+    display: grid;
+    gap: 5px;
+}
+
+.notification-list article.unread {
+    border-color: #BFD5FF;
+    background: #F3F7FF;
+}
+
+.notification-list strong {
+    font-size: 13px;
+}
+
+.notification-list span,
+.notification-list time {
+    color: #4B6388;
+    font-size: 11px;
+    line-height: 1.35;
 }
 
 .account-button {
@@ -591,7 +660,7 @@ button {
 .recent-list article {
     display: grid;
     grid-template-columns: 20px minmax(0, 1fr) auto;
-    align-items: center;
+    align-items: start;
     gap: 10px;
 }
 
@@ -609,9 +678,78 @@ button {
     white-space: nowrap;
 }
 
+.history-item details {
+    min-width: 0;
+}
+
+.history-item summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.history-item summary::-webkit-details-marker {
+    display: none;
+}
+
+.history-item summary strong,
+.history-item summary small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-item summary strong {
+    color: #0B1B3A;
+    font-size: 12px;
+}
+
+.history-item summary small {
+    margin-top: 4px;
+    color: #4B6388;
+    font-size: 11px;
+}
+
+.history-answer {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #F6F9FE;
+    color: #1F3356;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
 .recent-list time {
     color: #6D7F9E;
     font-size: 10px;
+}
+
+.empty-state {
+    min-height: 132px;
+    padding: 18px;
+    border: 1px dashed #BFD0EA;
+    border-radius: 8px;
+    background: #F8FBFF;
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.empty-state.compact {
+    min-height: 96px;
+}
+
+.empty-state strong {
+    color: #0B1B3A;
+    font-size: 13px;
+}
+
+.empty-state span {
+    color: #4B6388;
+    font-size: 12px;
+    line-height: 1.4;
 }
 
 .law-list {

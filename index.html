@@ -50,28 +50,28 @@
             </div>
 
             <nav class="side-nav" aria-label="Navegación principal">
-                <a class="nav-item active" href="#"><span><svg class="icon"><use href="#icon-home"></use></svg></span> Inicio</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span> Nueva Consulta</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-history"></use></svg></span> Historial</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-file"></use></svg></span> Documentos</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-scale"></use></svg></span> Jurisprudencia</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-landmark"></use></svg></span> Normas Legales</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-clipboard"></use></svg></span> Modelos y Plantillas</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-briefcase"></use></svg></span> Análisis de Casos</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-star"></use></svg></span> Favoritos</a>
+                <a class="nav-item active" href="#inicio" data-action="home"><span><svg class="icon"><use href="#icon-home"></use></svg></span> Inicio</a>
+                <a class="nav-item" href="#consulta" data-action="new-query"><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span> Nueva Consulta</a>
+                <a class="nav-item" href="#historial" data-action="history"><span><svg class="icon"><use href="#icon-history"></use></svg></span> Historial</a>
+                <a class="nav-item" href="#documentos" data-action="documents"><span><svg class="icon"><use href="#icon-file"></use></svg></span> Documentos</a>
+                <a class="nav-item" href="#jurisprudencia" data-action="resources"><span><svg class="icon"><use href="#icon-scale"></use></svg></span> Jurisprudencia</a>
+                <a class="nav-item" href="#normas" data-action="resources"><span><svg class="icon"><use href="#icon-landmark"></use></svg></span> Normas Legales</a>
+                <a class="nav-item" href="#plantillas" data-action="tools"><span><svg class="icon"><use href="#icon-clipboard"></use></svg></span> Modelos y Plantillas</a>
+                <a class="nav-item" href="#casos" data-action="history"><span><svg class="icon"><use href="#icon-briefcase"></use></svg></span> Análisis de Casos</a>
+                <a class="nav-item" href="#favoritos" data-action="favorites"><span><svg class="icon"><use href="#icon-star"></use></svg></span> Favoritos</a>
             </nav>
 
             <div class="nav-group">
                 <p>Herramientas</p>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-calculator"></use></svg></span> Calculadoras Jurídicas</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-calendar"></use></svg></span> Plazos y Vencimientos</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-bell"></use></svg></span> Notificaciones</a>
+                <a class="nav-item" href="#herramientas" data-action="tools"><span><svg class="icon"><use href="#icon-calculator"></use></svg></span> Calculadoras Jurídicas</a>
+                <a class="nav-item" href="#plazos" data-action="deadlines"><span><svg class="icon"><use href="#icon-calendar"></use></svg></span> Plazos y Vencimientos</a>
+                <a class="nav-item" href="#notificaciones" data-action="notifications"><span><svg class="icon"><use href="#icon-bell"></use></svg></span> Notificaciones</a>
             </div>
 
             <div class="nav-group">
                 <p>Configuración</p>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-user"></use></svg></span> Perfil</a>
-                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-settings"></use></svg></span> Preferencias</a>
+                <a class="nav-item" href="#perfil" data-action="profile"><span><svg class="icon"><use href="#icon-user"></use></svg></span> Perfil</a>
+                <a class="nav-item" href="#preferencias" data-action="settings"><span><svg class="icon"><use href="#icon-settings"></use></svg></span> Preferencias</a>
             </div>
 
             <button class="theme-toggle" type="button">
@@ -93,7 +93,19 @@
                         <input type="search" placeholder="Buscar en Lexia...">
                         <span><svg class="icon"><use href="#icon-search"></use></svg></span>
                     </label>
-                    <button class="icon-button" type="button" title="Notificaciones"><svg class="icon"><use href="#icon-bell"></use></svg><strong>3</strong></button>
+                    <div class="notification-wrap">
+                        <button class="icon-button" id="notificationButton" type="button" title="Notificaciones" aria-expanded="false" aria-controls="notificationPanel">
+                            <svg class="icon"><use href="#icon-bell"></use></svg>
+                            <strong id="notificationBadge" hidden>0</strong>
+                        </button>
+                        <div class="notification-panel" id="notificationPanel" hidden>
+                            <div class="notification-head">
+                                <h3>Notificaciones</h3>
+                                <button type="button" id="markNotificationsRead">Marcar leídas</button>
+                            </div>
+                            <div class="notification-list" id="notificationList"></div>
+                        </div>
+                    </div>
                     <button class="account-button" type="button">
                         <span class="account-avatar"><svg class="icon"><use href="#icon-user"></use></svg></span>
                         <span><strong id="accountLabel">Cuenta LEXIA</strong><small id="accountPlan">Onboarding activo</small></span>
@@ -102,7 +114,7 @@
                 </div>
             </header>
 
-            <section class="consult-hero">
+            <section class="consult-hero" id="consulta">
                 <div class="hero-content">
                     <h2 id="heroTitle">Consulta cualquier tema legal con IA</h2>
                     <p id="heroSubtitle">Respuestas precisas basadas en legislación peruana actualizada</p>
@@ -132,7 +144,7 @@
             <section class="workspace">
                 <div class="section-header">
                     <h3>Accesos rápidos</h3>
-                    <button type="button">Personalizar <svg class="icon"><use href="#icon-settings"></use></svg></button>
+                    <button type="button" data-action="settings">Personalizar <svg class="icon"><use href="#icon-settings"></use></svg></button>
                 </div>
 
                 <div class="quick-grid" id="roleQuickGrid">
@@ -140,21 +152,15 @@
                 </div>
 
                 <div class="content-grid">
-                    <section class="panel-card recent-panel">
+                    <section class="panel-card recent-panel" id="historial">
                         <div class="panel-title">
                             <h3 id="activityTitle">Actividad reciente</h3>
-                            <button type="button">Ver todas</button>
+                            <button type="button" id="clearHistoryButton">Limpiar</button>
                         </div>
-                        <div class="recent-list" id="chatMessages" data-seed="true">
-                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>¿Cuáles son los requisitos para interponer una demanda...</p><time>Hoy, 10:45 a.m.</time></article>
-                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Plazo de prescripción de la acción penal en casos de hurto...</p><time>Ayer, 4:30 p.m.</time></article>
-                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Formalidades del contrato de arrendamiento en Perú</p><time>Ayer, 11:20 a.m.</time></article>
-                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Régimen de visitas para padres no custodios</p><time>20 May, 2024</time></article>
-                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Indemnización por despido arbitrario</p><time>19 May, 2024</time></article>
-                        </div>
+                        <div class="recent-list" id="chatMessages"></div>
                     </section>
 
-                    <section class="panel-card">
+                    <section class="panel-card" id="jurisprudencia">
                         <div class="panel-title">
                             <h3 id="resourceTitle">Recursos destacados</h3>
                             <button type="button">Ver todas</button>
@@ -185,7 +191,7 @@
                         </section>
                     </aside>
 
-                    <section class="panel-card tools-panel">
+                    <section class="panel-card tools-panel" id="herramientas">
                         <h3>Herramientas populares</h3>
                         <div class="tools-grid" id="roleToolsGrid">
                             <article><span><svg class="icon"><use href="#icon-calculator"></use></svg></span><strong>Calculadora de Intereses</strong><small>Intereses legales y moratorios</small></article>
