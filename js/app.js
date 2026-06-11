@@ -504,7 +504,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <div class="chat-session-actions">
                     <button class="chat-session-menu-button" type="button" aria-label="Opciones de consulta" aria-haspopup="menu" aria-expanded="false" data-session-menu-id="${item.id}">
-                        <i class="fa-solid fa-ellipsis-vertical icon" aria-hidden="true"></i>
+                        <span aria-hidden="true">⋮</span>
                     </button>
                     <div class="chat-session-menu" role="menu" hidden data-session-menu>
                         <button type="button" role="menuitem" class="chat-session-delete" data-delete-session-id="${item.id}">
