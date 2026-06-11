@@ -3,5 +3,210 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEXIA - Asesor Legal Inteligente</title>
-    <link rel="stylesheet" href="style.css">\n    <script>\n        // ⚠️ IMPORTANTE: Configura aquí tu BACKEND_URL\n        // Si tienes servidor en http://localhost:3000 usa:\n        window.BACKEND_URL = \"http://localhost:3000\";\n        // Si NO tienes backend, deja vacío para respuestas locales:\n        // window.BACKEND_URL = \"\";\n    </script>\n</head>\n<body>\n\n<div class=\"app\">\n    <div class=\"chat-card\">\n        <div class=\"welcome-section\">\n            <img src=\"img/robot.png.png\" alt=\"LEXIA\" class=\"robot-avatar\">\n            <h1>LEXIA ⚖️</h1>\n            <p><strong>Asesor Legal Inteligente con IA</strong></p>\n            <p style=\"font-size: 12px; color: #666;\">Alimentado por lpderecho.pe + OpenAI</p>\n\n            <div class=\"quick-actions\">\n                <button class=\"quick-btn\">📄 Derecho Civil</button>\n                <button class=\"quick-btn\">⚖️ Derecho Penal</button>\n                <button class=\"quick-btn\">💼 Derecho Laboral</button>\n                <button class=\"quick-btn\">🏢 Derecho Comercial</button>\n                <button class=\"quick-btn\">👨‍👩‍👧 Familia</button>\n                <button class=\"quick-btn\">📋 Procedimiento Legal</button>\n            </div>\n        </div>\n\n        <div class=\"chat-messages\" id=\"chatMessages\">\n            <div class=\"message bot\">\n                <strong>¡Hola! 👋 Soy LEXIA</strong><br><br>\n                Soy tu <strong>asesor legal inteligente</strong> especializado en derecho peruano.<br><br>\n                <strong>⚖️ Áreas de especialidad:</strong><br>\n                ✓ Derecho Civil (contratos, propiedad, familia, herencias)<br>\n                ✓ Derecho Penal (delitos, robo, hurto, fraude)<br>\n                ✓ Derecho Laboral (despidos, indemnización)<br>\n                ✓ Derecho Comercial (empresas, sociedades)<br>\n                ✓ Derecho Procesal (demandas, juicios)<br><br>\n                <strong>📚 Mi información viene de:</strong><br>\n                • lpderecho.pe (portal legal más leído de Perú)<br>\n                • OpenAI GPT (respuestas inteligentes)<br>\n                • Legislación peruana vigente<br><br>\n                <strong>💡 Haz preguntas específicas como:</strong><br>\n                \"¿Cuáles son los requisitos para un contrato de compraventa?\"<br>\n                \"¿Qué derechos tengo si me despiden sin causa?\"<br>\n                \"¿Cuál es el procedimiento para un divorcio?\"<br><br>\n                ¿En qué puedo ayudarte?\n            </div>\n        </div>\n\n        <div class=\"chat-input\">\n            <input\n                type=\"text\"\n                id=\"messageInput\"\n                placeholder=\"Escribe tu consulta legal aquí...\"\n                autocomplete=\"off\"\n            >\n            <button id=\"sendBtn\" title=\"Enviar\">➜</button>\n        </div>\n    </div>\n</div>\n\n<script src=\"js/app.js\"></script>\n</body>\n</html>", "path": "index.html", "repo": "chatbot"}, "sha": "8bef6047b127bf27201e54eb15fd4f7dd9e448e0"
+    <title>LEXIA - Panel Legal</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        window.BACKEND_URL = "http://localhost:3000";
+    </script>
+</head>
+<body>
+    <svg class="svg-sprite" aria-hidden="true">
+        <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></symbol>
+        <symbol id="icon-new-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6a8 8 0 1 1 18-5Z"/><path d="M12 8v8"/><path d="M8 12h8"/></symbol>
+        <symbol id="icon-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></symbol>
+        <symbol id="icon-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></symbol>
+        <symbol id="icon-scale" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 6h14"/><path d="m6 6-3 7h6Z"/><path d="m18 6-3 7h6Z"/><path d="M8 21h8"/></symbol>
+        <symbol id="icon-landmark" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 10h14"/><path d="M6 10v8"/><path d="M10 10v8"/><path d="M14 10v8"/><path d="M18 10v8"/><path d="m12 3 8 4H4Z"/></symbol>
+        <symbol id="icon-clipboard" viewBox="0 0 24 24"><path d="M9 4h6"/><path d="M9 2h6v4H9Z"/><path d="M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><path d="M8 12h8"/><path d="M8 16h6"/></symbol>
+        <symbol id="icon-briefcase" viewBox="0 0 24 24"><path d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1"/><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 13h18"/><path d="M9 13v2h6v-2"/></symbol>
+        <symbol id="icon-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
+        <symbol id="icon-calculator" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8"/><path d="M8 11h2"/><path d="M14 11h2"/><path d="M8 15h2"/><path d="M14 15h2"/></symbol>
+        <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M3 10h18"/><path d="M12 14v3l2 1"/></symbol>
+        <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
+        <symbol id="icon-user" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></symbol>
+        <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2 3.4-.2-.1a1.8 1.8 0 0 0-2 .4l-.1.1-3.6-2.1-.1-.2a1.8 1.8 0 0 0-1.8 0l-.1.2-3.6 2.1-.1-.1a1.8 1.8 0 0 0-2-.4l-.2.1-2-3.4.1-.1a1.8 1.8 0 0 0 .4-2l-.1-.2V9.2l.1-.2a1.8 1.8 0 0 0-.4-2l-.1-.1 2-3.4.2.1a1.8 1.8 0 0 0 2-.4l.1-.1L10 5.2l.1.2a1.8 1.8 0 0 0 1.8 0l.1-.2 3.6-2.1.1.1a1.8 1.8 0 0 0 2 .4l.2-.1 2 3.4-.1.1a1.8 1.8 0 0 0-.4 2l.1.2v5.6Z"/></symbol>
+        <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+        <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+        <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 19h14"/></symbol>
+        <symbol id="icon-file-search" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7"/><path d="M14 2v6h6"/><circle cx="16.5" cy="16.5" r="3.5"/><path d="m19 19 2 2"/></symbol>
+        <symbol id="icon-file-plus" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></symbol>
+        <symbol id="icon-crown" viewBox="0 0 24 24"><path d="m3 8 4 4 5-7 5 7 4-4-2 10H5Z"/><path d="M5 21h14"/></symbol>
+        <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.9 19.1 1.4-1.4"/><path d="m17.7 6.3 1.4-1.4"/></symbol>
+        <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5Z"/></symbol>
+    </svg>
+    <div class="dashboard-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="brand-avatar-frame">
+                    <img src="img/lexia-avatar.png" alt="LEXIA" class="brand-avatar">
+                </span>
+                <div>
+                    <h1>LEXIA ⚖️</h1>
+                    <p>Asesor Legal Inteligente con IA</p>
+                </div>
+            </div>
+
+            <nav class="side-nav" aria-label="Navegación principal">
+                <a class="nav-item active" href="#"><span><svg class="icon"><use href="#icon-home"></use></svg></span> Inicio</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span> Nueva Consulta</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-history"></use></svg></span> Historial</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-file"></use></svg></span> Documentos</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-scale"></use></svg></span> Jurisprudencia</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-landmark"></use></svg></span> Normas Legales</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-clipboard"></use></svg></span> Modelos y Plantillas</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-briefcase"></use></svg></span> Análisis de Casos</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-star"></use></svg></span> Favoritos</a>
+            </nav>
+
+            <div class="nav-group">
+                <p>Herramientas</p>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-calculator"></use></svg></span> Calculadoras Jurídicas</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-calendar"></use></svg></span> Plazos y Vencimientos</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-bell"></use></svg></span> Notificaciones</a>
+            </div>
+
+            <div class="nav-group">
+                <p>Configuración</p>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-user"></use></svg></span> Perfil</a>
+                <a class="nav-item" href="#"><span><svg class="icon"><use href="#icon-settings"></use></svg></span> Preferencias</a>
+            </div>
+
+            <button class="theme-toggle" type="button">
+                <span><svg class="icon"><use href="#icon-sun"></use></svg></span>
+                Modo claro
+                <span><svg class="icon"><use href="#icon-moon"></use></svg></span>
+            </button>
+        </aside>
+
+        <main class="main-panel">
+            <header class="topbar">
+                <div>
+                    <h2>¡Hola, Abogado! 👋</h2>
+                    <p>¿En qué podemos ayudarte hoy?</p>
+                </div>
+
+                <div class="topbar-actions">
+                    <label class="search-box">
+                        <input type="search" placeholder="Buscar en Lexia...">
+                        <span><svg class="icon"><use href="#icon-search"></use></svg></span>
+                    </label>
+                    <button class="icon-button" type="button" title="Notificaciones"><svg class="icon"><use href="#icon-bell"></use></svg><strong>3</strong></button>
+                    <button class="account-button" type="button">
+                        <span class="account-avatar"><svg class="icon"><use href="#icon-user"></use></svg></span>
+                        <span><strong>Estudio Legal</strong><small>Cuenta Premium</small></span>
+                        <span><svg class="icon"><use href="#icon-chevron-down"></use></svg></span>
+                    </button>
+                </div>
+            </header>
+
+            <section class="consult-hero">
+                <div class="hero-content">
+                    <h2>Consulta cualquier tema legal con IA</h2>
+                    <p>Respuestas precisas basadas en legislación peruana actualizada</p>
+                    <div class="hero-search">
+                        <input
+                            type="text"
+                            id="messageInput"
+                            placeholder="Ejemplo: ¿Cuáles son los requisitos para una demanda de desalojo?"
+                            autocomplete="off"
+                        >
+                        <button id="sendBtn" type="button">Consultar <span>→</span></button>
+                    </div>
+                    <div class="quick-actions">
+                        <button class="quick-btn" type="button"><svg class="icon"><use href="#icon-scale"></use></svg> Civil</button>
+                        <button class="quick-btn" type="button"><svg class="icon"><use href="#icon-landmark"></use></svg> Penal</button>
+                        <button class="quick-btn" type="button"><svg class="icon"><use href="#icon-briefcase"></use></svg> Laboral</button>
+                        <button class="quick-btn" type="button"><svg class="icon"><use href="#icon-file"></use></svg> Comercial</button>
+                        <button class="quick-btn" type="button"><svg class="icon"><use href="#icon-user"></use></svg> Familia</button>
+                        <button class="quick-btn" type="button"><svg class="icon"><use href="#icon-landmark"></use></svg> Administrativo</button>
+                    </div>
+                </div>
+                <div class="hero-visual" aria-hidden="true">
+                    <img src="img/justice-scale.png" alt="" class="hero-scale-image">
+                </div>
+            </section>
+
+            <section class="workspace">
+                <div class="section-header">
+                    <h3>Accesos rápidos</h3>
+                    <button type="button">Personalizar <svg class="icon"><use href="#icon-settings"></use></svg></button>
+                </div>
+
+                <div class="quick-grid">
+                    <article class="quick-card"><span><svg class="icon"><use href="#icon-file-plus"></use></svg></span><strong>Nueva Consulta</strong><small>Haz tu pregunta legal</small></article>
+                    <article class="quick-card"><span><svg class="icon"><use href="#icon-upload"></use></svg></span><strong>Subir Documento</strong><small>Analiza con IA</small></article>
+                    <article class="quick-card"><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Resumir Norma</strong><small>Obtén síntesis</small></article>
+                    <article class="quick-card"><span><svg class="icon"><use href="#icon-file-search"></use></svg></span><strong>Buscar Jurisprudencia</strong><small>Encuentra precedentes</small></article>
+                    <article class="quick-card"><span><svg class="icon"><use href="#icon-clipboard"></use></svg></span><strong>Generar Documento</strong><small>Crea documentos legales</small></article>
+                </div>
+
+                <div class="content-grid">
+                    <section class="panel-card recent-panel">
+                        <div class="panel-title">
+                            <h3>Consultas recientes</h3>
+                            <button type="button">Ver todas</button>
+                        </div>
+                        <div class="recent-list" id="chatMessages">
+                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>¿Cuáles son los requisitos para interponer una demanda...</p><time>Hoy, 10:45 a.m.</time></article>
+                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Plazo de prescripción de la acción penal en casos de hurto...</p><time>Ayer, 4:30 p.m.</time></article>
+                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Formalidades del contrato de arrendamiento en Perú</p><time>Ayer, 11:20 a.m.</time></article>
+                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Régimen de visitas para padres no custodios</p><time>20 May, 2024</time></article>
+                            <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Indemnización por despido arbitrario</p><time>19 May, 2024</time></article>
+                        </div>
+                    </section>
+
+                    <section class="panel-card">
+                        <div class="panel-title">
+                            <h3>Normas destacadas</h3>
+                            <button type="button">Ver todas</button>
+                        </div>
+                        <div class="law-list">
+                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Civil</strong><small>Actualizado: 10 May, 2024</small></article>
+                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Penal</strong><small>Actualizado: 08 May, 2024</small></article>
+                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Procesal Civil</strong><small>Actualizado: 05 May, 2024</small></article>
+                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Ley de Productividad Laboral</strong><small>Actualizado: 01 May, 2024</small></article>
+                        </div>
+                    </section>
+
+                    <aside class="right-stack">
+                        <section class="pro-card">
+                            <h3><svg class="icon crown-icon"><use href="#icon-crown"></use></svg> LEXIA PRO</h3>
+                            <p>Tu plan actual: Premium</p>
+                            <ul>
+                                <li>Consultas ilimitadas</li>
+                                <li>Análisis de documentos</li>
+                                <li>Jurisprudencia avanzada</li>
+                                <li>Generación de documentos</li>
+                                <li>Soporte prioritario</li>
+                            </ul>
+                            <button type="button">Gestionar plan</button>
+                        </section>
+
+                        <section class="stats-card">
+                            <div class="panel-title">
+                                <h3>Estadísticas</h3>
+                                <button type="button">Este mes</button>
+                            </div>
+                            <div class="stat-row"><span>Consultas realizadas</span><strong>128</strong></div>
+                            <div class="stat-row"><span>Documentos analizados</span><strong>24</strong></div>
+                            <div class="stat-row"><span>Horas ahorradas</span><strong>16.5</strong></div>
+                        </section>
+                    </aside>
+
+                    <section class="panel-card tools-panel">
+                        <h3>Herramientas populares</h3>
+                        <div class="tools-grid">
+                            <article><span><svg class="icon"><use href="#icon-calculator"></use></svg></span><strong>Calculadora de Intereses</strong><small>Intereses legales y moratorios</small></article>
+                            <article><span><svg class="icon"><use href="#icon-calculator"></use></svg></span><strong>Liquidación de Beneficios</strong><small>Calcula beneficios laborales</small></article>
+                            <article><span><svg class="icon"><use href="#icon-calendar"></use></svg></span><strong>Plazos Procesales</strong><small>Controla tus vencimientos</small></article>
+                            <article><span><svg class="icon"><use href="#icon-scale"></use></svg></span><strong>Conversor de Normas</strong><small>Normas a lenguaje simple</small></article>
+                        </div>
+                    </section>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

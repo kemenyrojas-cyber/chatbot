@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrarse - LEXIA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+    <div class="auth-shell">
+        <header class="auth-header">
+            <a href="landing.html" class="brand">
+                <span class="brand-title">LEXIA</span>
+                <span class="brand-subtitle">Asesor Legal Inteligente con IA</span>
+            </a>
+            <nav class="header-actions" aria-label="Acceso">
+                <a class="header-link" href="/login">Iniciar sesión</a>
+                <a class="header-button" href="/registro">Registrarse</a>
+            </nav>
+        </header>
+
+        <main class="auth-main">
+            <section class="auth-copy" aria-labelledby="register-title">
+                <span class="eyebrow">Registro legaltech</span>
+                <h1 id="register-title">Crea tu cuenta y avanza al <span>onboarding.</span></h1>
+                <p>El registro inicia el flujo oficial de LEXIA: verificación, selección de rol y configuración guiada para adaptar la experiencia a tu práctica legal.</p>
+                <div class="trust-row" aria-label="Flujo de registro">
+                    <div class="trust-item"><strong>1</strong><span>Registro</span></div>
+                    <div class="trust-item"><strong>2</strong><span>Verificación</span></div>
+                    <div class="trust-item"><strong>3</strong><span>Rol</span></div>
+                </div>
+            </section>
+
+            <section class="auth-card" aria-labelledby="form-title">
+                <div class="card-inner">
+                    <h2 class="card-title" id="form-title">Registrarse</h2>
+                    <p class="card-text">Completa tus datos para continuar a la verificación de cuenta.</p>
+                    <form class="auth-form" action="/app" method="get">
+                        <div class="field">
+                            <label for="name">Nombre completo</label>
+                            <input id="name" name="name" type="text" placeholder="Nombre y apellido" autocomplete="name" required>
+                        </div>
+                        <div class="field">
+                            <label for="email">Correo electrónico</label>
+                            <input id="email" name="email" type="email" placeholder="tu@correo.com" autocomplete="email" required>
+                        </div>
+                        <div class="field">
+                            <label for="password">Contraseña</label>
+                            <input id="password" name="password" type="password" placeholder="Crea una contraseña segura" autocomplete="new-password" minlength="8" required>
+                        </div>
+                        <div class="field">
+                            <label for="profile">Perfil inicial</label>
+                            <select id="profile" name="profile" required>
+                                <option value="">Selecciona una opción</option>
+                                <option>Abogado/a</option>
+                                <option>Estudiante de Derecho</option>
+                                <option>Equipo legal</option>
+                                <option>Empresa</option>
+                            </select>
+                        </div>
+                        <label class="check"><input type="checkbox" name="terms" required> Acepto los términos y la política de privacidad</label>
+                        <button class="submit-button" type="submit">Crear cuenta <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+                    </form>
+                    <p class="card-footer">¿Ya tienes cuenta? <a class="inline-link" href="/login">Inicia sesión</a></p>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

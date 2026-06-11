@@ -46,7 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
             ✓ Derechos de registro<br>
             ✓ Impuesto a la renta (si aplica)<br><br>
             
-            <strong>⚠️ RECOMENDACIÓN:</strong> Para inmuebles, SIEMPRE use abogado y notario.`;</n        }
+            <strong>⚠️ RECOMENDACIÓN:</strong> Para inmuebles, SIEMPRE use abogado y notario.`;
+        }
 
         // DIVORCIO
         if (q.includes('divorcio') || q.includes('matrimonio')) {
@@ -98,7 +99,8 @@ document.addEventListener("DOMContentLoaded", () => {
             ✓ Fin de la relación matrimonial<br>
             ✓ Disolución de sociedad conyugal<br>
             ✓ Derechos sucesorios se pierden<br>
-            ✓ Obligación de pensión alimenticia continúa`;</n        }
+            ✓ Obligación de pensión alimenticia continúa`;
+        }
 
         // DESPIDO INJUSTIFICADO
         if (q.includes('despido') || q.includes('indemnizacion') || q.includes('laboral')) {
@@ -155,7 +157,8 @@ document.addEventListener("DOMContentLoaded", () => {
             ✓ Candidatos electorales<br>
             • Requieren autorización de tribunal para despedir<br><br>
             
-            <strong>⚠️ IMPORTANTE:</strong> Consulte abogado laboral inmediatamente después del despido.`;</n        }
+            <strong>⚠️ IMPORTANTE:</strong> Consulte abogado laboral inmediatamente después del despido.`;
+        }
 
         // HERENCIA Y SUCESIÓN
         if (q.includes('herencia') || q.includes('sucesión') || q.includes('testamento')) {
@@ -216,7 +219,8 @@ document.addEventListener("DOMContentLoaded", () => {
             • Con complicaciones: 1-2 años<br>
             • Juicios por herencia: 2-5 años<br><br>
             
-            <strong>⚠️ RECOMENDACIÓN:</strong> Contrate abogado especialista en sucesiones.`;</n        }
+            <strong>⚠️ RECOMENDACIÓN:</strong> Contrate abogado especialista en sucesiones.`;
+        }
 
         // ROBO VS HURTO
         if (q.includes('robo') || q.includes('hurto')) {
@@ -301,7 +305,8 @@ document.addEventListener("DOMContentLoaded", () => {
             
             <strong>⚠️ DIFERENCIA CLAVE:</strong><br>
             <strong>ROBO = VIOLENCIA + SUSTRACCI\u00d3N</strong><br>
-            <strong>HURTO = SOLO SUSTRACCI\u00d3N (sin fuerza)</strong>`;</n        }
+            <strong>HURTO = SOLO SUSTRACCI\u00d3N (sin fuerza)</strong>`;
+        }
 
         // DEMANDA CIVIL
         if (q.includes('demanda')) {
@@ -385,7 +390,8 @@ document.addEventListener("DOMContentLoaded", () => {
             2. Recopile pruebas ANTES de demandar<br>
             3. Intente conciliación primero<br>
             4. Guarde todos los documentos<br>
-            5. Sea paciente (proceso es lento)`;</n        }
+            5. Sea paciente (proceso es lento)`;
+        }
 
         // RESPUESTA GENÉRICA
         return `<strong>Consulta Legal</strong><br><br>
@@ -406,19 +412,40 @@ document.addEventListener("DOMContentLoaded", () => {
         • \"¿Cómo presento una demanda civil?\"<br>
         • \"¿Cómo funciona una herencia?\"<br><br>
         
-        ✅ Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;\n    }
+        ✅ Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;
+    }
 
     async function sendMessage() {
         const text = input.value.trim();
-        if (text === \"\") return;
+        if (text === "") return;
 
-        addMessage(text, \"user\");
-        input.value = \"\";
+        addMessage(text, "user");
+        input.value = "";
 
-        const loadingMessage = document.createElement(\"div\");
-        loadingMessage.className = \"message bot loading\";
-        loadingMessage.innerHTML = \"⚖️ Procesando tu consulta legal...\";
+        const loadingMessage = document.createElement("div");
+        loadingMessage.className = "message bot loading";
+        loadingMessage.innerHTML = "⚖️ Procesando tu consulta legal...";
         messages.appendChild(loadingMessage);
         messages.scrollTop = messages.scrollHeight;
 
-        // Simular delay\n        await new Promise(resolve => setTimeout(resolve, 800));\n\n        // Obtener respuesta local\n        const botAnswer = getLocalResponse(text);\n        loadingMessage.remove();\n        addMessage(botAnswer, \"bot\");\n    }\n\n    sendBtn.addEventListener(\"click\", sendMessage);\n    input.addEventListener(\"keydown\", (e) => {\n        if (e.key === \"Enter\") sendMessage();\n    });\n\n    document.querySelectorAll(\".quick-btn\").forEach(btn => {\n        btn.addEventListener(\"click\", () => {\n            input.value = \"Cuéntame sobre \" + btn.textContent.trim();\n            sendMessage();\n        });\n    });\n});
+        // Simular delay
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // Obtener respuesta local
+        const botAnswer = getLocalResponse(text);
+        loadingMessage.remove();
+        addMessage(botAnswer, "bot");
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") sendMessage();
+    });
+
+    document.querySelectorAll(".quick-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            input.value = "Cuéntame sobre " + btn.textContent.trim();
+            sendMessage();
+        });
+    });
+});

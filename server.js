@@ -16,7 +16,28 @@ if (!openAiKey) {
 
 app.use(express.json());
 app.use(cors());
-app.use(express.static(path.join(__dirname)));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'landing.html'));
+});
+
+app.get('/app', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.use(express.static(path.join(__dirname), { index: false }));
+
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+app.get('/registro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'registro.html'));
+});
+
+app.get('/recuperar-password', (req, res) => {
+  res.sendFile(path.join(__dirname, 'recuperar-password.html'));
+});
 
 // CARGA TODAS las bases de conocimiento
 let kbContent = '';
