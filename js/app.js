@@ -3,6 +3,227 @@ document.addEventListener("DOMContentLoaded", () => {
     const sendBtn = document.getElementById("sendBtn");
     const input = document.getElementById("messageInput");
     const messages = document.getElementById("chatMessages");
+    const roleQuickGrid = document.getElementById("roleQuickGrid");
+    const roleResourceList = document.getElementById("roleResourceList");
+    const roleToolsGrid = document.getElementById("roleToolsGrid");
+    const roleStats = document.getElementById("roleStats");
+    const roleStatus = document.getElementById("roleStatus");
+    const greeting = document.getElementById("dashboardGreeting");
+    const dashboardSubtitle = document.getElementById("dashboardSubtitle");
+    const accountLabel = document.getElementById("accountLabel");
+    const accountPlan = document.getElementById("accountPlan");
+    const heroTitle = document.getElementById("heroTitle");
+    const heroSubtitle = document.getElementById("heroSubtitle");
+    const activityTitle = document.getElementById("activityTitle");
+    const resourceTitle = document.getElementById("resourceTitle");
+    const planTitle = document.getElementById("planTitle");
+    const planDescription = document.getElementById("planDescription");
+    const planFeatures = document.getElementById("planFeatures");
+
+    const roleAliases = {
+        "abogado/a": "abogado",
+        "abogado": "abogado",
+        "estudiante de derecho": "estudiante",
+        "estudiante": "estudiante",
+        "equipo legal": "equipo",
+        "equipo": "equipo",
+        "empresa": "empresa"
+    };
+
+    const roleDashboards = {
+        abogado: {
+            label: "Abogado/a",
+            greeting: "¡Hola, Abogado!",
+            subtitle: "Gestiona consultas, casos, documentos y vencimientos desde un solo panel.",
+            plan: "Cuenta profesional",
+            heroTitle: "Asistente jurídico para gestión de casos",
+            heroSubtitle: "Consulta normas, analiza documentos y prepara escritos con enfoque práctico.",
+            activityTitle: "Casos y consultas recientes",
+            resourceTitle: "Normas y jurisprudencia clave",
+            quick: [
+                ["#icon-file-plus", "Nueva consulta", "Haz tu pregunta legal"],
+                ["#icon-upload", "Analizar documento", "Contratos, demandas o anexos"],
+                ["#icon-calendar", "Controlar plazo", "Calcula vencimientos procesales"],
+                ["#icon-file-search", "Buscar jurisprudencia", "Encuentra precedentes"],
+                ["#icon-clipboard", "Generar escrito", "Modelos listos para editar"]
+            ],
+            resources: [
+                ["Código Civil", "Contratos, obligaciones y familia"],
+                ["Código Procesal Civil", "Etapas, plazos y recursos"],
+                ["Código Penal", "Delitos y criterios de defensa"],
+                ["Jurisprudencia relevante", "Criterios para argumentación"]
+            ],
+            tools: [
+                ["#icon-calculator", "Calculadora de intereses", "Intereses legales y moratorios"],
+                ["#icon-calendar", "Plazos procesales", "Controla vencimientos"],
+                ["#icon-file", "Resumen de expediente", "Sintetiza hechos y anexos"],
+                ["#icon-scale", "Matriz de argumentos", "Ordena pretensiones y pruebas"]
+            ],
+            stats: [["Casos activos", "18"], ["Documentos analizados", "24"], ["Plazos próximos", "7"]],
+            features: ["Consultas ilimitadas", "Análisis de documentos", "Jurisprudencia avanzada", "Generación de escritos"],
+            activity: [
+                ["Demanda de desalojo por ocupación precaria", "Hoy, 10:45 a.m."],
+                ["Revisión de contrato de arrendamiento", "Ayer, 4:30 p.m."],
+                ["Indemnización por despido arbitrario", "Ayer, 11:20 a.m."]
+            ]
+        },
+        estudiante: {
+            label: "Estudiante",
+            greeting: "¡Hola, Estudiante!",
+            subtitle: "Aprende, practica casos y resume normas con una ruta de estudio guiada.",
+            plan: "Cuenta académica",
+            heroTitle: "Tutor legal para estudiar y practicar",
+            heroSubtitle: "Convierte normas complejas en explicaciones claras, esquemas y ejemplos.",
+            activityTitle: "Avance de estudio",
+            resourceTitle: "Material recomendado",
+            quick: [
+                ["#icon-file", "Resumir tema", "Explicación clara por materia"],
+                ["#icon-scale", "Practicar caso", "Analiza hechos y fundamentos"],
+                ["#icon-clipboard", "Crear esquema", "Mapa de conceptos"],
+                ["#icon-file-search", "Buscar artículos", "Ubica base legal"],
+                ["#icon-star", "Guardar apunte", "Favoritos de estudio"]
+            ],
+            resources: [
+                ["Introducción al Derecho Civil", "Conceptos esenciales"],
+                ["Guía de Derecho Penal", "Tipos penales frecuentes"],
+                ["Proceso Civil básico", "Etapas y recursos"],
+                ["Modelos de examen", "Preguntas para practicar"]
+            ],
+            tools: [
+                ["#icon-file", "Fichas de estudio", "Resumen por tema"],
+                ["#icon-clipboard", "Casos prácticos", "Hechos, problema y solución"],
+                ["#icon-search", "Glosario jurídico", "Términos explicados"],
+                ["#icon-star", "Repaso rápido", "Preguntas frecuentes"]
+            ],
+            stats: [["Temas estudiados", "12"], ["Casos practicados", "8"], ["Apuntes guardados", "31"]],
+            features: ["Resúmenes por materia", "Casos prácticos guiados", "Glosario jurídico", "Ruta de aprendizaje"],
+            activity: [
+                ["Resumen de contrato de compraventa", "Hoy, 9:15 a.m."],
+                ["Caso práctico sobre hurto y robo", "Ayer, 6:20 p.m."],
+                ["Ficha de sucesiones", "Ayer, 2:10 p.m."]
+            ]
+        },
+        equipo: {
+            label: "Equipo legal",
+            greeting: "¡Hola, Equipo Legal!",
+            subtitle: "Coordina trabajo, revisiones y conocimiento interno para tu área legal.",
+            plan: "Cuenta colaborativa",
+            heroTitle: "Centro de trabajo para equipos legales",
+            heroSubtitle: "Organiza consultas, asigna revisiones y estandariza respuestas internas.",
+            activityTitle: "Actividad del equipo",
+            resourceTitle: "Base interna destacada",
+            quick: [
+                ["#icon-users", "Asignar consulta", "Distribuye trabajo legal"],
+                ["#icon-upload", "Revisión compartida", "Analiza documentos en equipo"],
+                ["#icon-clipboard", "Plantilla interna", "Estandariza documentos"],
+                ["#icon-bell", "Alertas del equipo", "Seguimiento de pendientes"],
+                ["#icon-file-search", "Buscar criterio", "Consulta conocimiento interno"]
+            ],
+            resources: [
+                ["Protocolos internos", "Criterios de atención"],
+                ["Plantillas aprobadas", "Formatos vigentes"],
+                ["Matriz de riesgos", "Casos y prioridades"],
+                ["Repositorio contractual", "Cláusulas frecuentes"]
+            ],
+            tools: [
+                ["#icon-users", "Bandeja de equipo", "Asignaciones y responsables"],
+                ["#icon-bell", "Alertas legales", "Cambios y vencimientos"],
+                ["#icon-clipboard", "Checklist de revisión", "Control de calidad"],
+                ["#icon-file-search", "Buscador interno", "Criterios reutilizables"]
+            ],
+            stats: [["Consultas asignadas", "42"], ["Pendientes críticos", "6"], ["Revisiones cerradas", "29"]],
+            features: ["Roles y permisos", "Bandeja compartida", "Plantillas del equipo", "Trazabilidad de revisiones"],
+            activity: [
+                ["Revisión asignada a contratos", "Hoy, 8:40 a.m."],
+                ["Actualización de plantilla laboral", "Ayer, 5:00 p.m."],
+                ["Alerta de vencimiento procesal", "Ayer, 12:30 p.m."]
+            ]
+        },
+        empresa: {
+            label: "Empresa",
+            greeting: "¡Hola, Empresa!",
+            subtitle: "Supervisa contratos, riesgos, obligaciones y consultas legales operativas.",
+            plan: "Cuenta empresarial",
+            heroTitle: "Dashboard legal para operaciones empresariales",
+            heroSubtitle: "Centraliza consultas, contratos, compliance y gestión de riesgos.",
+            activityTitle: "Riesgos y operaciones recientes",
+            resourceTitle: "Documentos empresariales",
+            quick: [
+                ["#icon-upload", "Revisar contrato", "Detecta riesgos y cláusulas"],
+                ["#icon-shield-check", "Compliance", "Evalúa obligaciones"],
+                ["#icon-briefcase", "Consulta laboral", "Casos de personal"],
+                ["#icon-calculator", "Impacto económico", "Multas, intereses y costos"],
+                ["#icon-bell", "Obligaciones", "Alertas regulatorias"]
+            ],
+            resources: [
+                ["Contratos comerciales", "Compra, venta y servicios"],
+                ["Políticas laborales", "Gestión de personal"],
+                ["Matriz de compliance", "Obligaciones por área"],
+                ["Cláusulas de riesgo", "Revisión preventiva"]
+            ],
+            tools: [
+                ["#icon-shield-check", "Mapa de riesgos", "Prioriza contingencias"],
+                ["#icon-file-search", "Auditoría contractual", "Hallazgos por contrato"],
+                ["#icon-calendar", "Calendario legal", "Obligaciones y renovaciones"],
+                ["#icon-briefcase", "Consultas internas", "Soporte para áreas"]
+            ],
+            stats: [["Contratos revisados", "36"], ["Riesgos abiertos", "9"], ["Obligaciones próximas", "14"]],
+            features: ["Revisión contractual", "Alertas de compliance", "Soporte laboral", "Reporte de riesgos"],
+            activity: [
+                ["Contrato de servicios con riesgo medio", "Hoy, 11:05 a.m."],
+                ["Obligación regulatoria pendiente", "Ayer, 3:35 p.m."],
+                ["Consulta laboral de RR. HH.", "Ayer, 9:50 a.m."]
+            ]
+        }
+    };
+
+    function normalizeRole(value) {
+        if (!value) return "";
+        return roleAliases[value.trim().toLowerCase()] || value.trim().toLowerCase();
+    }
+
+    function renderIconArticle(item, className) {
+        const [icon, title, text] = item;
+        return `<article class="${className}"><span><svg class="icon"><use href="${icon}"></use></svg></span><strong>${title}</strong><small>${text}</small></article>`;
+    }
+
+    function renderRole(role) {
+        const config = roleDashboards[role] || roleDashboards.abogado;
+        localStorage.setItem("lexiaRole", role);
+
+        greeting.textContent = config.greeting;
+        dashboardSubtitle.textContent = config.subtitle;
+        accountLabel.textContent = config.label;
+        accountPlan.textContent = config.plan;
+        heroTitle.textContent = config.heroTitle;
+        heroSubtitle.textContent = config.heroSubtitle;
+        activityTitle.textContent = config.activityTitle;
+        resourceTitle.textContent = config.resourceTitle;
+        planTitle.textContent = `LEXIA ${config.label}`;
+        planDescription.textContent = config.plan;
+        roleStatus.textContent = "Activo";
+
+        roleQuickGrid.innerHTML = config.quick.map(item => renderIconArticle(item, "quick-card")).join("");
+        roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["#icon-file", item[0], item[1]], "")).join("");
+        roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
+        roleStats.innerHTML = config.stats.map(([label, value]) => `<div class="stat-row"><span>${label}</span><strong>${value}</strong></div>`).join("");
+        planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
+        messages.innerHTML = config.activity.map(([title, time]) => `<article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>${title}</p><time>${time}</time></article>`).join("");
+
+        document.querySelectorAll(".role-option").forEach(btn => {
+            const isActive = btn.dataset.role === role;
+            btn.classList.toggle("active", isActive);
+            btn.setAttribute("aria-pressed", String(isActive));
+        });
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const initialRole = normalizeRole(params.get("role") || params.get("profile")) || localStorage.getItem("lexiaRole") || "abogado";
+    renderRole(initialRole);
+
+    document.querySelectorAll(".role-option").forEach(btn => {
+        btn.addEventListener("click", () => renderRole(btn.dataset.role));
+    });
 
     function addMessage(text, type) {
         const msg = document.createElement("div");

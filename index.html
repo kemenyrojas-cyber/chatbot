@@ -33,6 +33,9 @@
         <symbol id="icon-crown" viewBox="0 0 24 24"><path d="m3 8 4 4 5-7 5 7 4-4-2 10H5Z"/><path d="M5 21h14"/></symbol>
         <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.9 19.1 1.4-1.4"/><path d="m17.7 6.3 1.4-1.4"/></symbol>
         <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5Z"/></symbol>
+        <symbol id="icon-shield-check" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></symbol>
+        <symbol id="icon-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+        <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20"/><path d="M12 2a15.3 15.3 0 0 0 0 20"/></symbol>
     </svg>
     <div class="dashboard-shell">
         <aside class="sidebar">
@@ -81,8 +84,8 @@
         <main class="main-panel">
             <header class="topbar">
                 <div>
-                    <h2>¡Hola, Abogado! 👋</h2>
-                    <p>¿En qué podemos ayudarte hoy?</p>
+                    <h2 id="dashboardGreeting">¡Hola!</h2>
+                    <p id="dashboardSubtitle">Configura tu acceso para adaptar LEXIA a tu trabajo.</p>
                 </div>
 
                 <div class="topbar-actions">
@@ -93,16 +96,51 @@
                     <button class="icon-button" type="button" title="Notificaciones"><svg class="icon"><use href="#icon-bell"></use></svg><strong>3</strong></button>
                     <button class="account-button" type="button">
                         <span class="account-avatar"><svg class="icon"><use href="#icon-user"></use></svg></span>
-                        <span><strong>Estudio Legal</strong><small>Cuenta Premium</small></span>
+                        <span><strong id="accountLabel">Cuenta LEXIA</strong><small id="accountPlan">Onboarding activo</small></span>
                         <span><svg class="icon"><use href="#icon-chevron-down"></use></svg></span>
                     </button>
                 </div>
             </header>
 
+            <section class="access-onboarding" aria-labelledby="onboardingTitle">
+                <div class="onboarding-flow">
+                    <div class="flow-heading">
+                        <span>1</span>
+                        <div>
+                            <h3 id="onboardingTitle">Acceso y onboarding</h3>
+                            <p>Completa el flujo para activar un dashboard alineado con tu rol.</p>
+                        </div>
+                    </div>
+                    <ol class="flow-steps">
+                        <li class="complete"><span><svg class="icon"><use href="#icon-globe"></use></svg></span><strong>Landing page</strong></li>
+                        <li class="complete"><span><svg class="icon"><use href="#icon-user"></use></svg></span><strong>Registro / Login</strong></li>
+                        <li class="complete"><span><svg class="icon"><use href="#icon-shield-check"></use></svg></span><strong>Verificación</strong></li>
+                        <li class="active"><span><svg class="icon"><use href="#icon-users"></use></svg></span><strong>Selección de rol</strong></li>
+                        <li><span><svg class="icon"><use href="#icon-clipboard"></use></svg></span><strong>Onboarding interactivo</strong></li>
+                    </ol>
+                </div>
+
+                <div class="role-panel">
+                    <div class="role-panel-header">
+                        <div>
+                            <h3>Selecciona tu rol</h3>
+                            <p>El contenido, accesos rápidos y métricas se ajustan automáticamente.</p>
+                        </div>
+                        <span id="roleStatus">Pendiente</span>
+                    </div>
+                    <div class="role-options" role="radiogroup" aria-label="Selección de rol">
+                        <button class="role-option" type="button" data-role="abogado" aria-pressed="false"><svg class="icon"><use href="#icon-briefcase"></use></svg><strong>Abogado/a</strong><small>Casos, clientes y documentos.</small></button>
+                        <button class="role-option" type="button" data-role="estudiante" aria-pressed="false"><svg class="icon"><use href="#icon-file"></use></svg><strong>Estudiante</strong><small>Estudio, resúmenes y práctica.</small></button>
+                        <button class="role-option" type="button" data-role="equipo" aria-pressed="false"><svg class="icon"><use href="#icon-users"></use></svg><strong>Equipo legal</strong><small>Colaboración y revisión interna.</small></button>
+                        <button class="role-option" type="button" data-role="empresa" aria-pressed="false"><svg class="icon"><use href="#icon-landmark"></use></svg><strong>Empresa</strong><small>Contratos, compliance y riesgos.</small></button>
+                    </div>
+                </div>
+            </section>
+
             <section class="consult-hero">
                 <div class="hero-content">
-                    <h2>Consulta cualquier tema legal con IA</h2>
-                    <p>Respuestas precisas basadas en legislación peruana actualizada</p>
+                    <h2 id="heroTitle">Consulta cualquier tema legal con IA</h2>
+                    <p id="heroSubtitle">Respuestas precisas basadas en legislación peruana actualizada</p>
                     <div class="hero-search">
                         <input
                             type="text"
@@ -132,21 +170,17 @@
                     <button type="button">Personalizar <svg class="icon"><use href="#icon-settings"></use></svg></button>
                 </div>
 
-                <div class="quick-grid">
+                <div class="quick-grid" id="roleQuickGrid">
                     <article class="quick-card"><span><svg class="icon"><use href="#icon-file-plus"></use></svg></span><strong>Nueva Consulta</strong><small>Haz tu pregunta legal</small></article>
-                    <article class="quick-card"><span><svg class="icon"><use href="#icon-upload"></use></svg></span><strong>Subir Documento</strong><small>Analiza con IA</small></article>
-                    <article class="quick-card"><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Resumir Norma</strong><small>Obtén síntesis</small></article>
-                    <article class="quick-card"><span><svg class="icon"><use href="#icon-file-search"></use></svg></span><strong>Buscar Jurisprudencia</strong><small>Encuentra precedentes</small></article>
-                    <article class="quick-card"><span><svg class="icon"><use href="#icon-clipboard"></use></svg></span><strong>Generar Documento</strong><small>Crea documentos legales</small></article>
                 </div>
 
                 <div class="content-grid">
                     <section class="panel-card recent-panel">
                         <div class="panel-title">
-                            <h3>Consultas recientes</h3>
+                            <h3 id="activityTitle">Actividad reciente</h3>
                             <button type="button">Ver todas</button>
                         </div>
-                        <div class="recent-list" id="chatMessages">
+                        <div class="recent-list" id="chatMessages" data-seed="true">
                             <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>¿Cuáles son los requisitos para interponer una demanda...</p><time>Hoy, 10:45 a.m.</time></article>
                             <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Plazo de prescripción de la acción penal en casos de hurto...</p><time>Ayer, 4:30 p.m.</time></article>
                             <article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>Formalidades del contrato de arrendamiento en Perú</p><time>Ayer, 11:20 a.m.</time></article>
@@ -157,27 +191,20 @@
 
                     <section class="panel-card">
                         <div class="panel-title">
-                            <h3>Normas destacadas</h3>
+                            <h3 id="resourceTitle">Recursos destacados</h3>
                             <button type="button">Ver todas</button>
                         </div>
-                        <div class="law-list">
-                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Civil</strong><small>Actualizado: 10 May, 2024</small></article>
-                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Penal</strong><small>Actualizado: 08 May, 2024</small></article>
-                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Procesal Civil</strong><small>Actualizado: 05 May, 2024</small></article>
-                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Ley de Productividad Laboral</strong><small>Actualizado: 01 May, 2024</small></article>
+                        <div class="law-list" id="roleResourceList">
+                            <article><span><svg class="icon"><use href="#icon-file"></use></svg></span><strong>Código Civil</strong><small>Actualizado</small></article>
                         </div>
                     </section>
 
                     <aside class="right-stack">
                         <section class="pro-card">
-                            <h3><svg class="icon crown-icon"><use href="#icon-crown"></use></svg> LEXIA PRO</h3>
-                            <p>Tu plan actual: Premium</p>
-                            <ul>
-                                <li>Consultas ilimitadas</li>
-                                <li>Análisis de documentos</li>
-                                <li>Jurisprudencia avanzada</li>
-                                <li>Generación de documentos</li>
-                                <li>Soporte prioritario</li>
+                            <h3><svg class="icon crown-icon"><use href="#icon-crown"></use></svg> <span id="planTitle">LEXIA PRO</span></h3>
+                            <p id="planDescription">Tu plan actual se adaptará al rol seleccionado.</p>
+                            <ul id="planFeatures">
+                                <li>Selecciona un rol para ver tus módulos.</li>
                             </ul>
                             <button type="button">Gestionar plan</button>
                         </section>
@@ -187,19 +214,16 @@
                                 <h3>Estadísticas</h3>
                                 <button type="button">Este mes</button>
                             </div>
-                            <div class="stat-row"><span>Consultas realizadas</span><strong>128</strong></div>
-                            <div class="stat-row"><span>Documentos analizados</span><strong>24</strong></div>
-                            <div class="stat-row"><span>Horas ahorradas</span><strong>16.5</strong></div>
+                            <div id="roleStats">
+                                <div class="stat-row"><span>Consultas realizadas</span><strong>0</strong></div>
+                            </div>
                         </section>
                     </aside>
 
                     <section class="panel-card tools-panel">
                         <h3>Herramientas populares</h3>
-                        <div class="tools-grid">
+                        <div class="tools-grid" id="roleToolsGrid">
                             <article><span><svg class="icon"><use href="#icon-calculator"></use></svg></span><strong>Calculadora de Intereses</strong><small>Intereses legales y moratorios</small></article>
-                            <article><span><svg class="icon"><use href="#icon-calculator"></use></svg></span><strong>Liquidación de Beneficios</strong><small>Calcula beneficios laborales</small></article>
-                            <article><span><svg class="icon"><use href="#icon-calendar"></use></svg></span><strong>Plazos Procesales</strong><small>Controla tus vencimientos</small></article>
-                            <article><span><svg class="icon"><use href="#icon-scale"></use></svg></span><strong>Conversor de Normas</strong><small>Normas a lenguaje simple</small></article>
                         </div>
                     </section>
                 </div>
