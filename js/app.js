@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const roleResourceList = document.getElementById("roleResourceList");
     const roleToolsGrid = document.getElementById("roleToolsGrid");
     const roleStats = document.getElementById("roleStats");
-    const roleStatus = document.getElementById("roleStatus");
     const greeting = document.getElementById("dashboardGreeting");
     const dashboardSubtitle = document.getElementById("dashboardSubtitle");
     const accountLabel = document.getElementById("accountLabel");
@@ -244,30 +243,18 @@ document.addEventListener("DOMContentLoaded", () => {
         resourceTitle.textContent = config.resourceTitle;
         planTitle.textContent = `LEXIA ${config.label}`;
         planDescription.textContent = config.plan;
-        roleStatus.textContent = "Activo";
-
         roleQuickGrid.innerHTML = config.quick.map(item => renderIconArticle(item, "quick-card")).join("");
         roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["#icon-file", item[0], item[1]], "")).join("");
         roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
         roleStats.innerHTML = config.stats.map(([label, value]) => `<div class="stat-row"><span>${label}</span><strong>${value}</strong></div>`).join("");
         planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
         messages.innerHTML = config.activity.map(([title, time]) => `<article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>${title}</p><time>${time}</time></article>`).join("");
-
-        document.querySelectorAll(".role-option").forEach(btn => {
-            const isActive = btn.dataset.role === selectedRole;
-            btn.classList.toggle("active", isActive);
-            btn.setAttribute("aria-pressed", String(isActive));
-        });
     }
 
     const params = new URLSearchParams(window.location.search);
     const savedRole = normalizeRole(localStorage.getItem("lexiaRole"));
     const initialRole = normalizeRole(params.get("role") || params.get("profile")) || savedRole || "abogado-independiente";
     renderRole(initialRole);
-
-    document.querySelectorAll(".role-option").forEach(btn => {
-        btn.addEventListener("click", () => renderRole(btn.dataset.role));
-    });
 
     function addMessage(text, type) {
         const msg = document.createElement("div");
