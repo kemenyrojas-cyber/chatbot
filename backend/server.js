@@ -195,11 +195,31 @@ function getQueryTerms(query) {
   const stopwords = new Set([
     'para', 'como', 'cuando', 'donde', 'cual', 'cuales', 'sobre', 'esta', 'este', 'estos',
     'estas', 'tengo', 'quiero', 'saber', 'consulta', 'legal', 'derecho', 'del', 'las', 'los',
-    'una', 'uno', 'con', 'por', 'que', 'hay', 'son', 'sus'
+    'una', 'uno', 'con', 'por', 'que', 'hay', 'son', 'sus', 'hola', 'buenas', 'buenos',
+    'dias', 'tardes', 'noches', 'gracias', 'lexia'
   ]);
   return normalizeText(query)
     .split(' ')
     .filter(term => term.length >= 3 && !stopwords.has(term));
+}
+
+function isGreetingOnly(text) {
+  const normalized = normalizeText(text);
+  return /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ola|hi|hello)( lexia)?$/.test(normalized);
+}
+
+function buildGreetingAnswer() {
+  return [
+    'Hola, soy LEXIA. Puedo ayudarte con consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas.',
+    '',
+    'Escribe tu consulta con un tema concreto, por ejemplo: "posesión precaria", "despido arbitrario", "casación sobre alimentos" o "requisitos de una demanda civil".'
+  ].join('\n');
+}
+
+function shouldSearchLegalEngine(query) {
+  if (isGreetingOnly(query)) return false;
+  const terms = getQueryTerms(query);
+  return isLegalQuery(query) || terms.length >= 2;
 }
 
 function splitLegalSections(raw) {
@@ -282,6 +302,7 @@ function scoreLegalRecord(record, query, terms) {
 }
 
 function searchLegalEngine(query, limit = 12) {
+  if (!shouldSearchLegalEngine(query)) return [];
   const terms = getQueryTerms(query);
   if (!terms.length) return [];
 
@@ -418,6 +439,7 @@ app.post('/api/legal-query', (req, res) => {
   return res.json({
     query,
     results,
+    searched: shouldSearchLegalEngine(query),
     collections: {
       legal_documents: legalIndex.legal_documents.length,
       legal_articles: legalIndex.legal_articles.length,
@@ -431,6 +453,15 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
+    if (isGreetingOnly(prompt)) {
+      return res.json({
+        answer: buildGreetingAnswer(),
+        results: [],
+        source: 'LEXIA',
+        fallback: false,
+        model: 'local-greeting'
+      });
+    }
     const localResults = searchLegalEngine(prompt);
     if (!openAiKey) {
       return res.json({
