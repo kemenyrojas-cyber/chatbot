@@ -21,30 +21,36 @@ document.addEventListener("DOMContentLoaded", () => {
     const planFeatures = document.getElementById("planFeatures");
 
     const roleAliases = {
-        "abogado/a": "abogado",
-        "abogado": "abogado",
-        "estudiante de derecho": "estudiante",
-        "estudiante": "estudiante",
-        "equipo legal": "equipo",
-        "equipo": "equipo",
-        "empresa": "empresa"
+        "abogado independiente": "abogado-independiente",
+        "abogado/a": "abogado-independiente",
+        "abogado": "abogado-independiente",
+        "estudio juridico": "estudio-juridico",
+        "estudio jurídico": "estudio-juridico",
+        "equipo legal": "estudio-juridico",
+        "estudiante de derecho": "estudiante-derecho",
+        "estudiante": "estudiante-derecho",
+        "entidad publica": "entidad-publica",
+        "entidad pública": "entidad-publica",
+        "empresa / corporativo": "empresa-corporativo",
+        "empresa": "empresa-corporativo",
+        "corporativo": "empresa-corporativo"
     };
 
     const roleDashboards = {
-        abogado: {
-            label: "Abogado/a",
-            greeting: "¡Hola, Abogado!",
-            subtitle: "Gestiona consultas, casos, documentos y vencimientos desde un solo panel.",
+        "abogado-independiente": {
+            label: "Abogado Independiente",
+            greeting: "¡Hola, Abogado Independiente!",
+            subtitle: "Gestiona clientes, consultas, expedientes y vencimientos desde tu propio panel.",
             plan: "Cuenta profesional",
-            heroTitle: "Asistente jurídico para gestión de casos",
-            heroSubtitle: "Consulta normas, analiza documentos y prepara escritos con enfoque práctico.",
+            heroTitle: "Dashboard para práctica legal independiente",
+            heroSubtitle: "Consulta normas, prepara escritos, controla plazos y organiza tu cartera de clientes.",
             activityTitle: "Casos y consultas recientes",
             resourceTitle: "Normas y jurisprudencia clave",
             quick: [
                 ["#icon-file-plus", "Nueva consulta", "Haz tu pregunta legal"],
-                ["#icon-upload", "Analizar documento", "Contratos, demandas o anexos"],
+                ["#icon-user", "Nuevo cliente", "Registra datos y caso"],
                 ["#icon-calendar", "Controlar plazo", "Calcula vencimientos procesales"],
-                ["#icon-file-search", "Buscar jurisprudencia", "Encuentra precedentes"],
+                ["#icon-upload", "Analizar documento", "Contratos, demandas o anexos"],
                 ["#icon-clipboard", "Generar escrito", "Modelos listos para editar"]
             ],
             resources: [
@@ -59,17 +65,53 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["#icon-file", "Resumen de expediente", "Sintetiza hechos y anexos"],
                 ["#icon-scale", "Matriz de argumentos", "Ordena pretensiones y pruebas"]
             ],
-            stats: [["Casos activos", "18"], ["Documentos analizados", "24"], ["Plazos próximos", "7"]],
-            features: ["Consultas ilimitadas", "Análisis de documentos", "Jurisprudencia avanzada", "Generación de escritos"],
+            stats: [["Clientes activos", "18"], ["Documentos analizados", "24"], ["Plazos próximos", "7"]],
+            features: ["Consultas ilimitadas", "Gestión de clientes", "Control de vencimientos", "Generación de escritos"],
             activity: [
                 ["Demanda de desalojo por ocupación precaria", "Hoy, 10:45 a.m."],
                 ["Revisión de contrato de arrendamiento", "Ayer, 4:30 p.m."],
                 ["Indemnización por despido arbitrario", "Ayer, 11:20 a.m."]
             ]
         },
-        estudiante: {
-            label: "Estudiante",
-            greeting: "¡Hola, Estudiante!",
+        "estudio-juridico": {
+            label: "Estudio Jurídico",
+            greeting: "¡Hola, Estudio Jurídico!",
+            subtitle: "Coordina equipo, expedientes, revisiones y productividad de la firma.",
+            plan: "Cuenta de estudio",
+            heroTitle: "Centro operativo para estudios jurídicos",
+            heroSubtitle: "Asigna consultas, revisa documentos en equipo y estandariza entregables legales.",
+            activityTitle: "Actividad del estudio",
+            resourceTitle: "Base interna destacada",
+            quick: [
+                ["#icon-users", "Asignar consulta", "Distribuye trabajo por abogado"],
+                ["#icon-upload", "Revisión compartida", "Analiza documentos en equipo"],
+                ["#icon-briefcase", "Nuevo expediente", "Organiza cliente, materia y estado"],
+                ["#icon-clipboard", "Plantilla del estudio", "Estandariza documentos"],
+                ["#icon-bell", "Alertas del equipo", "Seguimiento de pendientes"]
+            ],
+            resources: [
+                ["Protocolos internos", "Criterios de atención"],
+                ["Plantillas aprobadas", "Formatos vigentes"],
+                ["Matriz de expedientes", "Casos y prioridades"],
+                ["Repositorio contractual", "Cláusulas frecuentes"]
+            ],
+            tools: [
+                ["#icon-users", "Bandeja de equipo", "Asignaciones y responsables"],
+                ["#icon-bell", "Alertas legales", "Cambios y vencimientos"],
+                ["#icon-clipboard", "Checklist de revisión", "Control de calidad"],
+                ["#icon-file-search", "Buscador interno", "Criterios reutilizables"]
+            ],
+            stats: [["Expedientes activos", "42"], ["Pendientes críticos", "6"], ["Revisiones cerradas", "29"]],
+            features: ["Roles y permisos", "Bandeja compartida", "Plantillas del estudio", "Trazabilidad de revisiones"],
+            activity: [
+                ["Revisión asignada al área contractual", "Hoy, 8:40 a.m."],
+                ["Actualización de plantilla laboral", "Ayer, 5:00 p.m."],
+                ["Alerta de vencimiento procesal", "Ayer, 12:30 p.m."]
+            ]
+        },
+        "estudiante-derecho": {
+            label: "Estudiante de Derecho",
+            greeting: "¡Hola, Estudiante de Derecho!",
             subtitle: "Aprende, practica casos y resume normas con una ruta de estudio guiada.",
             plan: "Cuenta académica",
             heroTitle: "Tutor legal para estudiar y practicar",
@@ -103,45 +145,45 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["Ficha de sucesiones", "Ayer, 2:10 p.m."]
             ]
         },
-        equipo: {
-            label: "Equipo legal",
-            greeting: "¡Hola, Equipo Legal!",
-            subtitle: "Coordina trabajo, revisiones y conocimiento interno para tu área legal.",
-            plan: "Cuenta colaborativa",
-            heroTitle: "Centro de trabajo para equipos legales",
-            heroSubtitle: "Organiza consultas, asigna revisiones y estandariza respuestas internas.",
-            activityTitle: "Actividad del equipo",
-            resourceTitle: "Base interna destacada",
+        "entidad-publica": {
+            label: "Entidad Pública",
+            greeting: "¡Hola, Entidad Pública!",
+            subtitle: "Gestiona normativa, informes, expedientes administrativos y atención ciudadana.",
+            plan: "Cuenta institucional",
+            heroTitle: "Panel jurídico para entidades públicas",
+            heroSubtitle: "Centraliza consultas normativas, informes legales, procedimientos y obligaciones públicas.",
+            activityTitle: "Trámites e informes recientes",
+            resourceTitle: "Normativa institucional",
             quick: [
-                ["#icon-users", "Asignar consulta", "Distribuye trabajo legal"],
-                ["#icon-upload", "Revisión compartida", "Analiza documentos en equipo"],
-                ["#icon-clipboard", "Plantilla interna", "Estandariza documentos"],
-                ["#icon-bell", "Alertas del equipo", "Seguimiento de pendientes"],
-                ["#icon-file-search", "Buscar criterio", "Consulta conocimiento interno"]
+                ["#icon-landmark", "Consulta normativa", "Interpreta leyes y directivas"],
+                ["#icon-clipboard", "Generar informe", "Base legal y conclusiones"],
+                ["#icon-file-search", "Revisar expediente", "Hechos, actos y riesgos"],
+                ["#icon-calendar", "Plazo administrativo", "Controla vencimientos"],
+                ["#icon-bell", "Alerta regulatoria", "Cambios normativos"]
             ],
             resources: [
-                ["Protocolos internos", "Criterios de atención"],
-                ["Plantillas aprobadas", "Formatos vigentes"],
-                ["Matriz de riesgos", "Casos y prioridades"],
-                ["Repositorio contractual", "Cláusulas frecuentes"]
+                ["Ley del Procedimiento Administrativo General", "Actos, recursos y plazos"],
+                ["Contrataciones del Estado", "Bases, consultas y ejecución"],
+                ["Transparencia y acceso a información", "Obligaciones públicas"],
+                ["Responsabilidad administrativa", "Riesgos y criterios"]
             ],
             tools: [
-                ["#icon-users", "Bandeja de equipo", "Asignaciones y responsables"],
-                ["#icon-bell", "Alertas legales", "Cambios y vencimientos"],
-                ["#icon-clipboard", "Checklist de revisión", "Control de calidad"],
-                ["#icon-file-search", "Buscador interno", "Criterios reutilizables"]
+                ["#icon-clipboard", "Borrador de informe", "Estructura institucional"],
+                ["#icon-calendar", "Plazos administrativos", "Cómputo y alertas"],
+                ["#icon-file-search", "Análisis de expediente", "Resumen y observaciones"],
+                ["#icon-shield-check", "Control normativo", "Cumplimiento y riesgos"]
             ],
-            stats: [["Consultas asignadas", "42"], ["Pendientes críticos", "6"], ["Revisiones cerradas", "29"]],
-            features: ["Roles y permisos", "Bandeja compartida", "Plantillas del equipo", "Trazabilidad de revisiones"],
+            stats: [["Expedientes revisados", "33"], ["Informes generados", "15"], ["Plazos próximos", "11"]],
+            features: ["Informes legales", "Seguimiento de expedientes", "Normativa pública", "Alertas administrativas"],
             activity: [
-                ["Revisión asignada a contratos", "Hoy, 8:40 a.m."],
-                ["Actualización de plantilla laboral", "Ayer, 5:00 p.m."],
-                ["Alerta de vencimiento procesal", "Ayer, 12:30 p.m."]
+                ["Informe sobre procedimiento sancionador", "Hoy, 10:10 a.m."],
+                ["Revisión de expediente administrativo", "Ayer, 4:05 p.m."],
+                ["Alerta por vencimiento de recurso", "Ayer, 9:20 a.m."]
             ]
         },
-        empresa: {
-            label: "Empresa",
-            greeting: "¡Hola, Empresa!",
+        "empresa-corporativo": {
+            label: "Empresa / Corporativo",
+            greeting: "¡Hola, Empresa / Corporativo!",
             subtitle: "Supervisa contratos, riesgos, obligaciones y consultas legales operativas.",
             plan: "Cuenta empresarial",
             heroTitle: "Dashboard legal para operaciones empresariales",
@@ -188,8 +230,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderRole(role) {
-        const config = roleDashboards[role] || roleDashboards.abogado;
-        localStorage.setItem("lexiaRole", role);
+        const selectedRole = roleDashboards[role] ? role : "abogado-independiente";
+        const config = roleDashboards[selectedRole];
+        localStorage.setItem("lexiaRole", selectedRole);
 
         greeting.textContent = config.greeting;
         dashboardSubtitle.textContent = config.subtitle;
@@ -211,14 +254,15 @@ document.addEventListener("DOMContentLoaded", () => {
         messages.innerHTML = config.activity.map(([title, time]) => `<article><span><svg class="icon"><use href="#icon-new-chat"></use></svg></span><p>${title}</p><time>${time}</time></article>`).join("");
 
         document.querySelectorAll(".role-option").forEach(btn => {
-            const isActive = btn.dataset.role === role;
+            const isActive = btn.dataset.role === selectedRole;
             btn.classList.toggle("active", isActive);
             btn.setAttribute("aria-pressed", String(isActive));
         });
     }
 
     const params = new URLSearchParams(window.location.search);
-    const initialRole = normalizeRole(params.get("role") || params.get("profile")) || localStorage.getItem("lexiaRole") || "abogado";
+    const savedRole = normalizeRole(localStorage.getItem("lexiaRole"));
+    const initialRole = normalizeRole(params.get("role") || params.get("profile")) || savedRole || "abogado-independiente";
     renderRole(initialRole);
 
     document.querySelectorAll(".role-option").forEach(btn => {
