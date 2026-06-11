@@ -8,8 +8,10 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 const openAiKey = process.env.OPENAI_API_KEY;
-const dataDir = path.join(__dirname, 'data');
-const accountsPath = path.join(dataDir, 'accounts.json');
+const legacyDataDir = path.join(__dirname, 'data');
+const dataDir = process.env.DATA_DIR || legacyDataDir;
+const accountsPath = process.env.ACCOUNTS_PATH || path.join(dataDir, 'accounts.json');
+const legacyAccountsPath = path.join(legacyDataDir, 'accounts.json');
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -24,11 +26,16 @@ function normalizeEmail(email) {
 }
 
 function ensureAccountsStore() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  const accountsDir = path.dirname(accountsPath);
+  if (!fs.existsSync(accountsDir)) {
+    fs.mkdirSync(accountsDir, { recursive: true });
   }
   if (!fs.existsSync(accountsPath)) {
-    fs.writeFileSync(accountsPath, '[]', 'utf8');
+    if (accountsPath !== legacyAccountsPath && fs.existsSync(legacyAccountsPath)) {
+      fs.copyFileSync(legacyAccountsPath, accountsPath);
+    } else {
+      fs.writeFileSync(accountsPath, '[]', 'utf8');
+    }
   }
 }
 

@@ -6,3 +6,10 @@ services:
     buildCommand: npm install
     startCommand: npm start
     plan: free
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: lexia-data
+      mountPath: /var/data
+      sizeGB: 1
