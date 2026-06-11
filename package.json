@@ -1,23 +1,16 @@
 {
-  "name": "lexia",
+  "name": "lexia-workspace",
   "version": "2.0.0",
-  "description": "Chatbot legal con OpenAI - Asesor jurídico inteligente alimentado por lpderecho.pe",
-  "main": "server.js",
+  "private": true,
+  "description": "Workspace de LEXIA con backend, frontend y motor IA separados.",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "start": "node server.js",
-    "ingest": "node scripts/ingest.js",
-    "ingest-lpderecho": "node scripts/ingest-lpderecho.js",
-    "dev": "nodemon server.js"
-  },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "cheerio": "^1.0.0-rc.12",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.4",
-    "node-fetch": "^2.6.7"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+    "start": "npm --prefix backend start",
+    "dev": "npm --prefix backend run dev",
+    "ingest": "npm --prefix backend run ingest",
+    "ingest-lpderecho": "npm --prefix backend run ingest-lpderecho"
   }
 }

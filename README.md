@@ -29,7 +29,7 @@
 
 ### 1. Instalar Dependencias
 ```bash
-npm install
+npm install --prefix backend
 ```
 
 ### 2. Configurar OpenAI
@@ -62,19 +62,58 @@ npm start
 
 Al ejecutar `npm run ingest-lpderecho`, se generan:
 
-1. **`kb/lpderecho_content.md`** (~800KB)
+1. **`ai-engine/kb/lpderecho_content.md`** (~800KB)
    - Contenido completo de 50+ artículos
    - Organisado por categoría
    - Incluye jurisprudencia
 
-2. **`kb/lpderecho_index.md`** (~200KB)
+2. **`ai-engine/kb/lpderecho_index.md`** (~200KB)
    - Índice de 500+ artículos disponibles
    - Enlaces directos a lpderecho.pe
    - Búsqueda rápida
 
-3. **`kb/legal_faqs.md`** (~100KB)
+3. **`ai-engine/kb/legal_faqs.md`** (~100KB)
    - Preguntas frecuentes jurídicas
    - Respuestas fundamentadas
+
+---
+
+## 🧱 Estructura del Proyecto
+
+```text
+chatbot-main/
+├── backend/               # Servidor Express, APIs y dependencias backend
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   └── services/
+│   ├── package.json
+│   └── server.js
+├── frontend/              # Interfaz web estática
+│   ├── public/
+│   └── src/
+│       ├── css/
+│       ├── js/
+│       └── views/
+├── ai-engine/             # Base jurídica, scripts RAG y prompts
+│   ├── kb/
+│   ├── scripts/
+│   ├── vector_db/
+│   └── prompt_templates/
+├── render.yaml
+└── package.json
+```
+
+Los scripts globales de la raíz delegan al backend:
+
+```bash
+npm start
+npm run dev
+npm run ingest-lpderecho
+```
+
+Render instala y arranca desde `backend/`.
 
 ---
 

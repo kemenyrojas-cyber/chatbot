@@ -1,0 +1,9 @@
+{
+  "name": "lexia-frontend",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Interfaz web estática de LEXIA servida por el backend Express.",
+  "scripts": {
+    "start": "echo \"Frontend estático servido por backend\""
+  }
+}

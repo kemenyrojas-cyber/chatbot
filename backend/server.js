@@ -1,14 +1,22 @@
-require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const fetch = global.fetch || require('node-fetch');
 const cors = require('cors');
 
+const projectRoot = path.join(__dirname, '..');
+const frontendRoot = path.join(projectRoot, 'frontend');
+const viewsRoot = path.join(frontendRoot, 'src', 'views');
+const frontendSrcRoot = path.join(frontendRoot, 'src');
+const publicRoot = path.join(frontendRoot, 'public');
+const aiEngineRoot = path.join(projectRoot, 'ai-engine');
+
+require('dotenv').config({ path: path.join(projectRoot, '.env') });
+
 const app = express();
 const port = process.env.PORT || 3000;
 const openAiKey = process.env.OPENAI_API_KEY;
-const legacyDataDir = path.join(__dirname, 'data');
+const legacyDataDir = path.join(projectRoot, 'data');
 const dataDir = process.env.DATA_DIR || legacyDataDir;
 const accountsPath = process.env.ACCOUNTS_PATH || path.join(dataDir, 'accounts.json');
 const legacyAccountsPath = path.join(legacyDataDir, 'accounts.json');
@@ -64,25 +72,28 @@ function sanitizeAccount(account) {
 }
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'landing.html'));
+  res.sendFile(path.join(viewsRoot, 'landing.html'));
 });
 
 app.get('/app', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(viewsRoot, 'index.html'));
 });
 
-app.use(express.static(path.join(__dirname), { index: false }));
+app.use('/css', express.static(path.join(frontendSrcRoot, 'css'), { index: false }));
+app.use('/js', express.static(path.join(frontendSrcRoot, 'js'), { index: false }));
+app.use('/img', express.static(path.join(publicRoot, 'img'), { index: false }));
+app.use(express.static(publicRoot, { index: false }));
 
 app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'login.html'));
+  res.sendFile(path.join(viewsRoot, 'login.html'));
 });
 
 app.get('/registro', (req, res) => {
-  res.sendFile(path.join(__dirname, 'registro.html'));
+  res.sendFile(path.join(viewsRoot, 'registro.html'));
 });
 
 app.get('/recuperar-password', (req, res) => {
-  res.sendFile(path.join(__dirname, 'recuperar-password.html'));
+  res.sendFile(path.join(viewsRoot, 'recuperar-password.html'));
 });
 
 app.get('/api/auth/account', (req, res) => {
@@ -155,7 +166,7 @@ const kbFiles = [
 console.log('\n📚 Cargando bases de conocimiento...');
 for (const file of kbFiles) {
   try {
-    const kbPath = path.join(__dirname, 'kb', file);
+    const kbPath = path.join(aiEngineRoot, 'kb', file);
     if (fs.existsSync(kbPath)) {
       const raw = fs.readFileSync(kbPath, 'utf8');
       kbContent += raw.replace(/\s+/g, ' ').trim() + ' ';
@@ -173,7 +184,7 @@ console.log(`\n📊 Base de conocimiento total: ${totalKB} KB\n`);
 // Cargar embeddings
 let kbEmbeddings = null;
 try {
-  const embPath = path.join(__dirname, 'kb', 'embeddings.json');
+  const embPath = path.join(aiEngineRoot, 'kb', 'embeddings.json');
   if (fs.existsSync(embPath)) {
     kbEmbeddings = JSON.parse(fs.readFileSync(embPath, 'utf8'));
     console.log(`✅ Embeddings cargados: ${kbEmbeddings.length} items`);
