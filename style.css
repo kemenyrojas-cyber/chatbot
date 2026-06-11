@@ -35,22 +35,12 @@ button {
     cursor: pointer;
 }
 
-.svg-sprite {
-    position: absolute;
-    width: 0;
-    height: 0;
-    overflow: hidden;
-}
-
 .icon {
     width: 1em;
     height: 1em;
-    display: block;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    display: inline-block;
+    line-height: 1;
+    text-align: center;
 }
 
 .dashboard-shell {

@@ -52,11 +52,11 @@ document.addEventListener("DOMContentLoaded", () => {
             activityTitle: "Casos y consultas recientes",
             resourceTitle: "Normas y jurisprudencia clave",
             quick: [
-                ["#icon-file-plus", "Nueva consulta", "Haz tu pregunta legal"],
-                ["#icon-user", "Nuevo cliente", "Registra datos y caso"],
-                ["#icon-calendar", "Controlar plazo", "Calcula vencimientos procesales"],
-                ["#icon-upload", "Analizar documento", "Contratos, demandas o anexos"],
-                ["#icon-clipboard", "Generar escrito", "Modelos listos para editar"]
+                ["fa-regular fa-square-plus", "Nueva consulta", "Haz tu pregunta legal"],
+                ["fa-regular fa-user", "Nuevo cliente", "Registra datos y caso"],
+                ["fa-regular fa-calendar-days", "Controlar plazo", "Calcula vencimientos procesales"],
+                ["fa-solid fa-upload", "Analizar documento", "Contratos, demandas o anexos"],
+                ["fa-regular fa-clipboard", "Generar escrito", "Modelos listos para editar"]
             ],
             resources: [
                 ["Código Civil", "Contratos, obligaciones y familia"],
@@ -65,10 +65,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["Jurisprudencia relevante", "Criterios para argumentación"]
             ],
             tools: [
-                ["#icon-calculator", "Calculadora de intereses", "Intereses legales y moratorios"],
-                ["#icon-calendar", "Plazos procesales", "Controla vencimientos"],
-                ["#icon-file", "Resumen de expediente", "Sintetiza hechos y anexos"],
-                ["#icon-scale", "Matriz de argumentos", "Ordena pretensiones y pruebas"]
+                ["fa-solid fa-calculator", "Calculadora de intereses", "Intereses legales y moratorios"],
+                ["fa-regular fa-calendar-days", "Plazos procesales", "Controla vencimientos"],
+                ["fa-regular fa-file-lines", "Resumen de expediente", "Sintetiza hechos y anexos"],
+                ["fa-solid fa-scale-balanced", "Matriz de argumentos", "Ordena pretensiones y pruebas"]
             ],
             features: ["Consultas ilimitadas", "Gestión de clientes", "Control de vencimientos", "Generación de escritos"]
         },
@@ -82,11 +82,11 @@ document.addEventListener("DOMContentLoaded", () => {
             activityTitle: "Actividad del estudio",
             resourceTitle: "Base interna destacada",
             quick: [
-                ["#icon-users", "Asignar consulta", "Distribuye trabajo por abogado"],
-                ["#icon-upload", "Revisión compartida", "Analiza documentos en equipo"],
-                ["#icon-briefcase", "Nuevo expediente", "Organiza cliente, materia y estado"],
-                ["#icon-clipboard", "Plantilla del estudio", "Estandariza documentos"],
-                ["#icon-bell", "Alertas del equipo", "Seguimiento de pendientes"]
+                ["fa-solid fa-users", "Asignar consulta", "Distribuye trabajo por abogado"],
+                ["fa-solid fa-upload", "Revisión compartida", "Analiza documentos en equipo"],
+                ["fa-solid fa-briefcase", "Nuevo expediente", "Organiza cliente, materia y estado"],
+                ["fa-regular fa-clipboard", "Plantilla del estudio", "Estandariza documentos"],
+                ["fa-regular fa-bell", "Alertas del equipo", "Seguimiento de pendientes"]
             ],
             resources: [
                 ["Protocolos internos", "Criterios de atención"],
@@ -95,10 +95,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["Repositorio contractual", "Cláusulas frecuentes"]
             ],
             tools: [
-                ["#icon-users", "Bandeja de equipo", "Asignaciones y responsables"],
-                ["#icon-bell", "Alertas legales", "Cambios y vencimientos"],
-                ["#icon-clipboard", "Checklist de revisión", "Control de calidad"],
-                ["#icon-file-search", "Buscador interno", "Criterios reutilizables"]
+                ["fa-solid fa-users", "Bandeja de equipo", "Asignaciones y responsables"],
+                ["fa-regular fa-bell", "Alertas legales", "Cambios y vencimientos"],
+                ["fa-regular fa-clipboard", "Checklist de revisión", "Control de calidad"],
+                ["fa-solid fa-magnifying-glass", "Buscador interno", "Criterios reutilizables"]
             ],
             features: ["Roles y permisos", "Bandeja compartida", "Plantillas del estudio", "Trazabilidad de revisiones"]
         },
@@ -112,11 +112,11 @@ document.addEventListener("DOMContentLoaded", () => {
             activityTitle: "Avance de estudio",
             resourceTitle: "Material recomendado",
             quick: [
-                ["#icon-file", "Resumir tema", "Explicación clara por materia"],
-                ["#icon-scale", "Practicar caso", "Analiza hechos y fundamentos"],
-                ["#icon-clipboard", "Crear esquema", "Mapa de conceptos"],
-                ["#icon-file-search", "Buscar artículos", "Ubica base legal"],
-                ["#icon-star", "Guardar apunte", "Favoritos de estudio"]
+                ["fa-regular fa-file-lines", "Resumir tema", "Explicación clara por materia"],
+                ["fa-solid fa-scale-balanced", "Practicar caso", "Analiza hechos y fundamentos"],
+                ["fa-regular fa-clipboard", "Crear esquema", "Mapa de conceptos"],
+                ["fa-solid fa-magnifying-glass", "Buscar artículos", "Ubica base legal"],
+                ["fa-regular fa-star", "Guardar apunte", "Favoritos de estudio"]
             ],
             resources: [
                 ["Introducción al Derecho Civil", "Conceptos esenciales"],
@@ -125,10 +125,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["Modelos de examen", "Preguntas para practicar"]
             ],
             tools: [
-                ["#icon-file", "Fichas de estudio", "Resumen por tema"],
-                ["#icon-clipboard", "Casos prácticos", "Hechos, problema y solución"],
-                ["#icon-search", "Glosario jurídico", "Términos explicados"],
-                ["#icon-star", "Repaso rápido", "Preguntas frecuentes"]
+                ["fa-regular fa-file-lines", "Fichas de estudio", "Resumen por tema"],
+                ["fa-regular fa-clipboard", "Casos prácticos", "Hechos, problema y solución"],
+                ["fa-solid fa-magnifying-glass", "Glosario jurídico", "Términos explicados"],
+                ["fa-regular fa-star", "Repaso rápido", "Preguntas frecuentes"]
             ],
             features: ["Resúmenes por materia", "Casos prácticos guiados", "Glosario jurídico", "Ruta de aprendizaje"]
         },
@@ -142,11 +142,11 @@ document.addEventListener("DOMContentLoaded", () => {
             activityTitle: "Trámites e informes recientes",
             resourceTitle: "Normativa institucional",
             quick: [
-                ["#icon-landmark", "Consulta normativa", "Interpreta leyes y directivas"],
-                ["#icon-clipboard", "Generar informe", "Base legal y conclusiones"],
-                ["#icon-file-search", "Revisar expediente", "Hechos, actos y riesgos"],
-                ["#icon-calendar", "Plazo administrativo", "Controla vencimientos"],
-                ["#icon-bell", "Alerta regulatoria", "Cambios normativos"]
+                ["fa-solid fa-landmark", "Consulta normativa", "Interpreta leyes y directivas"],
+                ["fa-regular fa-clipboard", "Generar informe", "Base legal y conclusiones"],
+                ["fa-solid fa-magnifying-glass", "Revisar expediente", "Hechos, actos y riesgos"],
+                ["fa-regular fa-calendar-days", "Plazo administrativo", "Controla vencimientos"],
+                ["fa-regular fa-bell", "Alerta regulatoria", "Cambios normativos"]
             ],
             resources: [
                 ["Ley del Procedimiento Administrativo General", "Actos, recursos y plazos"],
@@ -155,10 +155,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["Responsabilidad administrativa", "Riesgos y criterios"]
             ],
             tools: [
-                ["#icon-clipboard", "Borrador de informe", "Estructura institucional"],
-                ["#icon-calendar", "Plazos administrativos", "Cómputo y alertas"],
-                ["#icon-file-search", "Análisis de expediente", "Resumen y observaciones"],
-                ["#icon-shield-check", "Control normativo", "Cumplimiento y riesgos"]
+                ["fa-regular fa-clipboard", "Borrador de informe", "Estructura institucional"],
+                ["fa-regular fa-calendar-days", "Plazos administrativos", "Cómputo y alertas"],
+                ["fa-solid fa-magnifying-glass", "Análisis de expediente", "Resumen y observaciones"],
+                ["fa-solid fa-shield-halved", "Control normativo", "Cumplimiento y riesgos"]
             ],
             features: ["Informes legales", "Seguimiento de expedientes", "Normativa pública", "Alertas administrativas"]
         },
@@ -172,11 +172,11 @@ document.addEventListener("DOMContentLoaded", () => {
             activityTitle: "Riesgos y operaciones recientes",
             resourceTitle: "Documentos empresariales",
             quick: [
-                ["#icon-upload", "Revisar contrato", "Detecta riesgos y cláusulas"],
-                ["#icon-shield-check", "Compliance", "Evalúa obligaciones"],
-                ["#icon-briefcase", "Consulta laboral", "Casos de personal"],
-                ["#icon-calculator", "Impacto económico", "Multas, intereses y costos"],
-                ["#icon-bell", "Obligaciones", "Alertas regulatorias"]
+                ["fa-solid fa-upload", "Revisar contrato", "Detecta riesgos y cláusulas"],
+                ["fa-solid fa-shield-halved", "Compliance", "Evalúa obligaciones"],
+                ["fa-solid fa-briefcase", "Consulta laboral", "Casos de personal"],
+                ["fa-solid fa-calculator", "Impacto económico", "Multas, intereses y costos"],
+                ["fa-regular fa-bell", "Obligaciones", "Alertas regulatorias"]
             ],
             resources: [
                 ["Contratos comerciales", "Compra, venta y servicios"],
@@ -185,10 +185,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 ["Cláusulas de riesgo", "Revisión preventiva"]
             ],
             tools: [
-                ["#icon-shield-check", "Mapa de riesgos", "Prioriza contingencias"],
-                ["#icon-file-search", "Auditoría contractual", "Hallazgos por contrato"],
-                ["#icon-calendar", "Calendario legal", "Obligaciones y renovaciones"],
-                ["#icon-briefcase", "Consultas internas", "Soporte para áreas"]
+                ["fa-solid fa-shield-halved", "Mapa de riesgos", "Prioriza contingencias"],
+                ["fa-solid fa-magnifying-glass", "Auditoría contractual", "Hallazgos por contrato"],
+                ["fa-regular fa-calendar-days", "Calendario legal", "Obligaciones y renovaciones"],
+                ["fa-solid fa-briefcase", "Consultas internas", "Soporte para áreas"]
             ],
             features: ["Revisión contractual", "Alertas de compliance", "Soporte laboral", "Reporte de riesgos"]
         }
@@ -249,7 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderIconArticle(item, className) {
         const [icon, title, text] = item;
-        return `<article class="${className}"><span><svg class="icon"><use href="${icon}"></use></svg></span><strong>${title}</strong><small>${text}</small></article>`;
+        return `<article class="${className}"><span><i class="${icon} icon" aria-hidden="true"></i></span><strong>${title}</strong><small>${text}</small></article>`;
     }
 
     function renderRole(role) {
@@ -269,7 +269,7 @@ document.addEventListener("DOMContentLoaded", () => {
         planTitle.textContent = `LEXIA ${config.label}`;
         planDescription.textContent = config.plan;
         roleQuickGrid.innerHTML = config.quick.map(item => renderIconArticle(item, "quick-card")).join("");
-        roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["#icon-file", item[0], item[1]], "")).join("");
+        roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["fa-regular fa-file-lines", item[0], item[1]], "")).join("");
         roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
         planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
         renderAppState();
@@ -311,7 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         messages.innerHTML = history.slice(0, 8).map(item => `
             <article class="history-item">
-                <span><svg class="icon"><use href="#icon-new-chat"></use></svg></span>
+                <span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span>
                 <details ${item.id === history[0].id ? "open" : ""}>
                     <summary>
                         <strong>${escapeHtml(item.question)}</strong>
@@ -875,3 +875,5 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 });
+
+
