@@ -181,6 +181,162 @@ for (const file of kbFiles) {
 const totalKB = (kbContent.length / 1024).toFixed(2);
 console.log(`\n📊 Base de conocimiento total: ${totalKB} KB\n`);
 
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9ñ\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getQueryTerms(query) {
+  const stopwords = new Set([
+    'para', 'como', 'cuando', 'donde', 'cual', 'cuales', 'sobre', 'esta', 'este', 'estos',
+    'estas', 'tengo', 'quiero', 'saber', 'consulta', 'legal', 'derecho', 'del', 'las', 'los',
+    'una', 'uno', 'con', 'por', 'que', 'hay', 'son', 'sus'
+  ]);
+  return normalizeText(query)
+    .split(' ')
+    .filter(term => term.length >= 3 && !stopwords.has(term));
+}
+
+function splitLegalSections(raw) {
+  return String(raw || '')
+    .split(/\n{2,}|(?=^#{1,3}\s)/m)
+    .map(section => section.replace(/\s+/g, ' ').trim())
+    .filter(section => section.length >= 80);
+}
+
+function inferLegalType(fileName, text) {
+  const normalized = normalizeText(`${fileName} ${text}`);
+  if (normalized.includes('casacion') || normalized.includes('casación')) return 'cassation';
+  if (normalized.includes('jurisprudencia') || normalized.includes('sentencia') || normalized.includes('precedente')) return 'jurisprudence';
+  if (normalized.includes('articulo') || normalized.includes('artículo') || normalized.includes('codigo') || normalized.includes('código') || normalized.includes('ley')) return 'legal_article';
+  return 'legal_document';
+}
+
+function buildLegalRecord(fileName, text, index) {
+  const cleanText = text.trim();
+  const heading = cleanText.match(/^(#{1,3}\s*)?(.{8,90}?)(?:\.|\:|\-|$)/)?.[2]?.trim();
+  const type = inferLegalType(fileName, cleanText);
+  return {
+    id: `${type}:${fileName}:${index}`,
+    type,
+    title: heading || fileName.replace(/[_-]/g, ' ').replace(/\.md$/i, ''),
+    source: fileName,
+    excerpt: cleanText.slice(0, 520),
+    content: cleanText
+  };
+}
+
+function buildLegalCollections() {
+  const collections = {
+    legal_documents: [],
+    legal_articles: [],
+    jurisprudence: [],
+    cassations: []
+  };
+  const kbDir = path.join(aiEngineRoot, 'kb');
+  if (!fs.existsSync(kbDir)) return collections;
+
+  const files = fs.readdirSync(kbDir).filter(file => file.endsWith('.md'));
+  for (const file of files) {
+    const raw = fs.readFileSync(path.join(kbDir, file), 'utf8');
+    splitLegalSections(raw).forEach((section, index) => {
+      const record = buildLegalRecord(file, section, index);
+      if (record.type === 'cassation') collections.cassations.push(record);
+      else if (record.type === 'jurisprudence') collections.jurisprudence.push(record);
+      else if (record.type === 'legal_article') collections.legal_articles.push(record);
+      else collections.legal_documents.push(record);
+    });
+  }
+  return collections;
+}
+
+const legalIndex = buildLegalCollections();
+const legalSearchCorpus = [
+  ...legalIndex.legal_documents,
+  ...legalIndex.legal_articles,
+  ...legalIndex.jurisprudence,
+  ...legalIndex.cassations
+];
+
+function scoreLegalRecord(record, query, terms) {
+  const normalizedContent = normalizeText(`${record.title} ${record.excerpt} ${record.content}`);
+  const normalizedQuery = normalizeText(query);
+  let score = 0;
+
+  if (normalizedContent.includes(normalizedQuery)) score += 20;
+  for (const term of terms) {
+    const matches = normalizedContent.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'));
+    if (matches) score += Math.min(matches.length, 8) * 3;
+    if (normalizeText(record.title).includes(term)) score += 4;
+  }
+
+  if (record.type === 'legal_article') score += 3;
+  if (record.type === 'jurisprudence') score += 2;
+  if (record.type === 'cassation') score += 2;
+  return score;
+}
+
+function searchLegalEngine(query, limit = 12) {
+  const terms = getQueryTerms(query);
+  if (!terms.length) return [];
+
+  return legalSearchCorpus
+    .map(record => ({
+      id: record.id,
+      type: record.type,
+      title: record.title,
+      source: record.source,
+      excerpt: record.excerpt,
+      relevance: scoreLegalRecord(record, query, terms)
+    }))
+    .filter(result => result.relevance > 0)
+    .sort((a, b) => b.relevance - a.relevance)
+    .slice(0, limit);
+}
+
+function buildLocalLegalAnswer(query, results) {
+  if (!results.length) {
+    return `LEXIA no encontró coincidencias directas para "${query}" en la base jurídica local.\n\nSugerencia: prueba con términos más específicos como materia, norma, institución jurídica o hecho relevante.`;
+  }
+
+  const grouped = results.reduce((acc, item) => {
+    const label = {
+      legal_document: 'Documentos legales',
+      legal_article: 'Artículos y normativa',
+      jurisprudence: 'Jurisprudencia',
+      cassation: 'Casaciones'
+    }[item.type] || 'Resultados';
+    acc[label] = acc[label] || [];
+    acc[label].push(item);
+    return acc;
+  }, {});
+
+  const lines = [
+    `LEXIA encontró ${results.length} resultado(s) jurídicos locales para "${query}".`,
+    '',
+    'Resultados ordenados por relevancia:'
+  ];
+
+  Object.entries(grouped).forEach(([label, items]) => {
+    lines.push('', label);
+    items.slice(0, 4).forEach((item, index) => {
+      lines.push(`${index + 1}. ${item.title}`);
+      lines.push(`Fuente: ${item.source} | Relevancia: ${item.relevance}`);
+      lines.push(item.excerpt);
+    });
+  });
+
+  lines.push('', 'Nota: respuesta generada con el motor jurídico local de LEXIA, sin IA generativa.');
+  return lines.join('\n');
+}
+
+console.log(`📁 Motor jurídico local: ${legalSearchCorpus.length} registros indexados`);
+
 // Cargar embeddings
 let kbEmbeddings = null;
 try {
@@ -252,11 +408,39 @@ function isLegalQuery(text) {
   return keywords.some(k => text.toLowerCase().includes(k));
 }
 
+app.post('/api/legal-query', (req, res) => {
+  const query = String(req.body?.query || '').trim();
+  if (!query) {
+    return res.status(400).json({ error: 'La consulta es obligatoria.' });
+  }
+
+  const results = searchLegalEngine(query);
+  return res.json({
+    query,
+    results,
+    collections: {
+      legal_documents: legalIndex.legal_documents.length,
+      legal_articles: legalIndex.legal_articles.length,
+      jurisprudence: legalIndex.jurisprudence.length,
+      cassations: legalIndex.cassations.length
+    }
+  });
+});
+
 app.post('/api/chat', async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
-    if (!openAiKey) return res.status(500).json({ error: 'OPENAI_API_KEY no configurada. Contacta al administrador.' });
+    const localResults = searchLegalEngine(prompt);
+    if (!openAiKey) {
+      return res.json({
+        answer: buildLocalLegalAnswer(prompt, localResults),
+        results: localResults,
+        source: 'LEXIA Motor Jurídico Local',
+        fallback: true,
+        model: 'local-legal-engine'
+      });
+    }
 
     // CONFIG
     const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
@@ -366,7 +550,15 @@ REGLAS:
       }
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
-      return res.status(mapped.status).json({ error: mapped.error, providerCode: parsedError?.error?.code || null });
+      return res.json({
+        answer: buildLocalLegalAnswer(prompt, localResults),
+        results: localResults,
+        source: 'LEXIA Motor Jurídico Local',
+        fallback: true,
+        providerError: mapped.error,
+        providerCode: parsedError?.error?.code || null,
+        model: 'local-legal-engine'
+      });
     }
 
     const data = await response.json();
@@ -379,7 +571,18 @@ REGLAS:
     });
   } catch (error) {
     console.error('❌ Error interno:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    const query = String(req.body?.prompt || '').trim();
+    const localResults = query ? searchLegalEngine(query) : [];
+    res.json({
+      answer: query
+        ? buildLocalLegalAnswer(query, localResults)
+        : 'LEXIA no pudo procesar la consulta, pero el motor jurídico local está disponible en /api/legal-query.',
+      results: localResults,
+      source: 'LEXIA Motor Jurídico Local',
+      fallback: true,
+      providerError: 'Error interno usando el proveedor generativo.',
+      model: 'local-legal-engine'
+    });
   }
 });
 
