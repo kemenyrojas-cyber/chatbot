@@ -1,9 +1,8 @@
 /**
- * LEXIA - Chatbot Legal Inteligente
- * Alimentado por lpderecho.pe y OpenAI
- * 
- * Este script extrae TODA la información disponible de lpderecho.pe
- * para proporcionar respuestas jurídicas completas y precisas
+ * LEXIA - LP Derecho ingestion
+ *
+ * Feeds ai-engine/kb/legal_knowledge_base.json with structured records used by
+ * /api/legal-search and the /api/chat local fallback.
  */
 
 const fetch = require('node-fetch');
@@ -12,343 +11,393 @@ const path = require('path');
 const cheerio = require('cheerio');
 
 const LPDERECHO_BASE = 'https://lpderecho.pe';
-const KB_PATH = path.join(__dirname, '..', 'kb', 'lpderecho_content.md');
-const KB_CASES_PATH = path.join(__dirname, '..', 'kb', 'lpderecho_cases.md');
-const KB_SENTENCIAS_PATH = path.join(__dirname, '..', 'kb', 'lpderecho_sentencias.md');
+const KB_DIR = path.join(__dirname, '..', 'kb');
+const LEGAL_KB_PATH = path.join(KB_DIR, 'legal_knowledge_base.json');
+const INDEX_PATH = path.join(KB_DIR, 'lpderecho_index.md');
+const CONTENT_PATH = path.join(KB_DIR, 'lpderecho_content.md');
+const SEED_PATH = path.join(KB_DIR, 'lpderecho_seed.json');
 
-// TODAS las categorías de lpderecho.pe para extracción completa
+const MAX_PAGES = Number.parseInt(process.env.LPDERECHO_MAX_PAGES || '2', 10);
+const MAX_ARTICLES = Number.parseInt(process.env.LPDERECHO_MAX_ARTICLES || '40', 10);
+const REQUEST_DELAY_MS = Number.parseInt(process.env.LPDERECHO_DELAY_MS || '500', 10);
+
 const CATEGORIES = [
-  'articulos',
-  'revista-lp-derecho',
-  'derecho-constitucional',
-  'derecho-civil',
-  'derecho-penal',
-  'derecho-laboral',
-  'derecho-administrativo',
-  'derecho-comercial',
-  'derecho-tributario',
-  'derecho-procesal',
-  'derecho-mercantil',
-  'derecho-ambiental',
-  'derecho-notarial',
-  'derecho-registral',
-  'derecho-aduanal',
-  'derecho-migratorio',
-  'derecho-internacional',
-  'jurisprudencia',
-  'legislacion'
+  { slug: 'civil', materia: 'Derecho Civil' },
+  { slug: 'penal', materia: 'Derecho Penal' },
+  { slug: 'laboral', materia: 'Derecho Laboral' },
+  { slug: 'constitucional', materia: 'Derecho Constitucional' },
+  { slug: 'administrativo', materia: 'Derecho Administrativo' },
+  { slug: 'civil/procesal-civil', materia: 'Derecho Procesal Civil' },
+  { slug: 'jurisprudencia', materia: 'Jurisprudencia' },
+  { slug: 'jurisprudencia/casacion', materia: 'Casaciones' },
+  { slug: 'legislacion', materia: 'Legislacion' },
 ];
 
-/**
- * Extrae TODOS los artículos de una categoría (todas las páginas)
- */
-async function scrapeAllPages(category, maxPages = 5) {
-  const allArticles = [];
-  
-  for (let page = 1; page <= maxPages; page++) {
+const KB_SHAPE = {
+  normativa: [],
+  jurisprudencia: [],
+  casaciones: [],
+  sentencias_tc: [],
+};
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeForSearch(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function slugify(value) {
+  return normalizeForSearch(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function absoluteUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('/')) return `${LPDERECHO_BASE}${url}`;
+  return `${LPDERECHO_BASE}/${url}`;
+}
+
+function matterFromCategory(category, title) {
+  if (category.materia && category.materia !== 'Jurisprudencia' && category.materia !== 'Casaciones' && category.materia !== 'Legislacion') {
+    return category.materia;
+  }
+
+  const source = normalizeForSearch(`${category.slug} ${category.materia} ${title}`);
+  if (source.includes('penal')) return 'Derecho Penal';
+  if (source.includes('laboral')) return 'Derecho Laboral';
+  if (source.includes('constitucional') || source.includes('tribunal constitucional')) return 'Derecho Constitucional';
+  if (source.includes('administrativo')) return 'Derecho Administrativo';
+  if (source.includes('procesal')) return 'Derecho Procesal';
+  if (source.includes('civil')) return 'Derecho Civil';
+  return 'Derecho Peruano';
+}
+
+function moduleForArticle(article) {
+  const source = normalizeForSearch(`${article.categorySlug} ${article.categoryName} ${article.title} ${article.url} ${article.content}`);
+
+  if (source.includes('casacion') || source.includes('casaciones')) return 'casaciones';
+  if (
+    source.includes('tribunal constitucional') ||
+    source.includes('sentencia tc') ||
+    source.includes('expediente tc') ||
+    source.includes('/tc/')
+  ) {
+    return 'sentencias_tc';
+  }
+  if (
+    source.includes('jurisprudencia') ||
+    source.includes('precedente') ||
+    source.includes('sentencia') ||
+    source.includes('corte suprema')
+  ) {
+    return 'jurisprudencia';
+  }
+  return 'normativa';
+}
+
+function loadLegalKb() {
+  if (!fs.existsSync(LEGAL_KB_PATH)) return { ...KB_SHAPE };
+
+  const parsed = JSON.parse(fs.readFileSync(LEGAL_KB_PATH, 'utf8'));
+  return {
+    normativa: Array.isArray(parsed.normativa) ? parsed.normativa : [],
+    jurisprudencia: Array.isArray(parsed.jurisprudencia) ? parsed.jurisprudencia : [],
+    casaciones: Array.isArray(parsed.casaciones) ? parsed.casaciones : [],
+    sentencias_tc: Array.isArray(parsed.sentencias_tc) ? parsed.sentencias_tc : [],
+  };
+}
+
+function loadSeedArticles() {
+  if (!fs.existsSync(SEED_PATH)) return [];
+
+  const parsed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed.map(article => ({
+    title: article.titulo || article.title,
+    url: article.url,
+    excerpt: article.resumen || article.excerpt || '',
+    date: article.fecha || article.date || '',
+    content: article.contenido || article.content || article.resumen || article.titulo || '',
+    categorySlug: article.categoria_slug || article.categorySlug || 'lpderecho-seed',
+    categoryName: article.materia || article.categoryName || 'Derecho Peruano',
+  })).filter(article => article.title && article.url);
+}
+
+async function fetchHtml(url) {
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Language': 'es-PE,es;q=0.9,en;q=0.8',
+    },
+    timeout: 20000,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+
+  return response.text();
+}
+
+function extractArticlesFromList(html, category) {
+  const $ = cheerio.load(html);
+  const articles = [];
+
+  $('article, .post, .td_module_wrap, .jeg_post, .entry').each((_, element) => {
+    const title = normalizeText(
+      $(element).find('h1 a, h2 a, h3 a, .entry-title a, .post-title a').first().text()
+        || $(element).find('h1, h2, h3, .entry-title, .post-title').first().text()
+    );
+    const link = absoluteUrl($(element).find('h1 a, h2 a, h3 a, .entry-title a, .post-title a, a').first().attr('href'));
+    const excerpt = normalizeText($(element).find('p, .entry-summary, .td-excerpt, .post-excerpt').first().text());
+    const date = normalizeText($(element).find('time, .entry-date, .post-date, .td-post-date').first().text());
+
+    if (title && link && link.startsWith(LPDERECHO_BASE)) {
+      articles.push({
+        title,
+        url: link,
+        excerpt,
+        date,
+        categorySlug: category.slug,
+        categoryName: category.materia,
+      });
+    }
+  });
+
+  return articles;
+}
+
+async function scrapeCategory(category) {
+  const articles = [];
+
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const pagePath = page === 1 ? '' : `page/${page}/`;
+    const url = `${LPDERECHO_BASE}/category/${category.slug}/${pagePath}`;
     try {
-      console.log(`📥 [${category}] Página ${page}...`);
-      const url = `${LPDERECHO_BASE}/category/${category}/page/${page}/`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
+      console.log(`[LP Derecho] ${category.slug} pagina ${page}`);
+      const html = await fetchHtml(url);
+      const pageArticles = extractArticlesFromList(html, category);
 
-      if (!response.ok) break; // Si falla, asumimos que no hay más páginas
-
-      const html = await response.text();
-      const $ = cheerio.load(html);
-      
-      const pageArticles = [];
-      
-      // Extrae TODOS los artículos de la página
-      $('article, .post, .entry, .post-item, .article-item').each((index, element) => {
-        try {
-          // Intenta múltiples selectores para mayor compatibilidad
-          let title = '';
-          let excerpt = '';
-          let url = '';
-          let date = '';
-          let author = '';
-
-          // Título
-          title = $(element).find('h2 a, h3 a, .post-title a, .entry-title a').first().text().trim();
-          if (!title) {
-            title = $(element).find('h2, h3, .title').first().text().trim();
-          }
-
-          // Resumen/Excerpt
-          excerpt = $(element).find('p, .excerpt, .post-excerpt').first().text().trim();
-
-          // URL
-          url = $(element).find('a').first().attr('href') || '';
-
-          // Fecha
-          date = $(element).find('time, .date, .post-date').first().text().trim();
-
-          // Autor
-          author = $(element).find('.author, .by-author, .meta-author').first().text().trim();
-
-          if (title && url) {
-            pageArticles.push({
-              title,
-              excerpt: excerpt || 'Sin resumen disponible',
-              url,
-              date: date || 'Fecha no especificada',
-              author: author || 'Autor no especificado',
-              category
-            });
-          }
-        } catch (e) {
-          console.warn(`⚠️ Error procesando elemento:`, e.message);
-        }
-      });
-
-      if (pageArticles.length === 0) break; // Si no hay artículos, detener
-      
-      allArticles.push(...pageArticles);
-      console.log(`✅ ${pageArticles.length} artículos encontrados en página ${page}`);
-      
-      // Pausa para no sobrecargar
-      await new Promise(resolve => setTimeout(resolve, 800));
+      if (pageArticles.length === 0) break;
+      articles.push(...pageArticles);
+      await delay(REQUEST_DELAY_MS);
     } catch (error) {
-      console.warn(`⚠️ Error en página ${page}:`, error.message);
+      console.warn(`[LP Derecho] No se pudo leer ${url}: ${error.message}`);
       break;
     }
   }
-  
-  return allArticles;
+
+  return articles;
 }
 
-/**
- * Extrae contenido COMPLETO de un artículo
- */
-async function scrapeArticleContent(url) {
+async function scrapeArticleContent(article) {
   try {
-    if (!url || !url.startsWith('http')) return '';
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      timeout: 15000
-    });
-
-    if (!response.ok) return '';
-
-    const html = await response.text();
+    const html = await fetchHtml(article.url);
     const $ = cheerio.load(html);
-    
-    // Extrae TODO el contenido
+
+    const title = normalizeText($('h1').first().text()) || article.title;
+    const date = normalizeText($('time, .entry-date, .post-date, .td-post-date').first().text()) || article.date;
+    const selectors = ['article .entry-content', '.entry-content', '.td-post-content', 'article', 'main'];
     let content = '';
-    const contentSelectors = [
-      'article',
-      '.post-content',
-      '.entry-content',
-      '.content-article',
-      'main',
-      '.article-body'
-    ];
 
-    for (const selector of contentSelectors) {
-      const el = $(selector).first();
-      if (el.length) {
-        el.find('script, style, .ads, .advertisement').remove();
-        content = el.text();
-        break;
+    for (const selector of selectors) {
+      const element = $(selector).first();
+      if (element.length) {
+        element.find('script, style, nav, iframe, form, .ads, .advertisement, .sharedaddy, .related-posts').remove();
+        content = normalizeText(element.text());
+        if (content.length > 300) break;
       }
     }
 
-    return content.substring(0, 3500).trim(); // Contenido completo hasta 3500 caracteres
+    return {
+      ...article,
+      title,
+      date,
+      content: content.slice(0, 5000),
+    };
   } catch (error) {
-    console.warn(`⚠️ Error extrayendo ${url}:`, error.message);
-    return '';
+    console.warn(`[LP Derecho] No se pudo leer articulo ${article.url}: ${error.message}`);
+    return {
+      ...article,
+      content: article.excerpt || '',
+    };
   }
 }
 
-/**
- * Extrae jurisprudencia y sentencias
- */
-async function scrapeCaselaw() {
-  console.log('\n📋 Extrayendo jurisprudencia y sentencias...');
-  
-  try {
-    const response = await fetch(`${LPDERECHO_BASE}/category/jurisprudencia/`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
+function buildRecord(article, moduleName) {
+  const readableModule = moduleName.replace('_', '-');
+  const id = `lpderecho-${readableModule}-${slugify(article.title || article.url)}`;
+  const content = normalizeText(article.content || article.excerpt);
+  const summary = normalizeText(article.excerpt || content.slice(0, 240));
 
-    if (!response.ok) return '';
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    
-    let caseslawContent = '# JURISPRUDENCIA Y SENTENCIAS RELEVANTES\n\n';
-    
-    $('article, .post').each((index, element) => {
-      const title = $(element).find('h2 a, h3 a').first().text().trim();
-      const excerpt = $(element).find('p').first().text().trim();
-      const url = $(element).find('a').first().attr('href');
-      
-      if (title) {
-        caseslawContent += `## ${title}\n\n`;
-        if (excerpt) {
-          caseslawContent += `${excerpt}\n\n`;
-        }
-        if (url) {
-          caseslawContent += `[Leer más](${url})\n\n`;
-        }
-        caseslawContent += '---\n\n';
-      }
-    });
-
-    return caseslawContent;
-  } catch (error) {
-    console.warn(`⚠️ Error extrayendo jurisprudencia:`, error.message);
-    return '';
-  }
+  return {
+    id,
+    titulo: article.title,
+    materia: matterFromCategory({ slug: article.categorySlug, materia: article.categoryName }, article.title),
+    fecha: article.date || '',
+    fuente: 'LP Derecho',
+    url: article.url,
+    contenido: content,
+    resumen: summary || article.title,
+  };
 }
 
-/**
- * FUNCIÓN PRINCIPAL: Extrae TODA la información disponible
- */
-async function buildCompleteKnowledgeBase() {
-  console.log('\n' + '='.repeat(70));
-  console.log('🚀 LEXIA - EXTRAYENDO TODA LA INFORMACIÓN DE LPDERECHO.PE');
-  console.log('='.repeat(70) + '\n');
+function mergeRecords(legalKb, recordsByModule) {
+  const existingUrls = new Set();
+  const existingIds = new Set();
 
-  let allArticles = [];
-  const startTime = Date.now();
-  
-  // EXTRAE de TODAS las categorías
-  console.log(`📥 Extrayendo de ${CATEGORIES.length} categorías...\n`);
-  
+  for (const entries of Object.values(legalKb)) {
+    for (const entry of entries) {
+      if (entry.url) existingUrls.add(entry.url);
+      if (entry.id) existingIds.add(entry.id);
+    }
+  }
+
+  const added = {
+    normativa: 0,
+    jurisprudencia: 0,
+    casaciones: 0,
+    sentencias_tc: 0,
+  };
+
+  for (const [moduleName, records] of Object.entries(recordsByModule)) {
+    for (const record of records) {
+      if (existingUrls.has(record.url) || existingIds.has(record.id)) continue;
+
+      legalKb[moduleName].push(record);
+      existingUrls.add(record.url);
+      existingIds.add(record.id);
+      added[moduleName] += 1;
+    }
+  }
+
+  return added;
+}
+
+function writeMarkdownIndex(articles) {
+  const now = new Date().toISOString();
+  const lines = [
+    '# LP Derecho - Indice de ingestion',
+    '',
+    `Fecha de ingestion: ${now}`,
+    `Articulos procesados: ${articles.length}`,
+    '',
+  ];
+
+  articles.forEach((article, index) => {
+    lines.push(`${index + 1}. [${article.title}](${article.url}) - ${article.categoryName}`);
+  });
+
+  fs.writeFileSync(INDEX_PATH, `${lines.join('\n')}\n`, 'utf8');
+}
+
+function writeMarkdownContent(articles) {
+  const lines = [
+    '# LP Derecho - Contenido procesado',
+    '',
+    'Este archivo es una vista legible de los registros integrados en legal_knowledge_base.json.',
+    '',
+  ];
+
+  for (const article of articles) {
+    lines.push(`## ${article.title}`);
+    lines.push('');
+    lines.push(`Fuente: ${article.url}`);
+    lines.push(`Categoria: ${article.categoryName}`);
+    if (article.date) lines.push(`Fecha: ${article.date}`);
+    lines.push('');
+    lines.push(article.content || article.excerpt || '');
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+
+  fs.writeFileSync(CONTENT_PATH, `${lines.join('\n')}\n`, 'utf8');
+}
+
+async function main() {
+  fs.mkdirSync(KB_DIR, { recursive: true });
+
+  console.log('LEXIA - Ingestion LP Derecho');
+  console.log(`Categorias: ${CATEGORIES.length}`);
+  console.log(`Paginas por categoria: ${MAX_PAGES}`);
+  console.log(`Maximo de articulos con contenido: ${MAX_ARTICLES}`);
+
+  const discovered = [];
   for (const category of CATEGORIES) {
-    try {
-      console.log(`\n💨 Categoría: ${category.toUpperCase()}`);
-      console.log('-'.repeat(40));
-      
-      const articles = await scrapeAllPages(category, 3); // 3 páginas por categoría
-      allArticles = allArticles.concat(articles);
-      
-      console.log(`✅ ${articles.length} artículos de ${category}`);
-    } catch (error) {
-      console.error(`❌ Error en categoría ${category}:`, error.message);
+    const categoryArticles = await scrapeCategory(category);
+    discovered.push(...categoryArticles);
+  }
+
+  const seedArticles = loadSeedArticles();
+  if (seedArticles.length > 0) {
+    console.log(`[LP Derecho] semillas locales cargadas: ${seedArticles.length}`);
+    discovered.push(...seedArticles);
+  }
+
+  const uniqueByUrl = new Map();
+  for (const article of discovered) {
+    if (!uniqueByUrl.has(article.url)) uniqueByUrl.set(article.url, article);
+  }
+
+  const selected = Array.from(uniqueByUrl.values()).slice(0, MAX_ARTICLES);
+  const enriched = [];
+
+  for (let i = 0; i < selected.length; i += 1) {
+    const article = selected[i];
+    console.log(`[LP Derecho] articulo ${i + 1}/${selected.length}: ${article.title.slice(0, 70)}`);
+    if (article.content) {
+      enriched.push(article);
+    } else {
+      enriched.push(await scrapeArticleContent(article));
+    }
+    await delay(REQUEST_DELAY_MS);
+  }
+
+  const recordsByModule = {
+    normativa: [],
+    jurisprudencia: [],
+    casaciones: [],
+    sentencias_tc: [],
+  };
+
+  for (const article of enriched) {
+    const moduleName = moduleForArticle(article);
+    const record = buildRecord(article, moduleName);
+    if (record.titulo && record.url && record.contenido) {
+      recordsByModule[moduleName].push(record);
     }
   }
 
-  console.log(`\n📊 TOTAL DE ARTÍCULOS RECOLECTADOS: ${allArticles.length}\n`);
+  const legalKb = loadLegalKb();
+  const added = mergeRecords(legalKb, recordsByModule);
 
-  // EXTRAE contenido detallado de artículos
-  console.log(`📖 Extrayendo contenido detallado (esto puede tardar unos minutos)...`);
-  const articlesWithContent = [];
-  
-  // Procesa los primeros 50 artículos con mayor relevancia
-  for (let i = 0; i < Math.min(allArticles.length, 50); i++) {
-    const article = allArticles[i];
-    
-    if (article.url) {
-      process.stdout.write(`\r📖 Procesando: ${i + 1}/50 - ${article.title.substring(0, 45)}...`);
-      
-      const content = await scrapeArticleContent(article.url);
-      
-      if (content) {
-        articlesWithContent.push({
-          ...article,
-          content
-        });
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-  }
-  
-  console.log(`\n✅ ${articlesWithContent.length} artículos con contenido completo\n`);
+  fs.writeFileSync(LEGAL_KB_PATH, `${JSON.stringify(legalKb, null, 2)}\n`, 'utf8');
+  writeMarkdownIndex(enriched);
+  writeMarkdownContent(enriched);
 
-  // EXTRAE jurisprudencia
-  const caselaw = await scrapeCaselaw();
-
-  // GENERA archivo principal
-  let markdown = `# 🚀 LEXIA - BASE DE CONOCIMIENTO COMPLETA\n\n`;
-  markdown += `> **Información completa extraída de [lpderecho.pe](https://lpderecho.pe)**\n`;
-  markdown += `> Portal legal más leído del Perú\n\n`;
-  markdown += `⚡ **Fecha de extracción:** ${new Date().toLocaleString('es-PE')}\n`;
-  markdown += `📋 **Artículos procesados:** ${articlesWithContent.length}\n`;
-  markdown += `📚 **Artículos indexados:** ${allArticles.length}\n`;
-  markdown += `⏱️ **Tiempo de procesamiento:** ${((Date.now() - startTime) / 1000).toFixed(1)}s\n\n`;
-  markdown += `---\n\n`;
-
-  // Agrupa por categoría
-  const byCategory = {};
-  articlesWithContent.forEach(article => {
-    if (!byCategory[article.category]) {
-      byCategory[article.category] = [];
-    }
-    byCategory[article.category].push(article);
-  });
-
-  // Escribe por categoría
-  for (const [category, articles] of Object.entries(byCategory)) {
-    markdown += `\n## 📋 ${category.replace(/-/g, ' ').toUpperCase()}\n\n`;
-    markdown += `**${articles.length} artículos**\n\n`;
-    
-    articles.forEach(article => {
-      markdown += `### ${article.title}\n\n`;
-      markdown += `**Autor:** ${article.author} | **Fecha:** ${article.date}\n\n`;
-      
-      if (article.excerpt && article.excerpt !== 'Sin resumen disponible') {
-        markdown += `**Resumen:** ${article.excerpt}\n\n`;
-      }
-      
-      if (article.content) {
-        markdown += `**Contenido:**\n\n${article.content}\n\n`;
-      }
-      
-      markdown += `🔗 [Ver artículo completo](${article.url})\n\n`;
-      markdown += `---\n\n`;
-    });
-  }
-
-  // Añade jurisprudencia
-  if (caselaw) {
-    markdown += `\n${caselaw}`;
-  }
-
-  // Guarda archivos
-  fs.writeFileSync(KB_PATH, markdown, 'utf8');
-  console.log(`\n✅ Base de conocimiento principal guardada: ${KB_PATH}`);
-  console.log(`📄 Tamaño: ${(markdown.length / 1024).toFixed(2)} KB`);
-
-  // Índice de TODOS los artículos
-  let indexMD = `# 📚 ÍNDICE COMPLETO DE ARTÍCULOS - LPDERECHO.PE\n\n`;
-  indexMD += `**Total de artículos indexados:** ${allArticles.length}\n\n`;
-  
-  allArticles.forEach((article, idx) => {
-    indexMD += `${idx + 1}. [${article.title}](${article.url}) - *${article.category}*\n`;
-  });
-
-  fs.writeFileSync(
-    path.join(__dirname, '..', 'kb', 'lpderecho_index.md'),
-    indexMD,
-    'utf8'
-  );
-  console.log(`✅ Índice de artículos guardado: kb/lpderecho_index.md`);
-
-  console.log('\n' + '='.repeat(70));
-  console.log('✅ EXTRACCIÓN COMPLETADA EXITOSAMENTE');
-  console.log('='.repeat(70) + '\n');
-  
-  console.log(`📄 Archivos generados:`);
-  console.log(`   1. kb/lpderecho_content.md - Contenido completo (${(markdown.length / 1024).toFixed(2)} KB)`);
-  console.log(`   2. kb/lpderecho_index.md - Índice de todos los artículos`);
-  console.log(`\n🚀 LEXIA está listo para responder consultas jurídicas complejas!\n`);
+  console.log('Ingestion completada.');
+  console.log(`Nuevos registros: normativa=${added.normativa}, jurisprudencia=${added.jurisprudencia}, casaciones=${added.casaciones}, sentencias_tc=${added.sentencias_tc}`);
+  console.log(`Base actualizada: ${LEGAL_KB_PATH}`);
 }
 
-// EJECUTA LA EXTRACCIÓN COMPLETA
-buildCompleteKnowledgeBase().catch(err => {
-  console.error('\n❌ ERROR FATAL:', err);
+main().catch(error => {
+  console.error('Error fatal en ingestion LP Derecho:', error);
   process.exit(1);
 });

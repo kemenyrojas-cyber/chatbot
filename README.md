@@ -1,15 +1,17 @@
 # 🚀 LEXIA - Asesor Jurídico Inteligente
-## Alimentado con TODA la información de lpderecho.pe
+## Alimentado por base jurídica local y LP Derecho
 
 ---
 
 ## 🚀 Características Principales
 
-### ✅ COBERTURA TOTAL DE LPDERECHO.PE
-- **50+ artículos** con contenido completo
-- **20 categorías** de derecho peruano
-- **Toda la información** de jurisprudencia y sentencias
-- **Índice completo** de más de 500 artículos disponibles
+### ✅ MOTOR JURÍDICO LOCAL
+- **Normativa**
+- **Jurisprudencia**
+- **Casaciones**
+- **Sentencias TC**
+- Resultados ordenados por relevancia desde `/api/legal-search`
+- Fallback útil cuando OpenAI no tiene créditos o no está disponible
 
 ### 🤖 Inteligencia con OpenAI
 - Respuestas precisas y fundamentadas
@@ -40,16 +42,33 @@ OPENAI_MODEL=gpt-3.5-turbo
 PORT=3000
 ```
 
-### 3. Extraer Información de lpderecho.pe
+### 3. Alimentar la base jurídica con LP Derecho
 ```bash
 npm run ingest-lpderecho
 ```
 
 Este comando:
-- Extrae TODAS las categorías
-- Procesa 50+ artículos con contenido completo
-- Indexa 500+ artículos para referencia
-- Genera 3 archivos de base de conocimiento
+- Busca publicaciones en `lpderecho.pe`.
+- Extrae contenido de artículos.
+- Clasifica resultados en normativa, jurisprudencia, casaciones y sentencias TC.
+- Fusiona los registros en `ai-engine/kb/legal_knowledge_base.json`.
+- Genera `lpderecho_index.md` y `lpderecho_content.md` como respaldo legible.
+
+Para pruebas controladas:
+
+```bash
+LPDERECHO_MAX_PAGES=1 LPDERECHO_MAX_ARTICLES=5 npm run ingest-lpderecho
+```
+
+En PowerShell:
+
+```powershell
+$env:LPDERECHO_MAX_PAGES='1'
+$env:LPDERECHO_MAX_ARTICLES='5'
+npm run ingest-lpderecho
+```
+
+Despues de una nueva ingestion, reinicia el servidor para que cargue la base actualizada.
 
 ### 4. Iniciar Servidor
 ```bash
@@ -60,21 +79,19 @@ npm start
 
 ## 📄 Archivos Generados
 
-Al ejecutar `npm run ingest-lpderecho`, se generan:
+Al ejecutar `npm run ingest-lpderecho`, se actualizan:
 
-1. **`ai-engine/kb/lpderecho_content.md`** (~800KB)
-   - Contenido completo de 50+ artículos
-   - Organisado por categoría
-   - Incluye jurisprudencia
+1. **`ai-engine/kb/legal_knowledge_base.json`**
+   - Base estructurada que consume `/api/legal-search`
+   - Modulos: normativa, jurisprudencia, casaciones y sentencias TC
 
-2. **`ai-engine/kb/lpderecho_index.md`** (~200KB)
-   - Índice de 500+ artículos disponibles
+2. **`ai-engine/kb/lpderecho_content.md`**
+   - Vista legible del contenido procesado
+   - Organizado por categoria
+
+3. **`ai-engine/kb/lpderecho_index.md`**
+   - Índice de artículos procesados
    - Enlaces directos a lpderecho.pe
-   - Búsqueda rápida
-
-3. **`ai-engine/kb/legal_faqs.md`** (~100KB)
-   - Preguntas frecuentes jurídicas
-   - Respuestas fundamentadas
 
 ---
 
@@ -124,6 +141,13 @@ Render instala y arranca desde `backend/`.
 curl -X POST http://localhost:3000/api/chat \
   -H "Content-Type: application/json" \
   -d '{"prompt": "¿Cuales son los requisitos para un divorcio en Perú?"}'
+```
+
+### Busqueda jurídica local
+```bash
+curl -X POST http://localhost:3000/api/legal-search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "posesion precaria casacion"}'
 ```
 
 ### Respuesta
