@@ -996,14 +996,12 @@ button {
 
 .chat-session-item {
     width: 100%;
-    padding: 14px;
+    padding: 14px 48px 14px 14px;
     border: 1px solid #E4ECF7;
     border-radius: 10px;
     background: #FFFFFF;
     text-align: left;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
+    display: block;
     position: relative;
     cursor: pointer;
 }
@@ -1034,25 +1032,34 @@ button {
 }
 
 .chat-session-actions {
-    position: relative;
-    align-self: start;
+    position: absolute;
+    top: 10px;
+    right: 10px;
 }
 
 .chat-session-menu-button {
-    width: 30px;
-    height: 30px;
-    border: 0;
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
-    color: #64748B;
+    color: #0B1B3A;
     display: grid;
     place-items: center;
     cursor: pointer;
 }
 
+.chat-session-menu-button span {
+    color: currentColor;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+}
+
 .chat-session-menu-button:hover,
 .chat-session-menu-button[aria-expanded="true"] {
     background: #EAF1FF;
+    border-color: #CFE0FF;
     color: #0B5CFF;
 }
 
