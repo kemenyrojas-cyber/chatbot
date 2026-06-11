@@ -45,6 +45,8 @@ button {
 
 .dashboard-shell {
     min-height: calc(100vh - 2px);
+    width: min(1680px, 100%);
+    margin: 0 auto;
     display: grid;
     grid-template-columns: 286px minmax(0, 1fr);
     overflow: visible;
@@ -204,16 +206,16 @@ button {
 
 .main-panel {
     min-width: 0;
-    padding: 32px 32px 0;
+    padding: 28px clamp(18px, 2vw, 32px) 0;
     background: linear-gradient(180deg, #071B4A 0 371px, var(--bg) 371px);
 }
 
 .topbar {
-    height: 52px;
+    min-height: 52px;
     margin-bottom: 28px;
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
     gap: 28px;
     color: #FFFFFF;
 }
@@ -234,11 +236,13 @@ button {
 .topbar-actions {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 14px;
 }
 
 .search-box {
-    width: 294px;
+    width: clamp(220px, 24vw, 320px);
     height: 48px;
     padding: 0 16px 0 18px;
     border: 1px solid rgba(151, 178, 221, 0.24);
@@ -370,7 +374,7 @@ button {
 }
 
 .account-button {
-    width: 192px;
+    width: min(220px, 100%);
     padding: 0 12px;
     display: flex;
     align-items: center;
@@ -405,18 +409,18 @@ button {
 }
 
 .consult-hero {
-    height: 240px;
+    min-height: 240px;
     border: 1px solid rgba(64, 124, 214, 0.55);
     border-radius: 8px;
     background: linear-gradient(135deg, #0D2D7A 0%, #071B4A 56%, #0A2B6A 100%);
     color: #FFFFFF;
     display: grid;
-    grid-template-columns: minmax(0, 65%) 35%;
+    grid-template-columns: minmax(0, 1.28fr) minmax(260px, 0.72fr);
     overflow: hidden;
 }
 
 .hero-content {
-    padding: 32px 0 28px 38px;
+    padding: 32px 24px 28px 32px;
     display: flex;
     flex-direction: column;
 }
@@ -435,7 +439,7 @@ button {
 }
 
 .hero-search {
-    width: min(758px, 100%);
+    width: min(820px, 100%);
     min-width: 0;
     height: 54px;
     padding: 6px;
@@ -502,7 +506,7 @@ button {
 
 .hero-visual {
     position: relative;
-    height: 240px;
+    min-height: 240px;
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -524,7 +528,7 @@ button {
     position: relative;
     z-index: 1;
     width: 100%;
-    height: 240px;
+    height: 100%;
     object-fit: cover;
     object-position: center 40%;
     mix-blend-mode: screen;
@@ -538,7 +542,7 @@ button {
     background: #FFFFFF;
     box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
     display: grid;
-    grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.95fr) 315px;
+    grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.92fr) minmax(250px, 0.5fr);
     gap: 16px;
     align-items: start;
 }
@@ -578,7 +582,7 @@ button {
 .quick-grid {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 16px;
     margin-bottom: 4px;
 }
@@ -592,7 +596,7 @@ button {
 }
 
 .quick-card {
-    height: 68px;
+    min-height: 68px;
     padding: 13px 15px;
     display: grid;
     grid-template-columns: 38px 1fr;
@@ -659,7 +663,7 @@ button {
 
 .recent-list article {
     display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-columns: 20px minmax(0, 1fr);
     align-items: start;
     gap: 10px;
 }
@@ -721,6 +725,7 @@ button {
 }
 
 .recent-list time {
+    grid-column: 2;
     color: #6D7F9E;
     font-size: 10px;
 }
@@ -871,8 +876,25 @@ button {
     padding-top: 16px;
     border-top: 1px solid #E4ECF7;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 18px;
+}
+
+@media (max-width: 1440px) {
+    .workspace {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+    }
+
+    .right-stack {
+        grid-column: 1 / -1;
+        grid-row: auto;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .tools-panel {
+        grid-column: 1 / -1;
+        grid-row: auto;
+    }
 }
 
 .message {
@@ -892,7 +914,7 @@ button {
 
 @media (max-width: 1180px) {
     .dashboard-shell {
-        grid-template-columns: 92px minmax(0, 1fr);
+        grid-template-columns: 84px minmax(0, 1fr);
     }
 
     .sidebar {
@@ -933,14 +955,17 @@ button {
         max-width: 760px;
     }
 
-    .workspace,
+    .workspace {
+        grid-template-columns: 1fr;
+    }
+
     .quick-grid,
     .tools-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .right-stack {
-        grid-column: 1 / -1;
+        grid-column: auto;
         grid-row: auto;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -989,6 +1014,11 @@ button {
         height: auto;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .topbar {
+        display: flex;
+        gap: 18px;
     }
 
     .search-box,
