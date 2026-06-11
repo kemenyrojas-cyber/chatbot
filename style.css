@@ -110,6 +110,12 @@ button {
     white-space: nowrap;
 }
 
+.brand-title-icon {
+    color: #F8C851;
+    font-size: 18px;
+    margin-left: 4px;
+}
+
 .brand p {
     margin-top: 8px;
     color: #C6D4EC;
@@ -460,6 +466,10 @@ button {
     border-radius: 8px;
     background: #2563EB;
     color: #FFFFFF;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     font-size: 13px;
     font-weight: 700;
 }

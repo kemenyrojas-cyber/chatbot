@@ -422,7 +422,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ✓ Derechos de registro<br>
             ✓ Impuesto a la renta (si aplica)<br><br>
             
-            <strong>⚠️ RECOMENDACIÓN:</strong> Para inmuebles, SIEMPRE use abogado y notario.`;
+            <strong>RECOMENDACIÓN:</strong> Para inmuebles, SIEMPRE use abogado y notario.`;
         }
 
         // DIVORCIO
@@ -533,7 +533,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ✓ Candidatos electorales<br>
             • Requieren autorización de tribunal para despedir<br><br>
             
-            <strong>⚠️ IMPORTANTE:</strong> Consulte abogado laboral inmediatamente después del despido.`;
+            <strong>IMPORTANTE:</strong> Consulte abogado laboral inmediatamente después del despido.`;
         }
 
         // HERENCIA Y SUCESIÓN
@@ -595,7 +595,7 @@ document.addEventListener("DOMContentLoaded", () => {
             • Con complicaciones: 1-2 años<br>
             • Juicios por herencia: 2-5 años<br><br>
             
-            <strong>⚠️ RECOMENDACIÓN:</strong> Contrate abogado especialista en sucesiones.`;
+            <strong>RECOMENDACIÓN:</strong> Contrate abogado especialista en sucesiones.`;
         }
 
         // ROBO VS HURTO
@@ -679,7 +679,7 @@ document.addEventListener("DOMContentLoaded", () => {
             4. Presentar demanda civil por daños<br>
             5. Participar en investigación<br><br>
             
-            <strong>⚠️ DIFERENCIA CLAVE:</strong><br>
+            <strong>DIFERENCIA CLAVE:</strong><br>
             <strong>ROBO = VIOLENCIA + SUSTRACCI\u00d3N</strong><br>
             <strong>HURTO = SOLO SUSTRACCI\u00d3N (sin fuerza)</strong>`;
         }
@@ -761,7 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
             • Con apelación: 2-4 años<br>
             • Con casación: 3-5 años<br><br>
             
-            <strong>⚠️ CONSEJOS:</strong><br>
+            <strong>CONSEJOS:</strong><br>
             1. Contrate abogado con experiencia<br>
             2. Recopile pruebas ANTES de demandar<br>
             3. Intente conciliación primero<br>
@@ -773,12 +773,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<strong>Consulta Legal</strong><br><br>
         Soy <strong>LEXIA</strong>, tu asistente legal inteligente alimentado por lpderecho.pe.<br><br>
         <strong>Puedo ayudarte con:</strong><br>
-        📋 <strong>Derecho Civil:</strong> Contratos de compraventa, propiedad, herencias, familia<br>
-        ⚖️ <strong>Derecho Penal:</strong> Delitos, robo, hurto, fraude, procedimiento penal<br>
-        💼 <strong>Derecho Laboral:</strong> Despidos, indemnización, seguridad social<br>
-        🏢 <strong>Derecho Comercial:</strong> Empresas, sociedades, contratos<br>
-        👨‍👩‍👧 <strong>Derecho Familiar:</strong> Divorcio, alimentos, custodia<br>
-        📋 <strong>Procedimiento:</strong> Cómo presentar demanda, juicios<br><br>
+        <strong>Derecho Civil:</strong> Contratos de compraventa, propiedad, herencias, familia<br>
+        <strong>Derecho Penal:</strong> Delitos, robo, hurto, fraude, procedimiento penal<br>
+        <strong>Derecho Laboral:</strong> Despidos, indemnización, seguridad social<br>
+        <strong>Derecho Comercial:</strong> Empresas, sociedades, contratos<br>
+        <strong>Derecho Familiar:</strong> Divorcio, alimentos, custodia<br>
+        <strong>Procedimiento:</strong> Cómo presentar demanda, juicios<br><br>
         
         <strong>Pregunta específicamente sobre:</strong><br>
         • \"¿Cuáles son los requisitos para un contrato de compraventa?\"<br>
@@ -788,7 +788,7 @@ document.addEventListener("DOMContentLoaded", () => {
         • \"¿Cómo presento una demanda civil?\"<br>
         • \"¿Cómo funciona una herencia?\"<br><br>
         
-        ✅ Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;
+        Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;
     }
 
     async function sendMessage() {
@@ -800,7 +800,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const loadingMessage = document.createElement("div");
         loadingMessage.className = "message bot loading";
-        loadingMessage.innerHTML = "⚖️ Procesando tu consulta legal...";
+        loadingMessage.innerHTML = '<i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i> Procesando tu consulta legal...';
         messages.appendChild(loadingMessage);
         messages.scrollTop = messages.scrollHeight;
 
