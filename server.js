@@ -8,6 +8,8 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 const openAiKey = process.env.OPENAI_API_KEY;
+const dataDir = path.join(__dirname, 'data');
+const accountsPath = path.join(dataDir, 'accounts.json');
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -16,6 +18,43 @@ if (!openAiKey) {
 
 app.use(express.json());
 app.use(cors());
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function ensureAccountsStore() {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  if (!fs.existsSync(accountsPath)) {
+    fs.writeFileSync(accountsPath, '[]', 'utf8');
+  }
+}
+
+function readAccounts() {
+  ensureAccountsStore();
+  try {
+    const raw = fs.readFileSync(accountsPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAccounts(accounts) {
+  ensureAccountsStore();
+  fs.writeFileSync(accountsPath, JSON.stringify(accounts, null, 2), 'utf8');
+}
+
+function sanitizeAccount(account) {
+  return {
+    email: normalizeEmail(account.email),
+    name: String(account.name || '').trim(),
+    profile: String(account.profile || '')
+  };
+}
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'landing.html'));
@@ -37,6 +76,63 @@ app.get('/registro', (req, res) => {
 
 app.get('/recuperar-password', (req, res) => {
   res.sendFile(path.join(__dirname, 'recuperar-password.html'));
+});
+
+app.get('/api/auth/account', (req, res) => {
+  const email = normalizeEmail(req.query.email);
+  if (!email) {
+    return res.status(400).json({ error: 'El correo es obligatorio.' });
+  }
+
+  const account = readAccounts().find(item => normalizeEmail(item.email) === email);
+  if (!account) {
+    return res.status(404).json({ error: 'Ese correo no está registrado.' });
+  }
+
+  return res.json({ account: sanitizeAccount(account) });
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+  const name = String(req.body?.name || '').trim();
+  const profile = String(req.body?.profile || '').trim();
+
+  if (!name || !email || !password || !profile) {
+    return res.status(400).json({ error: 'Completa todos los campos requeridos.' });
+  }
+
+  const accounts = readAccounts();
+  const existing = accounts.find(item => normalizeEmail(item.email) === email);
+  if (existing) {
+    return res.status(409).json({ error: 'Ese correo ya está registrado.' });
+  }
+
+  const account = { email, password, name, profile, createdAt: new Date().toISOString() };
+  accounts.push(account);
+  writeAccounts(accounts);
+
+  return res.status(201).json({ account: sanitizeAccount(account) });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Correo y contraseña son obligatorios.' });
+  }
+
+  const account = readAccounts().find(item => normalizeEmail(item.email) === email);
+  if (!account) {
+    return res.status(404).json({ field: 'email', error: 'Ese correo no está registrado.' });
+  }
+
+  if (String(account.password || '') !== password) {
+    return res.status(401).json({ field: 'password', error: 'La contraseña es incorrecta.' });
+  }
+
+  return res.json({ account: sanitizeAccount(account) });
 });
 
 // CARGA TODAS las bases de conocimiento

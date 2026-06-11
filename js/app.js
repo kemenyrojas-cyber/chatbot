@@ -527,6 +527,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function syncViewWithHash() {
+        if (window.location.hash === "#consulta-ia" || window.location.hash === "#consulta") {
+            openChatView();
+            return;
+        }
+        showView("dashboard");
+    }
+
     function addMessage(text, type) {
         const msg = document.createElement("div");
         msg.className = `message ${type}`;
@@ -1128,15 +1136,16 @@ document.addEventListener("DOMContentLoaded", () => {
         item.addEventListener("click", event => {
             const action = item.dataset.action;
             if (action === "new-query") {
-                event.preventDefault();
-                openChatView();
+                window.location.hash = "consulta-ia";
             }
             if (action === "home") {
                 event.preventDefault();
+                history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
                 showView("dashboard");
             }
             if (action === "history") {
                 event.preventDefault();
+                history.replaceState(null, "", `${window.location.pathname}${window.location.search}#historial`);
                 showView("dashboard");
                 document.getElementById("historial").scrollIntoView({ behavior: "smooth", block: "start" });
             }
@@ -1173,11 +1182,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return notificationButton?.closest(".notification-wrap")?.contains(target) || false;
     }
 
-    if (window.location.hash === "#consulta") {
-        openChatView();
-    } else {
-        showView("dashboard");
-    }
+    window.addEventListener("hashchange", syncViewWithHash);
+    syncViewWithHash();
 });
 
 
