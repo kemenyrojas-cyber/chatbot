@@ -1101,7 +1101,7 @@ button {
     min-height: calc(100vh - 140px);
     padding: 20px;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 16px;
 }
 
@@ -1193,23 +1193,6 @@ button {
 
 .chat-bubble li + li {
     margin-top: 6px;
-}
-
-.chat-suggestions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.chat-suggestion {
-    min-height: 38px;
-    padding: 0 14px;
-    border: 1px solid #D7E4F8;
-    border-radius: 999px;
-    background: #F7FAFF;
-    color: #0B1B3A;
-    font-size: 12px;
-    font-weight: 600;
 }
 
 .chat-composer {

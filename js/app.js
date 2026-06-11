@@ -35,7 +35,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatComposerSend = document.getElementById("chatComposerSend");
     const chatViewTitle = document.getElementById("chatViewTitle");
     const chatViewSubtitle = document.getElementById("chatViewSubtitle");
-    const chatSuggestions = document.getElementById("chatSuggestions");
     const newChatSessionButton = document.getElementById("newChatSessionButton");
 
     const roleAliases = {
@@ -1108,13 +1107,6 @@ document.addEventListener("DOMContentLoaded", () => {
         renderChatSessions();
         renderChatThread();
         chatComposerInput.value = "";
-        chatComposerInput.focus();
-    });
-
-    chatSuggestions?.addEventListener("click", event => {
-        const button = event.target.closest(".chat-suggestion");
-        if (!button) return;
-        chatComposerInput.value = button.textContent.trim();
         chatComposerInput.focus();
     });
 
