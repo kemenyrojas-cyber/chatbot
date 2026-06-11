@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const planTitle = document.getElementById("planTitle");
     const planDescription = document.getElementById("planDescription");
     const planFeatures = document.getElementById("planFeatures");
+    const mainPanel = document.getElementById("mainPanel");
     const dashboardView = document.getElementById("dashboardView");
     const legalChatView = document.getElementById("legalChatView");
     const chatSessionList = document.getElementById("chatSessionList");
@@ -430,6 +431,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const showChat = viewName === "chat";
         dashboardView.hidden = showChat;
         legalChatView.hidden = !showChat;
+        mainPanel?.classList.toggle("chat-mode", showChat);
         updateNav(showChat ? "new-query" : "home");
     }
 

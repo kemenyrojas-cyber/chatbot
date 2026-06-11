@@ -210,6 +210,15 @@ button {
     background: linear-gradient(180deg, #071B4A 0 371px, var(--bg) 371px);
 }
 
+.main-panel.chat-mode {
+    padding-top: 18px;
+    background: linear-gradient(180deg, #071B4A 0 165px, var(--bg) 165px);
+}
+
+.main-panel.chat-mode .topbar {
+    display: none;
+}
+
 .topbar {
     min-height: 52px;
     margin-bottom: 28px;
@@ -933,6 +942,10 @@ button {
     gap: 18px;
     align-items: stretch;
     overflow: hidden;
+}
+
+.main-panel.chat-mode .chat-view {
+    height: calc(100vh - 36px);
 }
 
 .chat-history-panel,
