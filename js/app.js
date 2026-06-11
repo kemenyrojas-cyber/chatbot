@@ -539,7 +539,9 @@ document.addEventListener("DOMContentLoaded", () => {
             </article>
         `).join("");
 
-        chatThread.scrollTop = chatThread.scrollHeight;
+        requestAnimationFrame(() => {
+            chatThread.scrollTop = chatThread.scrollHeight;
+        });
     }
 
     function openChatView(options = {}) {
@@ -1058,7 +1060,7 @@ document.addEventListener("DOMContentLoaded", () => {
             renderChatSessions();
             renderChatThread();
             renderAppState();
-            chatComposerInput.focus();
+            chatComposerInput.focus({ preventScroll: true });
         }
     }
 

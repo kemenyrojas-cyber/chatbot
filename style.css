@@ -926,11 +926,13 @@ button {
 }
 
 .chat-view {
-    min-height: calc(100vh - 140px);
+    height: calc(100vh - 140px);
+    min-height: 560px;
     display: grid;
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
     gap: 18px;
     align-items: stretch;
+    overflow: hidden;
 }
 
 .chat-history-panel,
@@ -946,7 +948,7 @@ button {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 16px;
-    min-height: calc(100vh - 140px);
+    min-height: 0;
 }
 
 .chat-history-head,
@@ -1098,11 +1100,12 @@ button {
 
 .chat-thread-panel {
     min-width: 0;
-    min-height: calc(100vh - 140px);
+    min-height: 0;
     padding: 20px;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 16px;
+    overflow: hidden;
 }
 
 .chat-thread {
