@@ -12,6 +12,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const notificationPanel = document.getElementById("notificationPanel");
     const notificationList = document.getElementById("notificationList");
     const markNotificationsRead = document.getElementById("markNotificationsRead");
+    const accountButton = document.getElementById("accountButton");
+    const accountMenu = document.getElementById("accountMenu");
+    const logoutButton = document.getElementById("logoutButton");
     const clearHistoryButton = document.getElementById("clearHistoryButton");
     const greeting = document.getElementById("dashboardGreeting");
     const dashboardSubtitle = document.getElementById("dashboardSubtitle");
@@ -840,6 +843,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const isHidden = notificationPanel.hidden;
         notificationPanel.hidden = !isHidden;
         notificationButton.setAttribute("aria-expanded", String(isHidden));
+        accountMenu.hidden = true;
+        accountButton?.setAttribute("aria-expanded", "false");
+    });
+
+    accountButton?.addEventListener("click", () => {
+        const isHidden = accountMenu.hidden;
+        accountMenu.hidden = !isHidden;
+        accountButton.setAttribute("aria-expanded", String(isHidden));
+        notificationPanel.hidden = true;
+        notificationButton.setAttribute("aria-expanded", "false");
+    });
+
+    logoutButton?.addEventListener("click", () => {
+        window.LexiaAuth?.clearSession?.();
+        window.location.href = "/login";
     });
 
     markNotificationsRead.addEventListener("click", () => {
@@ -884,6 +902,24 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     });
+
+    document.addEventListener("click", event => {
+        if (accountWrapContains(event.target)) return;
+        if (notificationWrapContains(event.target)) return;
+
+        accountMenu.hidden = true;
+        accountButton?.setAttribute("aria-expanded", "false");
+        notificationPanel.hidden = true;
+        notificationButton.setAttribute("aria-expanded", "false");
+    });
+
+    function accountWrapContains(target) {
+        return accountButton?.closest(".account-wrap")?.contains(target) || false;
+    }
+
+    function notificationWrapContains(target) {
+        return notificationButton?.closest(".notification-wrap")?.contains(target) || false;
+    }
 });
 
 
