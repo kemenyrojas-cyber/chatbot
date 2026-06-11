@@ -1002,13 +1002,22 @@ button {
     background: #FFFFFF;
     text-align: left;
     display: grid;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    position: relative;
+    cursor: pointer;
 }
 
 .chat-session-item.active {
     border-color: #BFD5FF;
     background: #F3F7FF;
     box-shadow: inset 0 0 0 1px rgba(11, 92, 255, 0.08);
+}
+
+.chat-session-main {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
 }
 
 .chat-session-item strong {
@@ -1022,6 +1031,62 @@ button {
     color: #64748B;
     font-size: 11px;
     line-height: 1.45;
+}
+
+.chat-session-actions {
+    position: relative;
+    align-self: start;
+}
+
+.chat-session-menu-button {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #64748B;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+
+.chat-session-menu-button:hover,
+.chat-session-menu-button[aria-expanded="true"] {
+    background: #EAF1FF;
+    color: #0B5CFF;
+}
+
+.chat-session-menu {
+    position: absolute;
+    top: 34px;
+    right: 0;
+    z-index: 10;
+    min-width: 132px;
+    padding: 6px;
+    border: 1px solid #D6E3F8;
+    border-radius: 8px;
+    background: #FFFFFF;
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
+}
+
+.chat-session-delete {
+    width: 100%;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #B42318;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.chat-session-delete:hover {
+    background: #FEF3F2;
 }
 
 .chat-thread-panel {

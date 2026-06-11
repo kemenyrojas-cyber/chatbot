@@ -462,10 +462,29 @@ document.addEventListener("DOMContentLoaded", () => {
         saveChatSessions([{ ...session, updatedAt: new Date().toISOString() }, ...sessions]);
     }
 
+    function deleteChatSession(sessionId) {
+        const sessions = getChatSessions().filter(item => item.id !== sessionId);
+        saveChatSessions(sessions);
+        if (activeChatSessionId === sessionId) {
+            activeChatSessionId = sessions[0]?.id || null;
+        }
+        renderChatSessions();
+        renderChatThread();
+    }
+
     function ensureActiveSession(initialQuestion = "") {
         const currentSession = getActiveChatSession();
         if (currentSession) return currentSession;
         return createChatSession(initialQuestion);
+    }
+
+    function closeChatSessionMenus() {
+        chatSessionList?.querySelectorAll("[data-session-menu]").forEach(menu => {
+            menu.hidden = true;
+        });
+        chatSessionList?.querySelectorAll("[data-session-menu-id]").forEach(button => {
+            button.setAttribute("aria-expanded", "false");
+        });
     }
 
     function renderChatSessions() {
@@ -477,11 +496,24 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         chatSessionList.innerHTML = sessions.map(item => `
-            <button class="chat-session-item ${item.id === activeChatSessionId ? "active" : ""}" type="button" data-session-id="${item.id}">
-                <strong>${escapeHtml(item.title)}</strong>
-                <span>${escapeHtml(textOnly(item.messages[item.messages.length - 1]?.content || "Pendiente de consulta")).slice(0, 88)}</span>
-                <time>${formatDate(item.updatedAt)}</time>
-            </button>
+            <article class="chat-session-item ${item.id === activeChatSessionId ? "active" : ""}" role="button" tabindex="0" data-session-id="${item.id}">
+                <div class="chat-session-main">
+                    <strong>${escapeHtml(item.title)}</strong>
+                    <span>${escapeHtml(textOnly(item.messages[item.messages.length - 1]?.content || "Pendiente de consulta")).slice(0, 88)}</span>
+                    <time>${formatDate(item.updatedAt)}</time>
+                </div>
+                <div class="chat-session-actions">
+                    <button class="chat-session-menu-button" type="button" aria-label="Opciones de consulta" aria-haspopup="menu" aria-expanded="false" data-session-menu-id="${item.id}">
+                        <i class="fa-solid fa-ellipsis-vertical icon" aria-hidden="true"></i>
+                    </button>
+                    <div class="chat-session-menu" role="menu" hidden data-session-menu>
+                        <button type="button" role="menuitem" class="chat-session-delete" data-delete-session-id="${item.id}">
+                            <i class="fa-regular fa-trash-can icon" aria-hidden="true"></i>
+                            Eliminar
+                        </button>
+                    </div>
+                </div>
+            </article>
         `).join("");
     }
 
@@ -1087,11 +1119,48 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     chatSessionList?.addEventListener("click", event => {
-        const button = event.target.closest("[data-session-id]");
-        if (!button) return;
-        activeChatSessionId = button.dataset.sessionId;
+        const deleteButton = event.target.closest("[data-delete-session-id]");
+        if (deleteButton) {
+            event.stopPropagation();
+            deleteChatSession(deleteButton.dataset.deleteSessionId);
+            return;
+        }
+
+        const menuButton = event.target.closest("[data-session-menu-id]");
+        if (menuButton) {
+            event.stopPropagation();
+            const item = menuButton.closest(".chat-session-item");
+            const menu = item?.querySelector("[data-session-menu]");
+            const shouldOpen = Boolean(menu?.hidden);
+            closeChatSessionMenus();
+            if (menu) {
+                menu.hidden = !shouldOpen;
+                menuButton.setAttribute("aria-expanded", String(shouldOpen));
+            }
+            return;
+        }
+
+        const item = event.target.closest(".chat-session-item[data-session-id]");
+        if (!item) return;
+        activeChatSessionId = item.dataset.sessionId;
         renderChatSessions();
         renderChatThread();
+    });
+
+    chatSessionList?.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        if (event.target.closest("button")) return;
+        const item = event.target.closest(".chat-session-item[data-session-id]");
+        if (!item) return;
+        event.preventDefault();
+        activeChatSessionId = item.dataset.sessionId;
+        renderChatSessions();
+        renderChatThread();
+    });
+
+    document.addEventListener("click", event => {
+        if (event.target.closest(".chat-session-item")) return;
+        closeChatSessionMenus();
     });
 
     notificationButton.addEventListener("click", () => {
