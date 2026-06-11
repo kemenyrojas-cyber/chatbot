@@ -179,6 +179,44 @@ try {
 function dot(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
 function norm(a) { return Math.sqrt(a.reduce((s, v) => s + v * v, 0)); }
 
+function mapOpenAiError(status, errorPayload) {
+  const message = errorPayload?.error?.message || '';
+  const code = errorPayload?.error?.code || '';
+
+  if (code === 'insufficient_quota') {
+    return {
+      status: 502,
+      error: 'La cuenta de OpenAI no tiene cuota disponible. Revisa billing, usage o usa una API key con saldo.'
+    };
+  }
+
+  if (status === 401) {
+    return {
+      status: 502,
+      error: 'La API key de OpenAI es inválida o no tiene permisos para este proyecto.'
+    };
+  }
+
+  if (status === 403) {
+    return {
+      status: 502,
+      error: 'La cuenta de OpenAI no tiene acceso al modelo configurado o a este recurso.'
+    };
+  }
+
+  if (status === 429) {
+    return {
+      status: 502,
+      error: 'OpenAI rechazó la solicitud por límite de uso o cuota. Intenta de nuevo o revisa tu plan.'
+    };
+  }
+
+  return {
+    status: 502,
+    error: message || 'Error conectando con OpenAI.'
+  };
+}
+
 // Detector robusto de consultas jurídicas
 function isLegalQuery(text) {
   if (!text) return false;
@@ -282,8 +320,15 @@ INSTRUCCIONES:
 
     if (!response.ok) {
       const errorBody = await response.text();
+      let parsedError = null;
+      try {
+        parsedError = JSON.parse(errorBody);
+      } catch {
+        parsedError = null;
+      }
       console.error('❌ Error OpenAI:', errorBody);
-      return res.status(502).json({ error: 'Error conectando con OpenAI' });
+      const mapped = mapOpenAiError(response.status, parsedError);
+      return res.status(mapped.status).json({ error: mapped.error, providerCode: parsedError?.error?.code || null });
     }
 
     const data = await response.json();
