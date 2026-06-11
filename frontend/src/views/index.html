@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260611-chat-topbar">
+    <link rel="stylesheet" href="/css/style.css?v=20260611-legal-workspace">
     <script>
         window.BACKEND_URL = window.location.origin;
     </script>
@@ -19,19 +19,21 @@
                 </span>
                 <div>
                     <h1>LEXIA <i class="fa-solid fa-scale-balanced brand-title-icon" aria-hidden="true"></i></h1>
-                    <p>Asesor Legal Inteligente con IA</p>
+                    <p>Espacio legal inteligente</p>
                 </div>
             </div>
 
             <nav class="side-nav" aria-label="Navegación principal">
                 <a class="nav-item active" href="#inicio" data-action="home"><span><i class="fa-solid fa-house icon" aria-hidden="true"></i></span> Inicio</a>
-                <a class="nav-item" href="#consulta-ia" data-action="new-query"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span> Nueva Consulta (IA)</a>
+                <a class="nav-item" href="#consulta-ia" data-action="new-query"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span> Consulta jurídica</a>
                 <a class="nav-item" href="#historial" data-action="history"><span><i class="fa-solid fa-clock-rotate-left icon" aria-hidden="true"></i></span> Historial</a>
                 <a class="nav-item" href="#documentos" data-action="documents"><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span> Documentos</a>
+                <a class="nav-item" href="#clientes" data-action="clients"><span><i class="fa-regular fa-address-book icon" aria-hidden="true"></i></span> Clientes</a>
+                <a class="nav-item" href="#casos" data-action="cases"><span><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i></span> Casos</a>
+                <a class="nav-item" href="#agenda" data-action="agenda"><span><i class="fa-regular fa-calendar-check icon" aria-hidden="true"></i></span> Agenda</a>
                 <a class="nav-item" href="#jurisprudencia" data-action="resources"><span><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i></span> Jurisprudencia</a>
                 <a class="nav-item" href="#normas" data-action="resources"><span><i class="fa-solid fa-landmark icon" aria-hidden="true"></i></span> Normas Legales</a>
                 <a class="nav-item" href="#plantillas" data-action="tools"><span><i class="fa-regular fa-clipboard icon" aria-hidden="true"></i></span> Modelos y Plantillas</a>
-                <a class="nav-item" href="#casos" data-action="history"><span><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i></span> Análisis de Casos</a>
                 <a class="nav-item" href="#favoritos" data-action="favorites"><span><i class="fa-regular fa-star icon" aria-hidden="true"></i></span> Favoritos</a>
             </nav>
 
@@ -99,13 +101,13 @@
             <div id="dashboardView">
                 <section class="consult-hero" id="consulta">
                     <div class="hero-content">
-                        <h2 id="heroTitle">Consulta cualquier tema legal con IA</h2>
-                        <p id="heroSubtitle">Respuestas precisas basadas en legislación peruana actualizada</p>
+                        <h2 id="heroTitle">Tu espacio legal operativo</h2>
+                        <p id="heroSubtitle">Consulta, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas en un solo lugar.</p>
                         <div class="hero-search">
                             <input
                                 type="text"
                                 id="messageInput"
-                                placeholder="Ejemplo: ¿Cuáles son los requisitos para una demanda de desalojo?"
+                                placeholder="Busca una norma, consulta un caso o prepara un documento..."
                                 autocomplete="off"
                             >
                             <button id="sendBtn" type="button">Consultar <i class="fa-solid fa-arrow-right icon" aria-hidden="true"></i></button>
@@ -131,7 +133,7 @@
                     </div>
 
                     <div class="quick-grid" id="roleQuickGrid">
-                        <article class="quick-card"><span><i class="fa-regular fa-square-plus icon" aria-hidden="true"></i></span><strong>Nueva Consulta</strong><small>Haz tu pregunta legal</small></article>
+                        <article class="quick-card"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span><strong>Consulta jurídica</strong><small>Pregunta, analiza y decide</small></article>
                     </div>
 
                     <div class="content-grid">
@@ -188,8 +190,8 @@
                 <aside class="chat-history-panel">
                     <div class="chat-history-head">
                         <div>
-                            <h3>Consultas IA</h3>
-                            <p>Historial jurídico por rol</p>
+                            <h3>Consultas jurídicas</h3>
+                            <p>Historial legal por rol</p>
                         </div>
                         <button type="button" class="chat-secondary-button" id="newChatSessionButton">
                             <i class="fa-solid fa-pen-to-square icon" aria-hidden="true"></i>
@@ -202,15 +204,15 @@
                 <section class="chat-thread-panel">
                     <div class="chat-thread-header">
                         <div>
-                            <h3 id="chatViewTitle">Asistente jurídico LEXIA</h3>
-                            <p id="chatViewSubtitle">Consulta legislación peruana, criterios y pasos procesales con enfoque profesional.</p>
+                            <h3 id="chatViewTitle">Consulta jurídica LEXIA</h3>
+                            <p id="chatViewSubtitle">Consulta leyes, jurisprudencia, normativa, documentos y criterios aplicables.</p>
                         </div>
                     </div>
 
                     <div class="chat-thread" id="chatThread"></div>
 
                     <div class="chat-composer">
-                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta legal. LEXIA responderá con enfoque en Derecho peruano."></textarea>
+                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta, caso, norma, documento o tarea legal..."></textarea>
                         <button id="chatComposerSend" type="button">
                             Enviar
                             <i class="fa-solid fa-arrow-up icon" aria-hidden="true"></i>
@@ -222,7 +224,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260611-chat-topbar"></script>
+    <script src="/js/app.js?v=20260611-legal-workspace"></script>
 </body>
 </html>
 

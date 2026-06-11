@@ -58,18 +58,21 @@ document.addEventListener("DOMContentLoaded", () => {
         "abogado-independiente": {
             label: "Abogado Independiente",
             greeting: "¡Hola, Abogado Independiente!",
-            subtitle: "Gestiona clientes, consultas, expedientes y vencimientos desde tu propio panel.",
+            subtitle: "Gestiona consultas, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas.",
             plan: "Cuenta profesional",
-            heroTitle: "Dashboard para práctica legal independiente",
-            heroSubtitle: "Consulta normas, prepara escritos, controla plazos y organiza tu cartera de clientes.",
+            heroTitle: "Espacio legal para tu práctica diaria",
+            heroSubtitle: "Centraliza consulta jurídica, jurisprudencia, normas, documentos, clientes, casos, agenda y plantillas.",
             activityTitle: "Casos y consultas recientes",
-            resourceTitle: "Normas y jurisprudencia clave",
+            resourceTitle: "Jurisprudencia y normativa clave",
             quick: [
-                ["fa-regular fa-square-plus", "Nueva consulta", "Haz tu pregunta legal"],
-                ["fa-regular fa-user", "Nuevo cliente", "Registra datos y caso"],
-                ["fa-regular fa-calendar-days", "Controlar plazo", "Calcula vencimientos procesales"],
-                ["fa-solid fa-upload", "Analizar documento", "Contratos, demandas o anexos"],
-                ["fa-regular fa-clipboard", "Generar escrito", "Modelos listos para editar"]
+                ["fa-regular fa-comment-dots", "Consulta jurídica", "Preguntas, casos y estrategia"],
+                ["fa-solid fa-scale-balanced", "Jurisprudencia", "Criterios para argumentar"],
+                ["fa-solid fa-landmark", "Normativa", "Leyes, códigos y requisitos"],
+                ["fa-regular fa-file-lines", "Documentos", "Contratos, demandas y anexos"],
+                ["fa-regular fa-address-book", "Clientes", "Datos, asuntos y seguimiento"],
+                ["fa-solid fa-briefcase", "Casos", "Materia, estado y riesgo"],
+                ["fa-regular fa-calendar-check", "Agenda", "Plazos, audiencias y tareas"],
+                ["fa-regular fa-clipboard", "Plantillas", "Modelos listos para adaptar"]
             ],
             resources: [
                 ["Código Civil", "Contratos, obligaciones y familia"],
@@ -80,10 +83,10 @@ document.addEventListener("DOMContentLoaded", () => {
             tools: [
                 ["fa-solid fa-calculator", "Calculadora de intereses", "Intereses legales y moratorios"],
                 ["fa-regular fa-calendar-days", "Plazos procesales", "Controla vencimientos"],
-                ["fa-regular fa-file-lines", "Resumen de expediente", "Sintetiza hechos y anexos"],
-                ["fa-solid fa-scale-balanced", "Matriz de argumentos", "Ordena pretensiones y pruebas"]
+                ["fa-regular fa-file-lines", "Gestor documental", "Organiza escritos y anexos"],
+                ["fa-solid fa-scale-balanced", "Matriz de caso", "Ordena hechos, pruebas y argumentos"]
             ],
-            features: ["Consultas ilimitadas", "Gestión de clientes", "Control de vencimientos", "Generación de escritos"]
+            features: ["Consulta jurídica", "Jurisprudencia y normativa", "Documentos y plantillas", "Clientes, casos y agenda"]
         },
         "estudio-juridico": {
             label: "Estudio Jurídico",
@@ -310,8 +313,8 @@ document.addEventListener("DOMContentLoaded", () => {
         roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["fa-regular fa-file-lines", item[0], item[1]], "")).join("");
         roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
         planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
-        chatViewTitle.textContent = `Consulta IA para ${config.label}`;
-        chatViewSubtitle.textContent = config.heroSubtitle;
+        chatViewTitle.textContent = `Consulta jurídica para ${config.label}`;
+        chatViewSubtitle.textContent = "Consulta leyes, jurisprudencia, normativa, documentos, casos y próximos pasos con enfoque profesional.";
         if (!getChatSessions().some(item => item.id === activeChatSessionId)) {
             activeChatSessionId = null;
         }
@@ -1219,9 +1222,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 notificationPanel.hidden = false;
                 notificationButton.setAttribute("aria-expanded", "true");
             }
-            if (["documents", "favorites", "deadlines", "profile", "settings"].includes(action)) {
+            if (["documents", "clients", "cases", "agenda", "favorites", "deadlines", "profile", "settings"].includes(action)) {
                 event.preventDefault();
-                addNotification("Sección sin datos registrados", "Todavía no hay información creada para esta sección.");
+                addNotification("Módulo listo para configurar", "Todavía no hay información registrada en esta sección.");
                 renderAppState();
                 notificationPanel.hidden = false;
                 notificationButton.setAttribute("aria-expanded", "true");
