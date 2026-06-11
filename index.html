@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <script>
-        window.BACKEND_URL = "http://localhost:3000";
+        window.BACKEND_URL = window.location.origin;
     </script>
 </head>
 <body>
@@ -25,7 +25,7 @@
 
             <nav class="side-nav" aria-label="Navegación principal">
                 <a class="nav-item active" href="#inicio" data-action="home"><span><i class="fa-solid fa-house icon" aria-hidden="true"></i></span> Inicio</a>
-                <a class="nav-item" href="#consulta" data-action="new-query"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span> Nueva Consulta</a>
+                <a class="nav-item" href="#consulta" data-action="new-query"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span> Nueva Consulta (IA)</a>
                 <a class="nav-item" href="#historial" data-action="history"><span><i class="fa-solid fa-clock-rotate-left icon" aria-hidden="true"></i></span> Historial</a>
                 <a class="nav-item" href="#documentos" data-action="documents"><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span> Documentos</a>
                 <a class="nav-item" href="#jurisprudencia" data-action="resources"><span><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i></span> Jurisprudencia</a>
@@ -96,90 +96,134 @@
                 </div>
             </header>
 
-            <section class="consult-hero" id="consulta">
-                <div class="hero-content">
-                    <h2 id="heroTitle">Consulta cualquier tema legal con IA</h2>
-                    <p id="heroSubtitle">Respuestas precisas basadas en legislación peruana actualizada</p>
-                    <div class="hero-search">
-                        <input
-                            type="text"
-                            id="messageInput"
-                            placeholder="Ejemplo: ¿Cuáles son los requisitos para una demanda de desalojo?"
-                            autocomplete="off"
-                        >
-                        <button id="sendBtn" type="button">Consultar <i class="fa-solid fa-arrow-right icon" aria-hidden="true"></i></button>
+            <div id="dashboardView">
+                <section class="consult-hero" id="consulta">
+                    <div class="hero-content">
+                        <h2 id="heroTitle">Consulta cualquier tema legal con IA</h2>
+                        <p id="heroSubtitle">Respuestas precisas basadas en legislación peruana actualizada</p>
+                        <div class="hero-search">
+                            <input
+                                type="text"
+                                id="messageInput"
+                                placeholder="Ejemplo: ¿Cuáles son los requisitos para una demanda de desalojo?"
+                                autocomplete="off"
+                            >
+                            <button id="sendBtn" type="button">Consultar <i class="fa-solid fa-arrow-right icon" aria-hidden="true"></i></button>
+                        </div>
+                        <div class="quick-actions">
+                            <button class="quick-btn" type="button"><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i> Civil</button>
+                            <button class="quick-btn" type="button"><i class="fa-solid fa-landmark icon" aria-hidden="true"></i> Penal</button>
+                            <button class="quick-btn" type="button"><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i> Laboral</button>
+                            <button class="quick-btn" type="button"><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i> Comercial</button>
+                            <button class="quick-btn" type="button"><i class="fa-regular fa-user icon" aria-hidden="true"></i> Familia</button>
+                            <button class="quick-btn" type="button"><i class="fa-solid fa-landmark icon" aria-hidden="true"></i> Administrativo</button>
+                        </div>
                     </div>
-                    <div class="quick-actions">
-                        <button class="quick-btn" type="button"><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i> Civil</button>
-                        <button class="quick-btn" type="button"><i class="fa-solid fa-landmark icon" aria-hidden="true"></i> Penal</button>
-                        <button class="quick-btn" type="button"><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i> Laboral</button>
-                        <button class="quick-btn" type="button"><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i> Comercial</button>
-                        <button class="quick-btn" type="button"><i class="fa-regular fa-user icon" aria-hidden="true"></i> Familia</button>
-                        <button class="quick-btn" type="button"><i class="fa-solid fa-landmark icon" aria-hidden="true"></i> Administrativo</button>
+                    <div class="hero-visual" aria-hidden="true">
+                        <img src="img/justice-scale.png" alt="" class="hero-scale-image">
                     </div>
-                </div>
-                <div class="hero-visual" aria-hidden="true">
-                    <img src="img/justice-scale.png" alt="" class="hero-scale-image">
-                </div>
-            </section>
+                </section>
 
-            <section class="workspace">
-                <div class="section-header">
-                    <h3>Accesos rápidos</h3>
-                    <button type="button" data-action="settings">Personalizar <i class="fa-solid fa-gear icon" aria-hidden="true"></i></button>
-                </div>
+                <section class="workspace">
+                    <div class="section-header">
+                        <h3>Accesos rápidos</h3>
+                        <button type="button" data-action="settings">Personalizar <i class="fa-solid fa-gear icon" aria-hidden="true"></i></button>
+                    </div>
 
-                <div class="quick-grid" id="roleQuickGrid">
-                    <article class="quick-card"><span><i class="fa-regular fa-square-plus icon" aria-hidden="true"></i></span><strong>Nueva Consulta</strong><small>Haz tu pregunta legal</small></article>
-                </div>
+                    <div class="quick-grid" id="roleQuickGrid">
+                        <article class="quick-card"><span><i class="fa-regular fa-square-plus icon" aria-hidden="true"></i></span><strong>Nueva Consulta</strong><small>Haz tu pregunta legal</small></article>
+                    </div>
 
-                <div class="content-grid">
-                    <section class="panel-card recent-panel" id="historial">
-                        <div class="panel-title">
-                            <h3 id="activityTitle">Actividad reciente</h3>
-                            <button type="button" id="clearHistoryButton">Limpiar</button>
-                        </div>
-                        <div class="recent-list" id="chatMessages"></div>
-                    </section>
-
-                    <section class="panel-card" id="jurisprudencia">
-                        <div class="panel-title">
-                            <h3 id="resourceTitle">Recursos destacados</h3>
-                            <button type="button">Ver todas</button>
-                        </div>
-                        <div class="law-list" id="roleResourceList">
-                            <article><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span><strong>Código Civil</strong><small>Actualizado</small></article>
-                        </div>
-                    </section>
-
-                    <aside class="right-stack">
-                        <section class="pro-card">
-                            <h3><i class="fa-solid fa-crown icon crown-icon" aria-hidden="true"></i> <span id="planTitle">LEXIA PRO</span></h3>
-                            <p id="planDescription">Tu plan actual se adaptará al rol seleccionado.</p>
-                            <ul id="planFeatures">
-                                <li>Selecciona un rol para ver tus módulos.</li>
-                            </ul>
-                            <button type="button">Gestionar plan</button>
-                        </section>
-
-                        <section class="stats-card">
+                    <div class="content-grid">
+                        <section class="panel-card recent-panel" id="historial">
                             <div class="panel-title">
-                                <h3>Estadísticas</h3>
-                                <button type="button">Este mes</button>
+                                <h3 id="activityTitle">Actividad reciente</h3>
+                                <button type="button" id="clearHistoryButton">Limpiar</button>
                             </div>
-                            <div id="roleStats">
-                                <div class="stat-row"><span>Consultas realizadas</span><strong>0</strong></div>
+                            <div class="recent-list" id="chatMessages"></div>
+                        </section>
+
+                        <section class="panel-card" id="jurisprudencia">
+                            <div class="panel-title">
+                                <h3 id="resourceTitle">Recursos destacados</h3>
+                                <button type="button">Ver todas</button>
+                            </div>
+                            <div class="law-list" id="roleResourceList">
+                                <article><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span><strong>Código Civil</strong><small>Actualizado</small></article>
                             </div>
                         </section>
-                    </aside>
 
-                    <section class="panel-card tools-panel" id="herramientas">
-                        <h3>Herramientas populares</h3>
-                        <div class="tools-grid" id="roleToolsGrid">
-                            <article><span><i class="fa-solid fa-calculator icon" aria-hidden="true"></i></span><strong>Calculadora de Intereses</strong><small>Intereses legales y moratorios</small></article>
+                        <aside class="right-stack">
+                            <section class="pro-card">
+                                <h3><i class="fa-solid fa-crown icon crown-icon" aria-hidden="true"></i> <span id="planTitle">LEXIA PRO</span></h3>
+                                <p id="planDescription">Tu plan actual se adaptará al rol seleccionado.</p>
+                                <ul id="planFeatures">
+                                    <li>Selecciona un rol para ver tus módulos.</li>
+                                </ul>
+                                <button type="button">Gestionar plan</button>
+                            </section>
+
+                            <section class="stats-card">
+                                <div class="panel-title">
+                                    <h3>Estadísticas</h3>
+                                    <button type="button">Este mes</button>
+                                </div>
+                                <div id="roleStats">
+                                    <div class="stat-row"><span>Consultas realizadas</span><strong>0</strong></div>
+                                </div>
+                            </section>
+                        </aside>
+
+                        <section class="panel-card tools-panel" id="herramientas">
+                            <h3>Herramientas populares</h3>
+                            <div class="tools-grid" id="roleToolsGrid">
+                                <article><span><i class="fa-solid fa-calculator icon" aria-hidden="true"></i></span><strong>Calculadora de Intereses</strong><small>Intereses legales y moratorios</small></article>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+            </div>
+
+            <section class="chat-view" id="legalChatView" hidden>
+                <aside class="chat-history-panel">
+                    <div class="chat-history-head">
+                        <div>
+                            <h3>Consultas IA</h3>
+                            <p>Historial jurídico por rol</p>
                         </div>
-                    </section>
-                </div>
+                        <button type="button" class="chat-secondary-button" id="newChatSessionButton">
+                            <i class="fa-solid fa-pen-to-square icon" aria-hidden="true"></i>
+                            Nueva
+                        </button>
+                    </div>
+                    <div class="chat-session-list" id="chatSessionList"></div>
+                </aside>
+
+                <section class="chat-thread-panel">
+                    <div class="chat-thread-header">
+                        <div>
+                            <h3 id="chatViewTitle">Asistente jurídico LEXIA</h3>
+                            <p id="chatViewSubtitle">Consulta legislación peruana, criterios y pasos procesales con enfoque profesional.</p>
+                        </div>
+                    </div>
+
+                    <div class="chat-thread" id="chatThread"></div>
+
+                    <div class="chat-suggestions" id="chatSuggestions">
+                        <button type="button" class="chat-suggestion">Redacta un análisis de contrato de arrendamiento</button>
+                        <button type="button" class="chat-suggestion">Resume los requisitos de una demanda civil</button>
+                        <button type="button" class="chat-suggestion">Explica diferencias entre hurto y robo</button>
+                        <button type="button" class="chat-suggestion">Identifica riesgos laborales en un despido</button>
+                    </div>
+
+                    <div class="chat-composer">
+                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta legal. LEXIA responderá con enfoque en Derecho peruano."></textarea>
+                        <button id="chatComposerSend" type="button">
+                            Enviar
+                            <i class="fa-solid fa-arrow-up icon" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </section>
             </section>
         </main>
     </div>

@@ -27,6 +27,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const planTitle = document.getElementById("planTitle");
     const planDescription = document.getElementById("planDescription");
     const planFeatures = document.getElementById("planFeatures");
+    const dashboardView = document.getElementById("dashboardView");
+    const legalChatView = document.getElementById("legalChatView");
+    const chatSessionList = document.getElementById("chatSessionList");
+    const chatThread = document.getElementById("chatThread");
+    const chatComposerInput = document.getElementById("chatComposerInput");
+    const chatComposerSend = document.getElementById("chatComposerSend");
+    const chatViewTitle = document.getElementById("chatViewTitle");
+    const chatViewSubtitle = document.getElementById("chatViewSubtitle");
+    const chatSuggestions = document.getElementById("chatSuggestions");
+    const newChatSessionButton = document.getElementById("newChatSessionButton");
 
     const roleAliases = {
         "abogado independiente": "abogado-independiente",
@@ -199,6 +209,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const storageKeys = {
         history: "lexiaHistory",
+        chats: "lexiaChats",
         notifications: "lexiaNotifications",
         documents: "lexiaDocuments",
         deadlines: "lexiaDeadlines",
@@ -206,6 +217,9 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     let currentRole = "abogado-independiente";
+    let currentView = "dashboard";
+    let activeChatSessionId = null;
+    let isSending = false;
 
     function loadList(key) {
         try {
@@ -255,6 +269,27 @@ document.addEventListener("DOMContentLoaded", () => {
         return `<article class="${className}"><span><i class="${icon} icon" aria-hidden="true"></i></span><strong>${title}</strong><small>${text}</small></article>`;
     }
 
+    function getChatSessions() {
+        return loadList(storageKeys.chats)
+            .filter(item => item.role === currentRole)
+            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    }
+
+    function saveChatSessions(nextSessions) {
+        const otherRoles = loadList(storageKeys.chats).filter(item => item.role !== currentRole);
+        saveList(storageKeys.chats, [...otherRoles, ...nextSessions].slice(-120));
+    }
+
+    function getActiveChatSession() {
+        const sessions = getChatSessions();
+        return sessions.find(item => item.id === activeChatSessionId) || null;
+    }
+
+    function buildRoleAssistantPrompt() {
+        const roleConfig = roleDashboards[currentRole] || roleDashboards["abogado-independiente"];
+        return `Actúa como LEXIA para el rol ${roleConfig.label}. Prioriza respuestas jurídicas útiles, estructuradas y accionables para ese perfil.`;
+    }
+
     function renderRole(role) {
         const selectedRole = roleDashboards[role] ? role : "abogado-independiente";
         const config = roleDashboards[selectedRole];
@@ -275,7 +310,14 @@ document.addEventListener("DOMContentLoaded", () => {
         roleResourceList.innerHTML = config.resources.map(item => renderIconArticle(["fa-regular fa-file-lines", item[0], item[1]], "")).join("");
         roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
         planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
+        chatViewTitle.textContent = `Consulta IA para ${config.label}`;
+        chatViewSubtitle.textContent = config.heroSubtitle;
+        if (!getChatSessions().some(item => item.id === activeChatSessionId)) {
+            activeChatSessionId = null;
+        }
         renderAppState();
+        renderChatSessions();
+        renderChatThread();
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -376,6 +418,113 @@ document.addEventListener("DOMContentLoaded", () => {
         renderHistory();
         renderNotifications();
         renderStats();
+    }
+
+    function updateNav(activeAction) {
+        document.querySelectorAll(".side-nav .nav-item").forEach(item => {
+            item.classList.toggle("active", item.dataset.action === activeAction);
+        });
+    }
+
+    function showView(viewName) {
+        currentView = viewName;
+        const showChat = viewName === "chat";
+        dashboardView.hidden = showChat;
+        legalChatView.hidden = !showChat;
+        updateNav(showChat ? "new-query" : "home");
+    }
+
+    function formatChatContent(content) {
+        return escapeHtml(content)
+            .replace(/\n{2,}/g, "</p><p>")
+            .replace(/\n/g, "<br>");
+    }
+
+    function createChatSession(initialQuestion = "") {
+        const sessionId = createId();
+        const title = initialQuestion.trim() || `Nueva consulta ${new Date().toLocaleDateString("es-PE")}`;
+        const nextSession = {
+            id: sessionId,
+            role: currentRole,
+            title: title.slice(0, 90),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messages: []
+        };
+        const sessions = getChatSessions();
+        saveChatSessions([nextSession, ...sessions]);
+        activeChatSessionId = sessionId;
+        return nextSession;
+    }
+
+    function upsertChatSession(session) {
+        const sessions = getChatSessions().filter(item => item.id !== session.id);
+        saveChatSessions([{ ...session, updatedAt: new Date().toISOString() }, ...sessions]);
+    }
+
+    function ensureActiveSession(initialQuestion = "") {
+        const currentSession = getActiveChatSession();
+        if (currentSession) return currentSession;
+        return createChatSession(initialQuestion);
+    }
+
+    function renderChatSessions() {
+        const sessions = getChatSessions();
+
+        if (!sessions.length) {
+            chatSessionList.innerHTML = `<div class="empty-state compact"><strong>Sin conversaciones.</strong><span>Inicia una consulta y quedará organizada aquí.</span></div>`;
+            return;
+        }
+
+        chatSessionList.innerHTML = sessions.map(item => `
+            <button class="chat-session-item ${item.id === activeChatSessionId ? "active" : ""}" type="button" data-session-id="${item.id}">
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(textOnly(item.messages[item.messages.length - 1]?.content || "Pendiente de consulta")).slice(0, 88)}</span>
+                <time>${formatDate(item.updatedAt)}</time>
+            </button>
+        `).join("");
+    }
+
+    function renderChatThread() {
+        const session = getActiveChatSession();
+
+        if (!session || !session.messages.length) {
+            chatThread.innerHTML = `
+                <div class="chat-empty">
+                    <strong>Consulta jurídica especializada</strong>
+                    <p>Abre una conversación y formula preguntas sobre contratos, procesos, jurisprudencia, escritos, riesgos o interpretación normativa.</p>
+                </div>
+            `;
+            return;
+        }
+
+        chatThread.innerHTML = session.messages.map(item => `
+            <article class="chat-message ${item.role}">
+                <div class="chat-message-meta">
+                    <strong>${item.role === "user" ? "Tú" : "LEXIA"}</strong>
+                    <span>${formatDate(item.createdAt)}</span>
+                </div>
+                <div class="chat-bubble"><p>${formatChatContent(item.content)}</p></div>
+            </article>
+        `).join("");
+
+        chatThread.scrollTop = chatThread.scrollHeight;
+    }
+
+    function openChatView(options = {}) {
+        const { draft = "", autoSend = false } = options;
+        showView("chat");
+        if (!activeChatSessionId) {
+            const existing = getChatSessions()[0];
+            activeChatSessionId = existing?.id || null;
+        }
+        renderChatSessions();
+        renderChatThread();
+        chatComposerInput.value = draft;
+        chatComposerInput.focus();
+        if (autoSend && draft.trim()) {
+            void sendMessage(draft);
+        }
     }
 
     function addMessage(text, type) {
@@ -804,39 +953,137 @@ document.addEventListener("DOMContentLoaded", () => {
         Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;
     }
 
-    async function sendMessage() {
-        const text = input.value.trim();
-        if (text === "") return;
+    async function sendMessage(initialText = "") {
+        const text = (typeof initialText === "string" && initialText ? initialText : chatComposerInput.value).trim();
+        if (!text || isSending) return;
 
-        addMessage(text, "user");
-        input.value = "";
+        isSending = true;
+        chatComposerSend.disabled = true;
 
-        const loadingMessage = document.createElement("div");
-        loadingMessage.className = "message bot loading";
-        loadingMessage.innerHTML = '<i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i> Procesando tu consulta legal...';
-        messages.appendChild(loadingMessage);
-        messages.scrollTop = messages.scrollHeight;
+        const session = ensureActiveSession(text);
+        const createdAt = new Date().toISOString();
+        const stableMessages = [...session.messages];
 
-        // Simular delay
-        await new Promise(resolve => setTimeout(resolve, 800));
+        if (!stableMessages.length) {
+            session.title = text.slice(0, 90);
+        }
 
-        // Obtener respuesta local
-        const botAnswer = getLocalResponse(text);
-        loadingMessage.remove();
-        addMessage(botAnswer, "bot");
-        addHistoryEntry(text, botAnswer);
+        session.messages = [
+            ...stableMessages,
+            { role: "user", content: text, createdAt },
+            { role: "system", content: "Procesando consulta jurídica...", createdAt }
+        ];
+        upsertChatSession(session);
+        renderChatSessions();
+        renderChatThread();
+        chatComposerInput.value = "";
+
+        try {
+            const endpointBase = window.BACKEND_URL || window.location.origin;
+            const response = await fetch(`${endpointBase}/api/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: `${buildRoleAssistantPrompt()}\n\nConsulta del usuario:\n${text}`
+                })
+            });
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error || "No se pudo obtener una respuesta jurídica.");
+            }
+
+            const answer = (data.answer || "").trim() || "No se obtuvo una respuesta válida.";
+            session.messages = [
+                ...stableMessages,
+                { role: "user", content: text, createdAt },
+                { role: "assistant", content: answer, createdAt: new Date().toISOString() }
+            ];
+            upsertChatSession(session);
+            addHistoryEntry(text, answer);
+            addNotification("Nueva respuesta de LEXIA", text.slice(0, 96));
+        } catch (error) {
+            session.messages = [
+                ...stableMessages,
+                { role: "user", content: text, createdAt },
+                {
+                    role: "assistant",
+                    content: `No pude completar la consulta en este momento. ${error.message || "Verifica la conexión del backend y la clave de OpenAI."}`,
+                    createdAt: new Date().toISOString()
+                }
+            ];
+            upsertChatSession(session);
+        } finally {
+            isSending = false;
+            chatComposerSend.disabled = false;
+            renderChatSessions();
+            renderChatThread();
+            renderAppState();
+            chatComposerInput.focus();
+        }
     }
 
-    sendBtn.addEventListener("click", sendMessage);
-    input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") sendMessage();
+    sendBtn.addEventListener("click", () => {
+        const draft = input.value.trim();
+        openChatView({ draft, autoSend: Boolean(draft) });
+        input.value = "";
+    });
+
+    input.addEventListener("keydown", event => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        const draft = input.value.trim();
+        openChatView({ draft, autoSend: Boolean(draft) });
+        input.value = "";
     });
 
     document.querySelectorAll(".quick-btn").forEach(btn => {
         btn.addEventListener("click", () => {
-            input.value = "Cuéntame sobre " + btn.textContent.trim();
-            sendMessage();
+            openChatView({ draft: `Explícame ${btn.textContent.trim()} en Derecho peruano.`, autoSend: true });
         });
+    });
+
+    roleQuickGrid?.addEventListener("click", event => {
+        const card = event.target.closest(".quick-card");
+        if (!card) return;
+        const title = card.querySelector("strong")?.textContent?.trim().toLowerCase() || "";
+        if (title.includes("consulta")) {
+            openChatView();
+        }
+    });
+
+    chatComposerSend?.addEventListener("click", () => {
+        void sendMessage();
+    });
+
+    chatComposerInput?.addEventListener("keydown", event => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            void sendMessage();
+        }
+    });
+
+    newChatSessionButton?.addEventListener("click", () => {
+        createChatSession();
+        renderChatSessions();
+        renderChatThread();
+        chatComposerInput.value = "";
+        chatComposerInput.focus();
+    });
+
+    chatSuggestions?.addEventListener("click", event => {
+        const button = event.target.closest(".chat-suggestion");
+        if (!button) return;
+        chatComposerInput.value = button.textContent.trim();
+        chatComposerInput.focus();
+    });
+
+    chatSessionList?.addEventListener("click", event => {
+        const button = event.target.closest("[data-session-id]");
+        if (!button) return;
+        activeChatSessionId = button.dataset.sessionId;
+        renderChatSessions();
+        renderChatThread();
     });
 
     notificationButton.addEventListener("click", () => {
@@ -882,10 +1129,15 @@ document.addEventListener("DOMContentLoaded", () => {
             const action = item.dataset.action;
             if (action === "new-query") {
                 event.preventDefault();
-                input.focus();
+                openChatView();
+            }
+            if (action === "home") {
+                event.preventDefault();
+                showView("dashboard");
             }
             if (action === "history") {
                 event.preventDefault();
+                showView("dashboard");
                 document.getElementById("historial").scrollIntoView({ behavior: "smooth", block: "start" });
             }
             if (action === "notifications") {
@@ -919,6 +1171,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function notificationWrapContains(target) {
         return notificationButton?.closest(".notification-wrap")?.contains(target) || false;
+    }
+
+    if (window.location.hash === "#consulta") {
+        openChatView();
+    } else {
+        showView("dashboard");
     }
 });
 
