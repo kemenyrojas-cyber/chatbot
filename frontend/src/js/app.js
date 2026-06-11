@@ -1025,7 +1025,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chatComposerInput.value = "";
 
         try {
-            const endpointBase = window.BACKEND_URL || window.location.origin;
+            const endpointBase = window.LEXIA_CONFIG?.apiBaseUrl || window.BACKEND_URL || window.location.origin;
             const response = await fetch(`${endpointBase}/api/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

@@ -3,8 +3,8 @@ services:
     name: lexia-backend
     env: node
     branch: main
-    buildCommand: npm install --prefix backend
-    startCommand: npm start --prefix backend
+    buildCommand: npm run build
+    startCommand: npm start
     plan: free
     envVars:
       - key: DATA_DIR

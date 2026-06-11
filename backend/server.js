@@ -15,6 +15,7 @@ require('dotenv').config({ path: path.join(projectRoot, '.env') });
 
 const app = express();
 const port = process.env.PORT || 3000;
+const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
 const openAiKey = process.env.OPENAI_API_KEY;
 const legacyDataDir = path.join(projectRoot, 'data');
 const dataDir = process.env.DATA_DIR || legacyDataDir;
@@ -781,7 +782,10 @@ app.listen(port, () => {
   console.log('\n' + '='.repeat(60));
   console.log('🚀 LEXIA - ASESOR JURÍDICO INTELIGENTE');
   console.log('='.repeat(60));
-  console.log(`\n🌐 Servidor: http://localhost:${port}`);
+  console.log(`\n🌐 Servidor local: http://localhost:${port}`);
+  if (publicUrl) {
+    console.log(`🌎 Servidor publico: ${publicUrl}`);
+  }
   console.log(`📚 Base de conocimiento: ${totalKB} KB`);
   console.log(`🔑 OpenAI: ${openAiKey ? '✅ Conectado' : '❌ No configurado'}`);
   console.log(`💱 Modelo: ${process.env.OPENAI_MODEL || 'gpt-3.5-turbo'}`);
