@@ -208,6 +208,14 @@ function isGreetingOnly(text) {
   return /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ola|hi|hello)( lexia)?$/.test(normalized);
 }
 
+function extractUserQuery(prompt) {
+  const text = String(prompt || '').trim();
+  const marker = 'Consulta del usuario:';
+  const markerIndex = text.lastIndexOf(marker);
+  if (markerIndex === -1) return text;
+  return text.slice(markerIndex + marker.length).trim();
+}
+
 function buildGreetingAnswer() {
   return [
     'Hola, soy LEXIA. Puedo ayudarte con consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas.',
@@ -604,7 +612,8 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
-    if (isGreetingOnly(prompt)) {
+    const userQuery = extractUserQuery(prompt);
+    if (isGreetingOnly(userQuery)) {
       return res.json({
         answer: buildGreetingAnswer(),
         results: [],
@@ -613,10 +622,10 @@ app.post('/api/chat', async (req, res) => {
         model: 'local-greeting'
       });
     }
-    const localResults = searchLegalKnowledgeBase(prompt);
+    const localResults = searchLegalKnowledgeBase(userQuery);
     if (!openAiKey) {
       return res.json({
-        answer: buildLegalKnowledgeAnswer(prompt, localResults),
+        answer: buildLegalKnowledgeAnswer(userQuery, localResults),
         results: localResults,
         source: 'LEXIA Legal Knowledge Base',
         fallback: true,
@@ -733,7 +742,7 @@ REGLAS:
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
       return res.json({
-        answer: buildLegalKnowledgeAnswer(prompt, localResults),
+        answer: buildLegalKnowledgeAnswer(userQuery, localResults),
         results: localResults,
         source: 'LEXIA Legal Knowledge Base',
         fallback: true,
@@ -753,7 +762,7 @@ REGLAS:
     });
   } catch (error) {
     console.error('❌ Error interno:', error);
-    const query = String(req.body?.prompt || '').trim();
+    const query = extractUserQuery(req.body?.prompt);
     const localResults = query ? searchLegalKnowledgeBase(query) : [];
     res.json({
       answer: query
