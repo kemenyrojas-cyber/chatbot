@@ -39,7 +39,8 @@
                 <div class="card-inner">
                     <h2 class="card-title" id="form-title">Iniciar sesión</h2>
                     <p class="card-text">Accede con tu correo registrado para continuar con la verificación.</p>
-                    <form class="auth-form" action="/app" method="get">
+                    <div class="auth-status" id="authStatus" hidden></div>
+                    <form class="auth-form" data-auth="login" action="/app" method="get">
                         <div class="field">
                             <label for="email">Correo electrónico</label>
                             <input id="email" name="email" type="email" placeholder="tu@correo.com" autocomplete="email" required>
@@ -59,5 +60,6 @@
             </section>
         </main>
     </div>
+    <script src="js/auth.js"></script>
 </body>
 </html>

@@ -277,7 +277,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const params = new URLSearchParams(window.location.search);
     const savedRole = normalizeRole(localStorage.getItem("lexiaRole"));
-    const initialRole = normalizeRole(params.get("role") || params.get("profile")) || savedRole || "abogado-independiente";
+    const session = window.LexiaAuth?.getSession?.() || null;
+    const currentEmail = params.get("email") || session?.email || "";
+    const currentAccount = currentEmail && window.LexiaAuth?.findAccount
+        ? window.LexiaAuth.findAccount(currentEmail)
+        : null;
+    const initialRole = normalizeRole(
+        params.get("role")
+        || params.get("profile")
+        || currentAccount?.profile
+        || session?.profile
+    ) || savedRole || "abogado-independiente";
     renderRole(initialRole);
 
     function getHistory() {

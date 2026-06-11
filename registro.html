@@ -39,7 +39,8 @@
                 <div class="card-inner">
                     <h2 class="card-title" id="form-title">Registrarse</h2>
                     <p class="card-text">Completa tus datos para continuar a la verificación de cuenta.</p>
-                    <form class="auth-form" action="/app" method="get">
+                    <div class="auth-status" id="authStatus" hidden></div>
+                    <form class="auth-form" data-auth="register" action="/app" method="get">
                         <div class="field">
                             <label for="name">Nombre completo</label>
                             <input id="name" name="name" type="text" placeholder="Nombre y apellido" autocomplete="name" required>
@@ -71,5 +72,6 @@
             </section>
         </main>
     </div>
+    <script src="js/auth.js"></script>
 </body>
 </html>
