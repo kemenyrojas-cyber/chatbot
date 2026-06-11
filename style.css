@@ -409,13 +409,14 @@ button {
 }
 
 .consult-hero {
-    min-height: 240px;
+    height: clamp(260px, 28vw, 420px);
     border: 1px solid rgba(64, 124, 214, 0.55);
     border-radius: 8px;
     background: linear-gradient(135deg, #0D2D7A 0%, #071B4A 56%, #0A2B6A 100%);
     color: #FFFFFF;
     display: grid;
     grid-template-columns: minmax(0, 1.28fr) minmax(260px, 0.72fr);
+    align-items: stretch;
     overflow: hidden;
 }
 
@@ -423,6 +424,7 @@ button {
     padding: 32px 24px 28px 32px;
     display: flex;
     flex-direction: column;
+    justify-content: center;
 }
 
 .hero-content h2 {
@@ -506,7 +508,7 @@ button {
 
 .hero-visual {
     position: relative;
-    min-height: 240px;
+    height: 100%;
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -530,7 +532,7 @@ button {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center 40%;
+    object-position: center center;
     mix-blend-mode: screen;
     filter: saturate(1.12) contrast(1.05) drop-shadow(0 0 20px rgba(0, 174, 255, 0.34));
 }
@@ -942,6 +944,7 @@ button {
     }
 
     .consult-hero {
+        height: auto;
         grid-template-columns: 1fr;
     }
 
