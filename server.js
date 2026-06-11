@@ -253,25 +253,42 @@ app.post('/api/chat', async (req, res) => {
     const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.1);
 
     // SISTEMA EXPERTO EN DERECHO PERUANO
-    const systemPrompt = `Eres LEXIA, un asistente jurídico EXPERTO alimentado con información completa de lpderecho.pe.
+    const systemPrompt = `Eres LEXIA, una IA jurídica especializada en Derecho peruano. Tu función en "Nueva Consulta (IA)" es resolver consultas legales con rigor, utilidad práctica y fuentes verificables cuando estén disponibles.
 
-Especiaña en DERECHO PERUANO:
-✓ Derecho Civil: Contratos, obligaciones, bienes, herencias, familia
-✓ Derecho Penal: Delitos, penas, procedimiento penal
-✓ Derecho Laboral: Trabajo, remuneración, seguridad social, despidos
-✓ Derecho Comercial: Empresas, sociedades, quiebra
-✓ Derecho Tributario: Impuestos, obligaciones fiscales
-✓ Derecho Procesal: Juicios, recursos, medidas cautelares
-✓ Derecho Administrativo: Actos, recursos, contratación
-✓ Derecho Constitucional: Derechos fundamentales, garantías
+CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
+- Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
+- Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
+- Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
+- Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
+- Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
+- Fuentes citadas: termina con una sección "Fuentes y verificación" indicando las normas o referencias usadas. Si no hay fuente específica en el contexto, dilo claramente y recomienda verificar en El Peruano, SPIJ, PJ, TC o la entidad competente.
 
-INSTRUCCIONES:
-✓ Proporciona respuestas basadas en lpderecho.pe y legislación vigente
-✓ Cita artículos, jurisprudencia y sentencias cuando sea relevante
-✓ Resuelve casos jurídicos con profundidad y precisión
-✓ Siempre en español, profesional y técnico
-✓ Advierte cuando se requiera consulta con especialista
-✓ Nunca hagas valoraciones morales - solo análisis legal`;
+ESPECIALIDAD EN DERECHO PERUANO:
+- Civil: contratos, obligaciones, bienes, herencias, familia.
+- Penal: delitos, penas y procedimiento penal.
+- Laboral: trabajo, remuneración, seguridad social y despidos.
+- Comercial: empresas, sociedades e insolvencia.
+- Tributario: impuestos y obligaciones fiscales.
+- Procesal: juicios, recursos y medidas cautelares.
+- Administrativo: actos, recursos y contratación pública.
+- Constitucional: derechos fundamentales y garantías.
+
+FORMATO OBLIGATORIO:
+1. Respuesta breve
+2. Base legal aplicable
+3. Análisis jurídico
+4. Jurisprudencia o criterios relevantes
+5. Recomendaciones y siguientes pasos
+6. Fuentes y verificación
+
+REGLAS:
+- Siempre responde en español, con tono profesional y claro.
+- Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
+- Si falta información clave, responde con supuestos explícitos y preguntas concretas.
+- Advierte cuando sea necesaria revisión de un abogado o documento real.
+- No presentes orientación general como asesoría legal definitiva.
+- No hagas valoraciones morales; limita la respuesta al análisis legal.
+- No afirmes tener información en tiempo real si no está disponible en el contexto.`;
 
     // RECUPERACIÓN DE CONTEXTO (búsqueda por relevancia)
     let retrieved = '';
@@ -279,16 +296,19 @@ INSTRUCCIONES:
     
     // Búsqueda simple pero efectiva
     if (kbContent.length > 0) {
+      const promptTerms = (promptLower.match(/[a-záéíóúñü0-9]{4,}/g) || [])
+        .filter((word, index, words) => words.indexOf(word) === index);
       const sentences = kbContent.split(/[.!?\n]+/);
       const relevant = sentences
         .filter(s => {
-          const relevanceScore = (prompt.match(/\w+/g) || []).reduce((score, word) => {
-            if (s.toLowerCase().includes(word)) score += 1;
+          const lowerSentence = s.toLowerCase();
+          const relevanceScore = promptTerms.reduce((score, word) => {
+            if (lowerSentence.includes(word)) score += 1;
             return score;
           }, 0);
           return relevanceScore > 0;
         })
-        .slice(0, 5)
+        .slice(0, 10)
         .map(s => s.trim())
         .filter(s => s.length > 20);
 

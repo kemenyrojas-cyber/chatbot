@@ -286,7 +286,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function buildRoleAssistantPrompt() {
         const roleConfig = roleDashboards[currentRole] || roleDashboards["abogado-independiente"];
-        return `Actúa como LEXIA para el rol ${roleConfig.label}. Prioriza respuestas jurídicas útiles, estructuradas y accionables para ese perfil.`;
+        return `Actúa como LEXIA para el rol ${roleConfig.label}. Responde como IA jurídica peruana con consulta de leyes, análisis de casos, jurisprudencia o criterios cuando existan, sugerencias inteligentes y fuentes citadas o rutas de verificación. Adapta la profundidad y lenguaje al perfil del usuario.`;
     }
 
     function renderRole(role) {
