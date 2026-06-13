@@ -36,15 +36,21 @@ function normalizeEmail(email) {
 
 function ensureAccountsStore() {
   const accountsDir = path.dirname(accountsPath);
-  if (!fs.existsSync(accountsDir)) {
-    fs.mkdirSync(accountsDir, { recursive: true });
-  }
-  if (!fs.existsSync(accountsPath)) {
-    if (accountsPath !== legacyAccountsPath && fs.existsSync(legacyAccountsPath)) {
-      fs.copyFileSync(legacyAccountsPath, accountsPath);
-    } else {
-      fs.writeFileSync(accountsPath, '[]', 'utf8');
+  try {
+    if (!fs.existsSync(accountsDir)) {
+      fs.mkdirSync(accountsDir, { recursive: true });
     }
+    if (!fs.existsSync(accountsPath)) {
+      if (accountsPath !== legacyAccountsPath && fs.existsSync(legacyAccountsPath)) {
+        fs.copyFileSync(legacyAccountsPath, accountsPath);
+      } else {
+        fs.writeFileSync(accountsPath, '[]', 'utf8');
+      }
+    }
+    fs.accessSync(accountsDir, fs.constants.R_OK | fs.constants.W_OK);
+    fs.accessSync(accountsPath, fs.constants.R_OK | fs.constants.W_OK);
+  } catch (error) {
+    throw new Error(`No se puede usar el archivo de cuentas en ${accountsPath}: ${error.message}`);
   }
 }
 
@@ -54,14 +60,40 @@ function readAccounts() {
     const raw = fs.readFileSync(accountsPath, 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  } catch (error) {
+    console.error('No se pudo leer accounts.json:', error.message);
+    throw new Error('No se pudo leer la base de cuentas.');
   }
 }
 
 function writeAccounts(accounts) {
   ensureAccountsStore();
-  fs.writeFileSync(accountsPath, JSON.stringify(accounts, null, 2), 'utf8');
+  const tempPath = `${accountsPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(accounts, null, 2), 'utf8');
+  fs.renameSync(tempPath, accountsPath);
+}
+
+function getAccountsStoreStatus() {
+  try {
+    ensureAccountsStore();
+    const stats = fs.statSync(accountsPath);
+    return {
+      ok: true,
+      dataDir,
+      accountsPath,
+      usingPersistentDataDir: dataDir === '/var/data',
+      accounts: readAccounts().length,
+      updatedAt: stats.mtime.toISOString()
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      dataDir,
+      accountsPath,
+      usingPersistentDataDir: dataDir === '/var/data',
+      error: error.message
+    };
+  }
 }
 
 function sanitizeAccount(account) {
@@ -97,61 +129,83 @@ app.get('/recuperar-password', (req, res) => {
   res.sendFile(path.join(viewsRoot, 'recuperar-password.html'));
 });
 
+app.get('/api/auth/status', (req, res) => {
+  const status = getAccountsStoreStatus();
+  return res.status(status.ok ? 200 : 500).json(status);
+});
+
 app.get('/api/auth/account', (req, res) => {
-  const email = normalizeEmail(req.query.email);
-  if (!email) {
-    return res.status(400).json({ error: 'El correo es obligatorio.' });
-  }
+  try {
+    const email = normalizeEmail(req.query.email);
+    if (!email) {
+      return res.status(400).json({ error: 'El correo es obligatorio.' });
+    }
 
-  const account = readAccounts().find(item => normalizeEmail(item.email) === email);
-  if (!account) {
-    return res.status(404).json({ error: 'Ese correo no está registrado.' });
-  }
+    const account = readAccounts().find(item => normalizeEmail(item.email) === email);
+    if (!account) {
+      return res.status(404).json({ error: 'Ese correo no está registrado.' });
+    }
 
-  return res.json({ account: sanitizeAccount(account) });
+    return res.json({ account: sanitizeAccount(account) });
+  } catch (error) {
+    console.error('Error consultando cuenta:', error.message);
+    return res.status(500).json({ error: 'No se pudo consultar la base de cuentas.' });
+  }
 });
 
 app.post('/api/auth/register', (req, res) => {
-  const email = normalizeEmail(req.body?.email);
-  const password = String(req.body?.password || '');
-  const name = String(req.body?.name || '').trim();
-  const profile = String(req.body?.profile || '').trim();
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    const name = String(req.body?.name || '').trim();
+    const profile = String(req.body?.profile || '').trim();
 
-  if (!name || !email || !password || !profile) {
-    return res.status(400).json({ error: 'Completa todos los campos requeridos.' });
+    if (!name || !email || !password || !profile) {
+      return res.status(400).json({ error: 'Completa todos los campos requeridos.' });
+    }
+
+    const accounts = readAccounts();
+    const existing = accounts.find(item => normalizeEmail(item.email) === email);
+    if (existing) {
+      return res.status(409).json({ error: 'Ese correo ya está registrado.' });
+    }
+
+    const account = { email, password, name, profile, createdAt: new Date().toISOString() };
+    accounts.push(account);
+    writeAccounts(accounts);
+
+    return res.status(201).json({ account: sanitizeAccount(account) });
+  } catch (error) {
+    console.error('Error registrando cuenta:', error.message);
+    return res.status(500).json({
+      error: 'No se pudo guardar la cuenta. Revisa que Render tenga DATA_DIR=/var/data y un disk montado en /var/data.'
+    });
   }
-
-  const accounts = readAccounts();
-  const existing = accounts.find(item => normalizeEmail(item.email) === email);
-  if (existing) {
-    return res.status(409).json({ error: 'Ese correo ya está registrado.' });
-  }
-
-  const account = { email, password, name, profile, createdAt: new Date().toISOString() };
-  accounts.push(account);
-  writeAccounts(accounts);
-
-  return res.status(201).json({ account: sanitizeAccount(account) });
 });
 
 app.post('/api/auth/login', (req, res) => {
-  const email = normalizeEmail(req.body?.email);
-  const password = String(req.body?.password || '');
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Correo y contraseña son obligatorios.' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Correo y contraseña son obligatorios.' });
+    }
+
+    const account = readAccounts().find(item => normalizeEmail(item.email) === email);
+    if (!account) {
+      return res.status(404).json({ field: 'email', error: 'Ese correo no está registrado.' });
+    }
+
+    if (String(account.password || '') !== password) {
+      return res.status(401).json({ field: 'password', error: 'La contraseña es incorrecta.' });
+    }
+
+    return res.json({ account: sanitizeAccount(account) });
+  } catch (error) {
+    console.error('Error iniciando sesión:', error.message);
+    return res.status(500).json({ error: 'No se pudo leer la base de cuentas.' });
   }
-
-  const account = readAccounts().find(item => normalizeEmail(item.email) === email);
-  if (!account) {
-    return res.status(404).json({ field: 'email', error: 'Ese correo no está registrado.' });
-  }
-
-  if (String(account.password || '') !== password) {
-    return res.status(401).json({ field: 'password', error: 'La contraseña es incorrecta.' });
-  }
-
-  return res.json({ account: sanitizeAccount(account) });
 });
 
 // CARGA TODAS las bases de conocimiento
@@ -202,6 +256,144 @@ function getQueryTerms(query) {
   return normalizeText(query)
     .split(' ')
     .filter(term => term.length >= 3 && !stopwords.has(term));
+}
+
+const legalIntentTypes = [
+  {
+    id: 'consulta_informativa',
+    label: 'Consulta informativa',
+    patterns: [
+      'quiero saber', 'quisiera saber', 'necesito saber', 'que es', 'qué es',
+      'explicame', 'explícame', 'informacion sobre', 'información sobre',
+      'saber sobre', 'hablame de', 'háblame de', 'consulta sobre'
+    ]
+  },
+  {
+    id: 'analisis_caso',
+    label: 'Análisis de caso',
+    patterns: [
+      'mi caso', 'me paso', 'me pasó', 'denuncie', 'denuncié', 'me denunciaron',
+      'me demandaron', 'quiero demandar', 'puedo denunciar', 'puedo demandar',
+      'que puedo hacer', 'qué puedo hacer'
+    ]
+  },
+  {
+    id: 'redaccion_documento',
+    label: 'Redacción o revisión de documento',
+    patterns: [
+      'redacta', 'prepara', 'modelo de', 'plantilla', 'contrato de',
+      'demanda de', 'carta notarial', 'escrito', 'revisar documento'
+    ]
+  },
+  {
+    id: 'busqueda_jurisprudencia',
+    label: 'Búsqueda de jurisprudencia',
+    patterns: [
+      'jurisprudencia', 'casacion', 'casación', 'sentencia', 'precedente',
+      'criterio del tribunal', 'criterio de la corte'
+    ]
+  }
+];
+
+const legalAreas = [
+  {
+    id: 'derecho_penal',
+    label: 'Derecho Penal',
+    keywords: [
+      'penal', 'delito', 'denuncia', 'fiscalia', 'fiscalía', 'pena', 'prision', 'prisión',
+      'extorsion', 'extorsión', 'robo', 'hurto', 'estafa', 'fraude', 'homicidio',
+      'lesiones', 'amenaza', 'amenazas', 'violencia', 'coaccion', 'coacción',
+      'secuestro', 'difamacion', 'difamación', 'injuria', 'calumnia'
+    ],
+    topics: [
+      { id: 'extorsion', label: 'Extorsión', keywords: ['extorsion', 'extorsión', 'chantaje', 'amenaza para pagar', 'cobro de cupos'] },
+      { id: 'robo', label: 'Robo', keywords: ['robo', 'asaltaron', 'asalto'] },
+      { id: 'hurto', label: 'Hurto', keywords: ['hurto', 'sustraccion', 'sustracción'] },
+      { id: 'estafa', label: 'Estafa', keywords: ['estafa', 'fraude', 'engaño'] },
+      { id: 'difamacion', label: 'Difamación', keywords: ['difamacion', 'difamación', 'injuria', 'calumnia'] }
+    ]
+  },
+  {
+    id: 'derecho_laboral',
+    label: 'Derecho Laboral',
+    keywords: ['laboral', 'trabajo', 'despido', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'empleador'],
+    topics: [
+      { id: 'despido', label: 'Despido', keywords: ['despido', 'despidieron', 'despedido'] },
+      { id: 'beneficios_sociales', label: 'Beneficios sociales', keywords: ['cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'] }
+    ]
+  },
+  {
+    id: 'derecho_civil',
+    label: 'Derecho Civil',
+    keywords: ['civil', 'contrato', 'compraventa', 'propiedad', 'posesion', 'posesión', 'inmueble', 'herencia', 'sucesion', 'sucesión'],
+    topics: [
+      { id: 'contrato', label: 'Contrato', keywords: ['contrato', 'clausula', 'cláusula'] },
+      { id: 'compraventa', label: 'Compraventa', keywords: ['compraventa', 'compra venta'] },
+      { id: 'posesion', label: 'Posesión', keywords: ['posesion', 'posesión', 'posesion precaria', 'posesión precaria'] },
+      { id: 'herencia', label: 'Herencia', keywords: ['herencia', 'sucesion', 'sucesión', 'testamento'] }
+    ]
+  },
+  {
+    id: 'derecho_familia',
+    label: 'Derecho de Familia',
+    keywords: ['familia', 'alimentos', 'divorcio', 'tenencia', 'visitas', 'custodia', 'patria potestad'],
+    topics: [
+      { id: 'alimentos', label: 'Alimentos', keywords: ['alimentos', 'pension alimenticia', 'pensión alimenticia'] },
+      { id: 'divorcio', label: 'Divorcio', keywords: ['divorcio', 'separacion', 'separación'] },
+      { id: 'tenencia', label: 'Tenencia', keywords: ['tenencia', 'custodia', 'visitas'] }
+    ]
+  },
+  {
+    id: 'derecho_administrativo',
+    label: 'Derecho Administrativo',
+    keywords: ['administrativo', 'municipalidad', 'entidad publica', 'entidad pública', 'procedimiento administrativo', 'sancion', 'sanción', 'multa'],
+    topics: [
+      { id: 'multa', label: 'Multa administrativa', keywords: ['multa', 'sancion', 'sanción'] },
+      { id: 'procedimiento_administrativo', label: 'Procedimiento administrativo', keywords: ['procedimiento administrativo', 'recurso administrativo'] }
+    ]
+  },
+  {
+    id: 'derecho_tributario',
+    label: 'Derecho Tributario',
+    keywords: ['tributario', 'sunat', 'impuesto', 'igv', 'renta', 'fiscalizacion', 'fiscalización'],
+    topics: [
+      { id: 'impuestos', label: 'Impuestos', keywords: ['impuesto', 'igv', 'renta'] },
+      { id: 'fiscalizacion', label: 'Fiscalización tributaria', keywords: ['fiscalizacion', 'fiscalización', 'sunat'] }
+    ]
+  }
+];
+
+function includesAny(normalizedText, patterns) {
+  return patterns.some(pattern => normalizedText.includes(normalizeText(pattern)));
+}
+
+function classifyLegalIntent(query) {
+  const normalized = normalizeText(query);
+  const terms = getQueryTerms(query);
+  const matchedType = legalIntentTypes.find(type => includesAny(normalized, type.patterns));
+  const matchedArea = legalAreas.find(area => includesAny(normalized, area.keywords));
+  const matchedTopic = matchedArea?.topics.find(topic => includesAny(normalized, topic.keywords));
+  const fallbackTopic = terms.length ? terms.join(' ') : '';
+
+  return {
+    type: {
+      id: matchedType?.id || 'consulta_general',
+      label: matchedType?.label || 'Consulta general',
+      confidence: matchedType ? 'alta' : 'baja'
+    },
+    area: {
+      id: matchedArea?.id || 'area_no_determinada',
+      label: matchedArea?.label || 'Área no determinada',
+      confidence: matchedArea ? 'alta' : 'baja'
+    },
+    topic: {
+      id: matchedTopic?.id || (fallbackTopic ? fallbackTopic.replace(/\s+/g, '_') : 'tema_no_determinado'),
+      label: matchedTopic?.label || fallbackTopic || 'Tema no determinado',
+      confidence: matchedTopic ? 'alta' : (fallbackTopic ? 'media' : 'baja')
+    },
+    originalQuery: String(query || '').trim(),
+    needsMoreFacts: !matchedArea || !matchedTopic
+  };
 }
 
 function isGreetingOnly(text) {
@@ -330,7 +522,7 @@ function getLegalKnowledgeCounts() {
 
 function buildLegalKnowledgeAnswer(query, results) {
   if (!results.length) {
-    return `LEXIA no encontró coincidencias directas para "${query}" en la base jurídica local.\n\nPrueba con materia, institución jurídica, norma, expediente, casación o palabras clave más específicas.`;
+    return `Entiendo la consulta sobre "${query}". En la base jurídica local no encontré una coincidencia directa con esos términos.\n\nPara ayudarte mejor, prueba agregando un dato concreto: la materia, la institución jurídica, la norma, el expediente, una casación o el hecho principal. Por ejemplo: "despido arbitrario con contrato indeterminado" o "posesión precaria sin contrato escrito".`;
   }
 
   const labels = {
@@ -347,9 +539,9 @@ function buildLegalKnowledgeAnswer(query, results) {
   }, {});
 
   const lines = [
-    `LEXIA encontró ${results.length} resultado(s) en la base jurídica local para "${query}".`,
+    `Revisé la base jurídica local para "${query}" y encontré ${results.length} resultado(s) que pueden servirte como punto de partida.`,
     '',
-    'Resultados ordenados por relevancia:'
+    'Te los ordeno por relevancia para que puedas ubicar primero lo más cercano al caso:'
   ];
 
   Object.entries(grouped).forEach(([label, items]) => {
@@ -362,7 +554,135 @@ function buildLegalKnowledgeAnswer(query, results) {
     });
   });
 
+  lines.push('', 'Siguiente paso sugerido: revisa si alguno de estos resultados coincide con los hechos de tu caso. Si me das más detalles, puedo ayudarte a convertirlo en una explicación más clara y práctica.');
   lines.push('', 'Nota: respuesta generada con Legal Knowledge Base local de LEXIA, sin IA generativa.');
+  return lines.join('\n');
+}
+
+function filterSourcesForIntent(results, intent) {
+  const topic = normalizeText(intent?.topic?.label || '');
+  const topicId = normalizeText(intent?.topic?.id || '');
+  const area = normalizeText(intent?.area?.label || '');
+  const hasSpecificTopic = topic && !['tema no determinado', ''].includes(topic);
+
+  return results.filter(item => {
+    const sourceText = normalizeText([
+      item.titulo,
+      item.title,
+      item.materia,
+      item.fuente,
+      item.source,
+      item.resumen,
+      item.excerpt,
+      item.contenido,
+      item.content
+    ].join(' '));
+
+    if (hasSpecificTopic && (sourceText.includes(topic) || sourceText.includes(topicId))) return true;
+    if (!hasSpecificTopic && area && sourceText.includes(area)) return true;
+    return false;
+  });
+}
+
+function buildSourceSummary(results, intent, limit = 3) {
+  const relevantSources = filterSourcesForIntent(results, intent);
+
+  if (!relevantSources.length) {
+    return [
+      'Fuentes y verificación',
+      `No encontré una fuente específica sobre ${intent?.topic?.label || 'este tema'} en la base local. Conviene verificar la norma aplicable en El Peruano, SPIJ, Ministerio Público, Poder Judicial o la entidad competente.`
+    ].join('\n');
+  }
+
+  const lines = ['Fuentes y verificación'];
+  relevantSources.slice(0, limit).forEach((item, index) => {
+    const title = item.titulo || item.title || 'Referencia jurídica';
+    const source = item.fuente || item.source || 'Base jurídica local LEXIA';
+    const matter = item.materia ? ` | Materia: ${item.materia}` : '';
+    const url = item.url ? `\nURL: ${item.url}` : '';
+    lines.push(`${index + 1}. ${title} | Fuente: ${source}${matter}${url}`);
+  });
+  return lines.join('\n');
+}
+
+function buildTopicGuidance(intent) {
+  const topicId = intent?.topic?.id || '';
+  const areaId = intent?.area?.id || '';
+
+  if (topicId === 'extorsion') {
+    return [
+      'La extorsión, en palabras simples, ocurre cuando alguien usa amenazas, violencia o presión ilegítima para obligar a otra persona a entregar dinero, bienes, hacer algo o dejar de hacer algo.',
+      '',
+      'En un caso así, lo más importante es no manejarlo solo. Guarda mensajes, audios, números, capturas, cuentas bancarias, nombres o cualquier dato que permita identificar a la persona. Evita borrar conversaciones y no acuerdes pagos sin orientación, porque eso puede aumentar el riesgo.',
+      '',
+      'Como primer paso práctico, conviene hacer la denuncia ante la Policía Nacional o el Ministerio Público. Si hay amenaza inmediata contra tu vida, familia o negocio, prioriza tu seguridad y busca ayuda urgente.'
+    ];
+  }
+
+  if (topicId === 'robo') {
+    return [
+      'El robo implica apoderarse de un bien ajeno usando violencia o amenaza. Esa violencia o intimidación es lo que lo diferencia del hurto.',
+      '',
+      'Si ocurrió recientemente, conviene denunciar cuanto antes, conservar pruebas, identificar testigos y guardar cualquier documento, foto o video relacionado.'
+    ];
+  }
+
+  if (topicId === 'hurto') {
+    return [
+      'El hurto es la sustracción de un bien ajeno sin violencia ni amenaza directa contra la persona.',
+      '',
+      'Para orientarte mejor habría que revisar qué bien fue sustraído, cómo ocurrió, si hay cámaras, testigos o documentos que acrediten propiedad.'
+    ];
+  }
+
+  if (topicId === 'despido') {
+    return [
+      'En un despido, lo primero es revisar si hubo una causa legal válida y si el empleador siguió el procedimiento correcto.',
+      '',
+      'Guarda contrato, boletas, carta de despido, correos, mensajes, asistencia y cualquier prueba de la relación laboral.'
+    ];
+  }
+
+  if (topicId === 'divorcio') {
+    return [
+      'En divorcio, la ruta depende de si ambas partes están de acuerdo y de si hay hijos, bienes o pensión de alimentos por resolver.',
+      '',
+      'Antes de elegir la vía, conviene ordenar partida de matrimonio, documentos de hijos, bienes comunes y acuerdos posibles.'
+    ];
+  }
+
+  if (areaId === 'derecho_penal') {
+    return [
+      'Por lo que escribes, estamos ante una consulta de Derecho Penal. En estos temas importa mucho distinguir si buscas información general, si eres víctima, si te investigan o si ya existe denuncia.',
+      '',
+      'Cuéntame qué ocurrió, cuándo pasó, si hay denuncia y qué pruebas tienes para orientarte con más precisión.'
+    ];
+  }
+
+  return [
+    `Entiendo que quieres orientación sobre ${intent?.topic?.label || 'este tema'}. Con la información actual puedo darte una guía general, pero para afinarla necesito algunos datos del caso.`,
+    '',
+    'Lo más útil es saber qué ocurrió, cuándo ocurrió, qué documentos o pruebas existen y qué resultado buscas.'
+  ];
+}
+
+function buildConversationalLegalAnswer(query, intent, results) {
+  const lines = [
+    `Entiendo. Tu consulta parece ser una ${intent.type.label.toLowerCase()} sobre ${intent.topic.label}, dentro de ${intent.area.label}.`,
+    ''
+  ];
+
+  lines.push(...buildTopicGuidance(intent));
+  lines.push('');
+  lines.push('Para orientarte mejor, dime por favor:');
+  lines.push('1. ¿Esto te pasó a ti, a un familiar o solo quieres información general?');
+  lines.push('2. ¿Hubo amenazas, mensajes, llamadas, cobros o exigencia de dinero?');
+  lines.push('3. ¿Ya hiciste denuncia o todavía estás evaluando qué hacer?');
+  lines.push('');
+  lines.push('Esto es orientación general. Si hay riesgo actual o amenazas concretas, conviene buscar apoyo inmediato de la autoridad competente y asesoría legal directa.');
+  lines.push('');
+  lines.push(buildSourceSummary(results, intent));
+
   return lines.join('\n');
 }
 
@@ -466,7 +786,7 @@ function searchLegalEngine(query, limit = 12) {
 
 function buildLocalLegalAnswer(query, results) {
   if (!results.length) {
-    return `LEXIA no encontró coincidencias directas para "${query}" en la base jurídica local.\n\nSugerencia: prueba con términos más específicos como materia, norma, institución jurídica o hecho relevante.`;
+    return `Entiendo tu consulta sobre "${query}". Con esos términos no encontré una coincidencia directa en la base jurídica local.\n\nPara orientarte mejor, agrega datos como materia, norma, institución jurídica, documento disponible, fecha aproximada o el hecho principal. Con eso puedo acercarme más a tu situación.`;
   }
 
   const grouped = results.reduce((acc, item) => {
@@ -482,9 +802,9 @@ function buildLocalLegalAnswer(query, results) {
   }, {});
 
   const lines = [
-    `LEXIA encontró ${results.length} resultado(s) jurídicos locales para "${query}".`,
+    `Revisé la base jurídica local para "${query}" y encontré ${results.length} resultado(s) jurídicos relacionados.`,
     '',
-    'Resultados ordenados por relevancia:'
+    'Te muestro primero los más relevantes:'
   ];
 
   Object.entries(grouped).forEach(([label, items]) => {
@@ -496,6 +816,7 @@ function buildLocalLegalAnswer(query, results) {
     });
   });
 
+  lines.push('', 'Si quieres, puedes contarme los hechos principales del caso y usaré estos resultados para darte una orientación más conversada y práctica.');
   lines.push('', 'Nota: respuesta generada con el motor jurídico local de LEXIA, sin IA generativa.');
   return lines.join('\n');
 }
@@ -566,13 +887,25 @@ function isLegalQuery(text) {
     'arrendamiento','propiedad','posesión','acción','proceso','litigación','juicio','sentencia','recurso',
     'apelación','casación','habeas corpus','amparo','tutela','mandato','poder','procuración','notario',
     'escritura','registro','hipoteca','embargo','secuestro','incautación','multa','sanción','pena',
-    'prisión','indemnización','daño','perjuicio','responsabilidad','culpa','negligencia','fraude','estafa',
+    'prisión','indemnización','daño','perjuicio','responsabilidad','culpa','negligencia','fraude','estafa','extorsión','extorsion',
     'robo','hurto','violencia','acoso','difamación','injuria','calumnia','agresión','asalto','homicidio',
     'aborto','adopción','patria potestad','guarda','visita','pensión','renta','cuota','arancel','honorario',
     'empresa','sociedad','quiebra','insolvencia','liquidación','ley','código','articulado','inciso'
   ];
   return keywords.some(k => text.toLowerCase().includes(k));
 }
+
+app.post('/api/legal-intent', (req, res) => {
+  const query = String(req.body?.query || req.body?.prompt || '').trim();
+  if (!query) {
+    return res.status(400).json({ error: 'La consulta es obligatoria.' });
+  }
+
+  return res.json({
+    query,
+    intent: classifyLegalIntent(extractUserQuery(query))
+  });
+});
 
 app.post('/api/legal-query', (req, res) => {
   const query = String(req.body?.query || '').trim();
@@ -583,6 +916,7 @@ app.post('/api/legal-query', (req, res) => {
   const results = searchLegalEngine(query);
   return res.json({
     query,
+    intent: classifyLegalIntent(query),
     results,
     searched: shouldSearchLegalEngine(query),
     collections: {
@@ -603,6 +937,7 @@ app.post('/api/legal-search', (req, res) => {
   const results = searchLegalKnowledgeBase(query);
   return res.json({
     query,
+    intent: classifyLegalIntent(query),
     results,
     searched: shouldSearchLegalEngine(query),
     modules: getLegalKnowledgeCounts()
@@ -614,9 +949,11 @@ app.post('/api/chat', async (req, res) => {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
     const userQuery = extractUserQuery(prompt);
+    const intent = classifyLegalIntent(userQuery);
     if (isGreetingOnly(userQuery)) {
       return res.json({
         answer: buildGreetingAnswer(),
+        intent,
         results: [],
         source: 'LEXIA',
         fallback: false,
@@ -626,7 +963,8 @@ app.post('/api/chat', async (req, res) => {
     const localResults = searchLegalKnowledgeBase(userQuery);
     if (!openAiKey) {
       return res.json({
-        answer: buildLegalKnowledgeAnswer(userQuery, localResults),
+        answer: buildConversationalLegalAnswer(userQuery, intent, localResults),
+        intent,
         results: localResults,
         source: 'LEXIA Legal Knowledge Base',
         fallback: true,
@@ -637,10 +975,18 @@ app.post('/api/chat', async (req, res) => {
     // CONFIG
     const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
     const embModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
-    const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.1);
+    const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
 
     // SISTEMA EXPERTO EN DERECHO PERUANO
-    const systemPrompt = `Eres LEXIA, una IA jurídica especializada en Derecho peruano. Tu función en "Nueva Consulta (IA)" es resolver consultas legales con rigor, utilidad práctica y fuentes verificables cuando estén disponibles.
+    const systemPrompt = `Eres LEXIA, una IA jurídica especializada en Derecho peruano. Tu función en "Nueva Consulta (IA)" es conversar con la persona como lo haría un abogado cercano, paciente y claro: escuchas primero, explicas con palabras entendibles y luego das criterio jurídico riguroso, útil y verificable cuando existan fuentes.
+
+PERSONALIDAD Y ESTILO:
+- Mantén una conversación amable, humana y profesional. No respondas como un buscador ni como un formulario.
+- Empieza reconociendo brevemente la preocupación del usuario cuando corresponda: "Entiendo", "Veamos el caso", "Con esos datos, lo importante es...".
+- Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
+- Si faltan datos, no te limites a decir que falta información: responde lo posible con supuestos claros y formula 2 a 4 preguntas concretas para continuar la conversación.
+- Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
+- Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
 
 CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
@@ -660,16 +1006,16 @@ ESPECIALIDAD EN DERECHO PERUANO:
 - Administrativo: actos, recursos y contratación pública.
 - Constitucional: derechos fundamentales y garantías.
 
-FORMATO OBLIGATORIO:
-1. Respuesta breve
-2. Base legal aplicable
-3. Análisis jurídico
-4. Jurisprudencia o criterios relevantes
-5. Recomendaciones y siguientes pasos
-6. Fuentes y verificación
+FORMATO DE RESPUESTA:
+No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación clara con estas partes cuando aporten valor:
+1. Primero, una respuesta directa y entendible.
+2. Luego, la explicación legal en lenguaje sencillo.
+3. Si corresponde, base legal, criterios o jurisprudencia relevante.
+4. Después, pasos prácticos y documentos que conviene reunir.
+5. Cierra con preguntas de seguimiento útiles o con "Fuentes y verificación" cuando hayas usado normas o referencias.
 
 REGLAS:
-- Siempre responde en español, con tono profesional y claro.
+- Siempre responde en español, con tono profesional, cercano y claro.
 - Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
 - Si falta información clave, responde con supuestos explícitos y preguntas concretas.
 - Advierte cuando sea necesaria revisión de un abogado o documento real.
@@ -707,6 +1053,13 @@ REGLAS:
     const context = retrieved 
       ? `REFERENCIAS RELEVANTES DE LA BASE DE CONOCIMIENTO:\n${retrieved}\n\n`
       : '';
+    const intentContext = [
+      'INTENCIÓN JURÍDICA DETECTADA:',
+      `Tipo: ${intent.type.label}`,
+      `Área: ${intent.area.label}`,
+      `Tema: ${intent.topic.label}`,
+      `Confianza: tipo=${intent.type.confidence}, área=${intent.area.confidence}, tema=${intent.topic.confidence}`
+    ].join('\n');
 
     // LLAMADA A OPENAI
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -720,7 +1073,7 @@ REGLAS:
         messages: [
           { 
             role: 'system', 
-            content: systemPrompt + (context ? '\n\n' + context : '') + (kbContent.length > 0 ? '\n\nBASE DE CONOCIMIENTO:\n' + kbContent.substring(0, 4000) : '')
+            content: systemPrompt + '\n\n' + intentContext + (context ? '\n\n' + context : '') + (kbContent.length > 0 ? '\n\nBASE DE CONOCIMIENTO:\n' + kbContent.substring(0, 4000) : '')
           },
           { 
             role: 'user', 
@@ -743,7 +1096,8 @@ REGLAS:
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
       return res.json({
-        answer: buildLegalKnowledgeAnswer(userQuery, localResults),
+        answer: buildConversationalLegalAnswer(userQuery, intent, localResults),
+        intent,
         results: localResults,
         source: 'LEXIA Legal Knowledge Base',
         fallback: true,
@@ -758,6 +1112,7 @@ REGLAS:
     
     res.json({ 
       answer,
+      intent,
       source: 'LEXIA (lpderecho.pe + OpenAI)',
       model
     });
@@ -765,10 +1120,12 @@ REGLAS:
     console.error('❌ Error interno:', error);
     const query = extractUserQuery(req.body?.prompt);
     const localResults = query ? searchLegalKnowledgeBase(query) : [];
+    const intent = query ? classifyLegalIntent(query) : null;
     res.json({
       answer: query
-        ? buildLegalKnowledgeAnswer(query, localResults)
+        ? buildConversationalLegalAnswer(query, intent, localResults)
         : 'LEXIA no pudo procesar la consulta, pero la base jurídica local está disponible en /api/legal-search.',
+      intent,
       results: localResults,
       source: 'LEXIA Legal Knowledge Base',
       fallback: true,
@@ -785,6 +1142,11 @@ app.listen(port, () => {
   console.log(`\n🌐 Servidor local: http://localhost:${port}`);
   if (publicUrl) {
     console.log(`🌎 Servidor publico: ${publicUrl}`);
+  }
+  const accountsStatus = getAccountsStoreStatus();
+  console.log(`👤 Cuentas: ${accountsStatus.ok ? '✅' : '❌'} ${accountsStatus.accountsPath}`);
+  if (!accountsStatus.ok) {
+    console.log(`   Error cuentas: ${accountsStatus.error}`);
   }
   console.log(`📚 Base de conocimiento: ${totalKB} KB`);
   console.log(`🔑 OpenAI: ${openAiKey ? '✅ Conectado' : '❌ No configurado'}`);
