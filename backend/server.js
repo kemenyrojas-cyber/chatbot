@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const fetch = global.fetch || require('node-fetch');
 const cors = require('cors');
+const { Pool } = require('pg');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -22,6 +23,14 @@ const defaultDataDir = process.env.RENDER ? '/var/data' : legacyDataDir;
 const dataDir = process.env.DATA_DIR || defaultDataDir;
 const accountsPath = process.env.ACCOUNTS_PATH || path.join(dataDir, 'accounts.json');
 const legacyAccountsPath = path.join(legacyDataDir, 'accounts.json');
+const databaseUrl = process.env.DATABASE_URL || '';
+const accountsPool = databaseUrl
+  ? new Pool({
+      connectionString: databaseUrl,
+      ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }
+    })
+  : null;
+let accountsDbReady = null;
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -74,21 +83,164 @@ function writeAccounts(accounts) {
   fs.renameSync(tempPath, accountsPath);
 }
 
-function getAccountsStoreStatus() {
+function readLegacyAccounts() {
+  try {
+    if (!fs.existsSync(legacyAccountsPath)) return [];
+    const raw = fs.readFileSync(legacyAccountsPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('No se pudo migrar data/accounts.json:', error.message);
+    return [];
+  }
+}
+
+function ensureProductionDatabaseConfigured() {
+  if (process.env.RENDER && !accountsPool) {
+    throw new Error('DATABASE_URL no está configurada. Crea una base PostgreSQL en Render y conecta la variable DATABASE_URL al servicio web.');
+  }
+}
+
+async function ensureAccountsDatabase() {
+  if (!accountsPool) {
+    ensureProductionDatabaseConfigured();
+    return;
+  }
+
+  if (!accountsDbReady) {
+    accountsDbReady = (async () => {
+      await accountsPool.query(`
+        CREATE TABLE IF NOT EXISTS accounts (
+          email TEXT PRIMARY KEY,
+          password TEXT NOT NULL,
+          name TEXT NOT NULL,
+          profile TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      const legacyAccounts = readLegacyAccounts();
+      if (legacyAccounts.length) {
+        for (const account of legacyAccounts) {
+          const email = normalizeEmail(account.email);
+          const password = String(account.password || '');
+          const name = String(account.name || '').trim();
+          const profile = String(account.profile || '').trim();
+          if (!email || !password || !name || !profile) continue;
+
+          await accountsPool.query(
+            `INSERT INTO accounts (email, password, name, profile, created_at)
+             VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()))
+             ON CONFLICT (email) DO NOTHING`,
+            [email, password, name, profile, account.createdAt || null]
+          );
+        }
+      }
+    })();
+  }
+
+  return accountsDbReady;
+}
+
+async function findAccountByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (accountsPool) {
+    await ensureAccountsDatabase();
+    const result = await accountsPool.query(
+      'SELECT email, password, name, profile, created_at AS "createdAt" FROM accounts WHERE email = $1',
+      [normalizedEmail]
+    );
+    return result.rows[0] || null;
+  }
+
+  ensureProductionDatabaseConfigured();
+  return readAccounts().find(item => normalizeEmail(item.email) === normalizedEmail) || null;
+}
+
+async function createAccount(account) {
+  const normalizedAccount = {
+    email: normalizeEmail(account.email),
+    password: String(account.password || ''),
+    name: String(account.name || '').trim(),
+    profile: String(account.profile || '').trim()
+  };
+
+  if (accountsPool) {
+    await ensureAccountsDatabase();
+    const result = await accountsPool.query(
+      `INSERT INTO accounts (email, password, name, profile)
+       VALUES ($1, $2, $3, $4)
+       RETURNING email, password, name, profile, created_at AS "createdAt"`,
+      [normalizedAccount.email, normalizedAccount.password, normalizedAccount.name, normalizedAccount.profile]
+    );
+    return result.rows[0];
+  }
+
+  ensureProductionDatabaseConfigured();
+  const accounts = readAccounts();
+  accounts.push({ ...normalizedAccount, createdAt: new Date().toISOString() });
+  writeAccounts(accounts);
+  return accounts[accounts.length - 1];
+}
+
+async function countAccounts() {
+  if (accountsPool) {
+    await ensureAccountsDatabase();
+    const result = await accountsPool.query('SELECT COUNT(*)::int AS count FROM accounts');
+    return result.rows[0]?.count || 0;
+  }
+
+  ensureProductionDatabaseConfigured();
+  return readAccounts().length;
+}
+
+async function getAccountsStoreStatus() {
+  if (accountsPool) {
+    try {
+      await ensureAccountsDatabase();
+      return {
+        ok: true,
+        storage: 'postgres',
+        databaseUrlConfigured: true,
+        accounts: await countAccounts()
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        storage: 'postgres',
+        databaseUrlConfigured: true,
+        error: error.message
+      };
+    }
+  }
+
+  if (process.env.RENDER) {
+    return {
+      ok: false,
+      storage: 'postgres',
+      databaseUrlConfigured: false,
+      error: 'DATABASE_URL no está configurada. Conecta una base PostgreSQL al servicio en Render.'
+    };
+  }
+
   try {
     ensureAccountsStore();
     const stats = fs.statSync(accountsPath);
     return {
       ok: true,
+      storage: 'json',
+      databaseUrlConfigured: false,
       dataDir,
       accountsPath,
       usingPersistentDataDir: dataDir === '/var/data',
-      accounts: readAccounts().length,
+      accounts: await countAccounts(),
       updatedAt: stats.mtime.toISOString()
     };
   } catch (error) {
     return {
       ok: false,
+      storage: 'json',
+      databaseUrlConfigured: false,
       dataDir,
       accountsPath,
       usingPersistentDataDir: dataDir === '/var/data',
@@ -130,19 +282,19 @@ app.get('/recuperar-password', (req, res) => {
   res.sendFile(path.join(viewsRoot, 'recuperar-password.html'));
 });
 
-app.get('/api/auth/status', (req, res) => {
-  const status = getAccountsStoreStatus();
+app.get('/api/auth/status', async (req, res) => {
+  const status = await getAccountsStoreStatus();
   return res.status(status.ok ? 200 : 500).json(status);
 });
 
-app.get('/api/auth/account', (req, res) => {
+app.get('/api/auth/account', async (req, res) => {
   try {
     const email = normalizeEmail(req.query.email);
     if (!email) {
       return res.status(400).json({ error: 'El correo es obligatorio.' });
     }
 
-    const account = readAccounts().find(item => normalizeEmail(item.email) === email);
+    const account = await findAccountByEmail(email);
     if (!account) {
       return res.status(404).json({ error: 'Ese correo no está registrado.' });
     }
@@ -154,7 +306,7 @@ app.get('/api/auth/account', (req, res) => {
   }
 });
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
@@ -165,26 +317,23 @@ app.post('/api/auth/register', (req, res) => {
       return res.status(400).json({ error: 'Completa todos los campos requeridos.' });
     }
 
-    const accounts = readAccounts();
-    const existing = accounts.find(item => normalizeEmail(item.email) === email);
+    const existing = await findAccountByEmail(email);
     if (existing) {
       return res.status(409).json({ error: 'Ese correo ya está registrado.' });
     }
 
-    const account = { email, password, name, profile, createdAt: new Date().toISOString() };
-    accounts.push(account);
-    writeAccounts(accounts);
+    const account = await createAccount({ email, password, name, profile });
 
     return res.status(201).json({ account: sanitizeAccount(account) });
   } catch (error) {
     console.error('Error registrando cuenta:', error.message);
     return res.status(500).json({
-      error: 'No se pudo guardar la cuenta. Revisa que Render tenga DATA_DIR=/var/data y un disk montado en /var/data.'
+      error: 'No se pudo guardar la cuenta. Revisa que Render tenga una base PostgreSQL conectada en DATABASE_URL.'
     });
   }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || '');
@@ -193,7 +342,7 @@ app.post('/api/auth/login', (req, res) => {
       return res.status(400).json({ error: 'Correo y contraseña son obligatorios.' });
     }
 
-    const account = readAccounts().find(item => normalizeEmail(item.email) === email);
+    const account = await findAccountByEmail(email);
     if (!account) {
       return res.status(404).json({ field: 'email', error: 'Ese correo no está registrado.' });
     }
@@ -1136,7 +1285,7 @@ REGLAS:
   }
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log('\n' + '='.repeat(60));
   console.log('🚀 LEXIA - ASESOR JURÍDICO INTELIGENTE');
   console.log('='.repeat(60));
@@ -1144,8 +1293,11 @@ app.listen(port, () => {
   if (publicUrl) {
     console.log(`🌎 Servidor publico: ${publicUrl}`);
   }
-  const accountsStatus = getAccountsStoreStatus();
-  console.log(`👤 Cuentas: ${accountsStatus.ok ? '✅' : '❌'} ${accountsStatus.accountsPath}`);
+  const accountsStatus = await getAccountsStoreStatus();
+  const accountsStoreLabel = accountsStatus.storage === 'postgres'
+    ? 'PostgreSQL'
+    : accountsStatus.accountsPath;
+  console.log(`👤 Cuentas: ${accountsStatus.ok ? '✅' : '❌'} ${accountsStoreLabel}`);
   if (!accountsStatus.ok) {
     console.log(`   Error cuentas: ${accountsStatus.error}`);
   }
