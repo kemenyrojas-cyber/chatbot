@@ -7,278 +7,715 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ["Inter", "Segoe UI", "Arial", "sans-serif"] },
-                    colors: {
-                        ink: "#020B22",
-                        navy: "#071B4A",
-                        bluex: "#3267FF",
-                        soft: "#7CA2FF"
-                    },
-                    boxShadow: {
-                        glow: "0 24px 80px rgba(50,103,255,.22)",
-                        card: "0 16px 48px rgba(9,22,58,.10)"
-                    }
-                }
+    <style>
+        :root {
+            --ink: #020b22;
+            --navy: #071b4a;
+            --blue: #3267ff;
+            --soft: #9db7ff;
+            --line: #dbe4f0;
+            --muted: #52627a;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Inter, "Segoe UI", Arial, sans-serif;
+            color: #071244;
+            background: #ffffff;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .hero {
+            min-height: 760px;
+            background:
+                radial-gradient(circle at 68% 30%, rgba(50, 103, 255, .22), transparent 34%),
+                linear-gradient(180deg, var(--ink) 0%, var(--navy) 100%);
+            color: #ffffff;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            opacity: .12;
+            background-image:
+                linear-gradient(90deg, transparent 0, transparent 9%, rgba(255, 255, 255, .14) 9.2%, transparent 9.4%),
+                linear-gradient(rgba(255, 255, 255, .08) 1px, transparent 1px);
+            background-size: 120px 100%, 100% 72px;
+        }
+
+        .wrap {
+            width: min(1280px, calc(100% - 48px));
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .nav {
+            min-height: 84px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 28px;
+        }
+
+        .brand {
+            display: grid;
+            gap: 2px;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+
+        .brand strong {
+            font-size: 32px;
+            line-height: 1;
+        }
+
+        .brand span {
+            color: #d6deef;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            color: rgba(255, 255, 255, .88);
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .nav-links a:first-child {
+            color: var(--soft);
+            border-bottom: 2px solid var(--blue);
+            padding-bottom: 10px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+            padding: 0 22px;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 800;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .btn.primary {
+            background: var(--blue);
+            color: #ffffff;
+            box-shadow: 0 18px 40px rgba(50, 103, 255, .26);
+        }
+
+        .btn.secondary {
+            border-color: rgba(157, 183, 255, .68);
+            color: #ffffff;
+        }
+
+        .hero-grid {
+            min-height: 640px;
+            display: grid;
+            grid-template-columns: minmax(0, .95fr) minmax(340px, 1.05fr);
+            align-items: center;
+            gap: 40px;
+            padding: 20px 0 46px;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            border: 1px solid var(--blue);
+            border-radius: 999px;
+            padding: 8px 14px;
+            color: var(--soft);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            max-width: 720px;
+            margin: 22px 0 18px;
+            font-size: clamp(46px, 5.6vw, 76px);
+            line-height: 1.03;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+
+        h1 span {
+            color: var(--blue);
+        }
+
+        .lead {
+            max-width: 590px;
+            margin: 0;
+            color: #d6deef;
+            font-size: 17px;
+            line-height: 1.75;
+        }
+
+        .search {
+            margin-top: 30px;
+            max-width: 610px;
+            min-height: 64px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px;
+            border-radius: 9px;
+            background: #ffffff;
+            box-shadow: 0 24px 80px rgba(50, 103, 255, .22);
+        }
+
+        .search input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            padding: 0 14px;
+            color: #172033;
+            font: inherit;
+        }
+
+        .search button {
+            flex: none;
+            width: 48px;
+            height: 48px;
+            border: 0;
+            border-radius: 50%;
+            background: #0a1737;
+            color: #ffffff;
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-width: 680px;
+            margin-top: 18px;
+            color: #d6deef;
+            font-size: 12px;
+        }
+
+        .examples span {
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .05);
+            padding: 8px 10px;
+        }
+
+        .visual {
+            position: relative;
+            min-height: 590px;
+        }
+
+        .robot {
+            position: absolute;
+            left: 50%;
+            top: 42%;
+            width: min(520px, 88vw);
+            transform: translate(-50%, -50%);
+            filter: drop-shadow(0 34px 68px rgba(0, 0, 0, .48));
+        }
+
+        .floating {
+            position: absolute;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid rgba(255, 255, 255, .14);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, .08);
+            padding: 16px 18px;
+            color: #ffffff;
+            box-shadow: 0 24px 80px rgba(50, 103, 255, .22);
+            backdrop-filter: blur(12px);
+            font-size: 14px;
+        }
+
+        .floating b {
+            display: block;
+        }
+
+        .floating small {
+            color: #d6deef;
+            font-size: 13px;
+        }
+
+        .floating.one { left: 0; top: 16%; }
+        .floating.two { right: 0; top: 16%; }
+        .floating.three { left: -2%; top: 38%; }
+        .floating.four { right: -2%; top: 38%; }
+
+        .stats {
+            position: absolute;
+            left: 50%;
+            bottom: 8px;
+            width: 86%;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, .06);
+            box-shadow: 0 24px 80px rgba(50, 103, 255, .22);
+            backdrop-filter: blur(12px);
+            text-align: center;
+            overflow: hidden;
+        }
+
+        .stat {
+            padding: 18px 10px;
+            border-left: 1px solid rgba(255, 255, 255, .12);
+        }
+
+        .stat:first-child {
+            border-left: 0;
+        }
+
+        .stat strong {
+            display: block;
+            color: var(--soft);
+            font-size: 32px;
+            line-height: 1;
+        }
+
+        .stat span {
+            display: block;
+            margin-top: 6px;
+            font-size: 13px;
+        }
+
+        .section {
+            padding: 48px 0;
+            background: #ffffff;
+        }
+
+        .section.compact {
+            padding-top: 28px;
+        }
+
+        .section h2 {
+            margin: 0 0 24px;
+            text-align: center;
+            font-size: 28px;
+            line-height: 1.2;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+
+        .areas {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .area-card {
+            min-height: 186px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #ffffff;
+            padding: 22px 16px;
+            text-align: center;
+            box-shadow: 0 16px 48px rgba(9, 22, 58, .10);
+        }
+
+        .area-card .icon {
+            font-size: 30px;
+            line-height: 1;
+        }
+
+        .area-card h3 {
+            margin: 14px 0 8px;
+            font-size: 16px;
+        }
+
+        .area-card p {
+            min-height: 58px;
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .area-card a {
+            display: inline-block;
+            margin-top: 14px;
+            color: var(--blue);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .why {
+            display: grid;
+            grid-template-columns: 1.35fr .65fr;
+            gap: 34px;
+            border-top: 1px solid var(--line);
+            padding-top: 36px;
+        }
+
+        .why h2 {
+            text-align: left;
+        }
+
+        .benefits {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 22px;
+        }
+
+        .benefit {
+            display: flex;
+            gap: 14px;
+        }
+
+        .benefit .icon {
+            flex: none;
+            color: var(--soft);
+            font-size: 28px;
+        }
+
+        .benefit h3 {
+            margin: 0 0 6px;
+            font-size: 16px;
+        }
+
+        .benefit p,
+        .trust p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .trust {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 26px;
+            box-shadow: 0 16px 48px rgba(9, 22, 58, .10);
+        }
+
+        .trust h3 {
+            margin: 0 0 18px;
+            font-size: 18px;
+        }
+
+        .logos {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            align-items: center;
+            text-align: center;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .cta {
+            margin-bottom: 48px;
+        }
+
+        .cta-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            border-radius: 10px;
+            background: #03113a;
+            color: #ffffff;
+            padding: 30px 34px;
+            box-shadow: 0 16px 48px rgba(9, 22, 58, .10);
+        }
+
+        .cta h2 {
+            margin: 0 0 6px;
+            font-size: 22px;
+        }
+
+        .cta p {
+            margin: 0;
+            color: #d6deef;
+        }
+
+        .cta-actions {
+            display: flex;
+            gap: 14px;
+        }
+
+        @media (max-width: 1020px) {
+            .nav-links {
+                display: none;
             }
-        };
-    </script>
+
+            .hero-grid,
+            .why {
+                grid-template-columns: 1fr;
+            }
+
+            .visual {
+                min-height: 500px;
+            }
+
+            .areas,
+            .benefits {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 640px) {
+            .wrap {
+                width: min(100% - 28px, 1280px);
+            }
+
+            .hero {
+                min-height: auto;
+            }
+
+            .nav {
+                align-items: flex-start;
+            }
+
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+
+            .btn {
+                min-height: 42px;
+                padding: 0 14px;
+                font-size: 12px;
+            }
+
+            .hero-grid {
+                padding-top: 28px;
+            }
+
+            .search,
+            .floating {
+                display: none;
+            }
+
+            .visual {
+                min-height: 390px;
+            }
+
+            .robot {
+                top: 42%;
+                width: min(370px, 92vw);
+            }
+
+            .stats {
+                width: 100%;
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stat:nth-child(3) {
+                border-left: 0;
+                border-top: 1px solid rgba(255, 255, 255, .12);
+            }
+
+            .stat:nth-child(4) {
+                border-top: 1px solid rgba(255, 255, 255, .12);
+            }
+
+            .areas,
+            .benefits,
+            .logos {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-box,
+            .cta-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
 </head>
-<body class="font-sans text-[15px] antialiased">
-    <div id="root">
-        <main style="min-height:100vh;background:#020B22;color:white;font-family:Inter,Segoe UI,Arial,sans-serif;">
-            <section style="min-height:78vh;display:flex;align-items:center;padding:32px 24px;background:linear-gradient(180deg,#020B22 0%,#071B4A 100%);">
-                <div style="width:min(1180px,100%);margin:0 auto;display:grid;gap:32px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:center;">
+<body>
+    <main>
+        <section class="hero">
+            <div class="wrap">
+                <nav class="nav" aria-label="Principal">
+                    <a href="/" class="brand">
+                        <strong>LEXIA</strong>
+                        <span>Espacio legal inteligente</span>
+                    </a>
+                    <div class="nav-links">
+                        <a href="/">Inicio</a>
+                        <a href="#caracteristicas">Características</a>
+                        <a href="#areas">Áreas del Derecho</a>
+                        <a href="#planes">Planes</a>
+                        <a href="#contacto">Contacto</a>
+                    </div>
+                    <div class="actions">
+                        <a class="btn secondary" href="/login">Iniciar sesión</a>
+                        <a class="btn primary" href="/registro">Registrarse</a>
+                    </div>
+                </nav>
+
+                <div class="hero-grid">
                     <div>
-                        <div style="font-size:30px;font-weight:900;margin-bottom:32px;">LEXIA</div>
-                        <p style="display:inline-block;border:1px solid #3267FF;border-radius:999px;padding:8px 14px;color:#9DB7FF;font-size:12px;font-weight:700;text-transform:uppercase;">Plataforma legal para trabajar mejor</p>
-                        <h1 style="font-size:clamp(40px,6vw,68px);line-height:1.05;margin:22px 0 18px;font-weight:900;">Tu espacio legal inteligente, <span style="color:#3267FF;">en un solo lugar.</span></h1>
-                        <p style="max-width:560px;color:#D6DEEF;font-size:17px;line-height:1.7;">LEXIA reúne consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas para que tu operación legal avance con orden y criterio.</p>
-                        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:28px;">
-                            <a href="/registro" style="background:#3267FF;color:white;text-decoration:none;border-radius:8px;padding:14px 22px;font-weight:800;">Registrarse</a>
-                            <a href="/login" style="color:white;text-decoration:none;border:1px solid rgba(124,162,255,.7);border-radius:8px;padding:14px 22px;font-weight:800;">Iniciar sesión</a>
+                        <span class="eyebrow">Plataforma legal para trabajar mejor</span>
+                        <h1>Tu espacio legal inteligente, <span>en un solo lugar.</span></h1>
+                        <p class="lead">LEXIA reúne consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas para que tu operación legal avance con orden y criterio.</p>
+                        <form class="search" action="/app" method="get">
+                            <input name="q" type="search" placeholder="Busca una norma, caso, cliente o documento..." aria-label="Buscar">
+                            <button type="submit" aria-label="Buscar">→</button>
+                        </form>
+                        <div class="examples" aria-label="Ejemplos de consulta">
+                            <span>¿Cómo demandar por alimentos?</span>
+                            <span>¿Qué es la nulidad de contrato?</span>
+                            <span>Plazo de prescripción penal</span>
                         </div>
                     </div>
-                    <div style="text-align:center;">
-                        <img src="/robot.png.png" alt="Robot legal de LEXIA" style="max-width:min(480px,90vw);width:100%;height:auto;filter:drop-shadow(0 28px 52px rgba(0,0,0,.45));">
+
+                    <div class="visual" aria-label="Asistente legal LEXIA">
+                        <img class="robot" src="/robot.png.png" alt="Robot legal de LEXIA">
+                        <div class="floating one"><span>⚡</span><span><b>Consulta</b><small>jurídica</small></span></div>
+                        <div class="floating two"><span>◎</span><span><b>Análisis</b><small>precisos</small></span></div>
+                        <div class="floating three"><span>§</span><span><b>Normas</b><small>actualizadas</small></span></div>
+                        <div class="floating four"><span>⚖</span><span><b>Jurisprudencia</b><small>confiable</small></span></div>
+                        <div class="stats">
+                            <div class="stat"><strong>8</strong><span>Módulos legales</span></div>
+                            <div class="stat"><strong>24/7</strong><span>Consulta disponible</span></div>
+                            <div class="stat"><strong>98%</strong><span>Flujo organizado</span></div>
+                            <div class="stat"><strong>1</strong><span>Espacio de trabajo</span></div>
+                        </div>
                     </div>
                 </div>
-            </section>
-            <section style="background:white;color:#071244;padding:36px 24px;">
-                <div style="width:min(1180px,100%);margin:0 auto;">
-                    <h2 style="font-size:28px;margin:0 0 18px;font-weight:900;">Explora todas las áreas del Derecho</h2>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;">
-                        <div style="border:1px solid #E2E8F0;border-radius:8px;padding:18px;">Derecho Civil</div>
-                        <div style="border:1px solid #E2E8F0;border-radius:8px;padding:18px;">Derecho Penal</div>
-                        <div style="border:1px solid #E2E8F0;border-radius:8px;padding:18px;">Derecho Laboral</div>
-                        <div style="border:1px solid #E2E8F0;border-radius:8px;padding:18px;">Derecho Comercial</div>
-                    </div>
+            </div>
+        </section>
+
+        <section class="section compact" id="areas">
+            <div class="wrap">
+                <h2>Explora todas las áreas del Derecho</h2>
+                <div class="areas">
+                    <article class="area-card">
+                        <div class="icon" style="color:#2f6bff;">⚖</div>
+                        <h3>Derecho Civil</h3>
+                        <p>Personas, bienes, contratos y obligaciones.</p>
+                        <a href="/registro">Explorar →</a>
+                    </article>
+                    <article class="area-card">
+                        <div class="icon" style="color:#6d4aff;">§</div>
+                        <h3>Derecho Penal</h3>
+                        <p>Delitos, penas, procesos y defensas.</p>
+                        <a href="/registro">Explorar →</a>
+                    </article>
+                    <article class="area-card">
+                        <div class="icon" style="color:#13b981;">▣</div>
+                        <h3>Derecho Laboral</h3>
+                        <p>Trabajadores, empleadores, contratos y beneficios.</p>
+                        <a href="/registro">Explorar →</a>
+                    </article>
+                    <article class="area-card">
+                        <div class="icon" style="color:#e66b1f;">▥</div>
+                        <h3>Derecho Comercial</h3>
+                        <p>Empresas, sociedades, contratos y obligaciones.</p>
+                        <a href="/registro">Explorar →</a>
+                    </article>
+                    <article class="area-card">
+                        <div class="icon" style="color:#e64d84;">●</div>
+                        <h3>Derecho de Familia</h3>
+                        <p>Matrimonio, divorcio, alimentos, tenencia y más.</p>
+                        <a href="/registro">Explorar →</a>
+                    </article>
+                    <article class="area-card">
+                        <div class="icon" style="color:#7c9bff;">▤</div>
+                        <h3>Procedimiento Legal</h3>
+                        <p>Procesos, demandas, recursos y más.</p>
+                        <a href="/registro">Explorar →</a>
+                    </article>
                 </div>
-            </section>
-        </main>
-    </div>
+            </div>
+        </section>
 
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel">
-        const navItems = ["Inicio", "Características", "Áreas del Derecho", "Planes", "Nosotros", "Contacto"];
-
-        const areas = [
-            ["scale", "Derecho Civil", "Personas, bienes, contratos y obligaciones.", "#2F6BFF"],
-            ["gavel", "Derecho Penal", "Delitos, penas, procesos y defensas.", "#6D4AFF"],
-            ["briefcase", "Derecho Laboral", "Trabajadores, empleadores, contratos y beneficios.", "#13B981"],
-            ["landmark", "Derecho Comercial", "Empresas, sociedades, contratos y obligaciones.", "#E66B1F"],
-            ["users", "Derecho de Familia", "Matrimonio, divorcio, alimentos, tenencia y más.", "#E64D84"],
-            ["folder", "Procedimiento Legal", "Procesos, demandas, recursos y más.", "#7C9BFF"]
-        ];
-
-        const benefits = [
-            ["shield", "Base jurídica", "Consulta normativa, jurisprudencia y criterios con trazabilidad."],
-            ["clock", "Gestión diaria", "Organiza clientes, casos, documentos, plazos y agenda."],
-            ["brain", "Consulta asistida", "Usa IA como apoyo dentro de un flujo legal completo."],
-            ["lock", "Trabajo ordenado", "Centraliza información legal sin dispersarla en herramientas sueltas."]
-        ];
-
-        const logos = ["Estudio Jurídico Díaz & Asociados", "Municipalidad de Miraflores", "Universidad Nacional Mayor de San Marcos"];
-
-        function Icon({ type, className = "h-8 w-8" }) {
-            const props = { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.9", strokeLinecap: "round", strokeLinejoin: "round" };
-            if (type === "scale") return <svg {...props}><path d="M12 3v18"/><path d="M5 6h14"/><path d="m6 6-3 7h6Z"/><path d="m18 6-3 7h6Z"/><path d="M8 21h8"/></svg>;
-            if (type === "gavel") return <svg {...props}><path d="m14 13-7 7"/><path d="m8 6 10 10"/><path d="m11 3 10 10"/><path d="m2 21 5-5"/><path d="m5 9 4-4"/></svg>;
-            if (type === "briefcase") return <svg {...props}><path d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1"/><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 12h18"/><path d="M9 12v2h6v-2"/></svg>;
-            if (type === "landmark") return <svg {...props}><path d="M3 21h18"/><path d="M5 10h14"/><path d="M6 10v8"/><path d="M10 10v8"/><path d="M14 10v8"/><path d="M18 10v8"/><path d="m12 3 8 4H4Z"/></svg>;
-            if (type === "users") return <svg {...props}><path d="M16 21v-2a4 4 0 0 0-8 0v2"/><circle cx="12" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M2 21v-2a4 4 0 0 1 3-3.87"/></svg>;
-            if (type === "folder") return <svg {...props}><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>;
-            if (type === "zap") return <svg {...props}><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></svg>;
-            if (type === "target") return <svg {...props}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>;
-            if (type === "file") return <svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>;
-            if (type === "grid") return <svg {...props}><rect x="4" y="4" width="4" height="4" rx="1"/><rect x="10" y="4" width="4" height="4" rx="1"/><rect x="16" y="4" width="4" height="4" rx="1"/><rect x="4" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="16" y="10" width="4" height="4" rx="1"/><rect x="4" y="16" width="4" height="4" rx="1"/><rect x="10" y="16" width="4" height="4" rx="1"/><rect x="16" y="16" width="4" height="4" rx="1"/></svg>;
-            if (type === "shield") return <svg {...props}><path d="M12 3 5 6v6c0 4.4 2.8 7.5 7 9 4.2-1.5 7-4.6 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-5"/></svg>;
-            if (type === "clock") return <svg {...props}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
-            if (type === "brain") return <svg {...props}><path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 5 2.2V4.8A3 3 0 0 0 9 4Z"/><path d="M15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 0 6v1a3 3 0 0 1-5 2.2V4.8A3 3 0 0 1 15 4Z"/></svg>;
-            return <svg {...props}><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>;
-        }
-
-        function AreaIcon({ type, className = "text-4xl" }) {
-            const icons = {
-                scale: "fa-solid fa-scale-balanced",
-                gavel: "fa-solid fa-gavel",
-                briefcase: "fa-solid fa-briefcase",
-                landmark: "fa-solid fa-building-columns",
-                users: "fa-solid fa-users",
-                folder: "fa-solid fa-folder"
-            };
-            return <i className={`${icons[type]} ${className}`} aria-hidden="true"></i>;
-        }
-
-        function BenefitIcon({ type, className = "text-3xl" }) {
-            const icons = {
-                shield: "fa-solid fa-shield-halved",
-                clock: "fa-solid fa-clock",
-                brain: "fa-solid fa-brain",
-                lock: "fa-solid fa-lock"
-            };
-            return <i className={`${icons[type]} ${className}`} aria-hidden="true"></i>;
-        }
-
-        function App() {
-            return (
-                <main className="min-h-screen bg-white text-slate-950">
-                    <section className="relative overflow-hidden bg-[radial-gradient(circle_at_68%_30%,rgba(50,103,255,.22),transparent_34%),linear-gradient(180deg,#020B22_0%,#071B4A_100%)] text-white">
-                        <div className="absolute inset-0 opacity-[.12] [background-image:linear-gradient(90deg,transparent_0,transparent_9%,rgba(255,255,255,.14)_9.2%,transparent_9.4%),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:120px_100%,100%_72px]"></div>
-                        <div className="relative mx-auto max-w-[1280px] px-6 pb-6 pt-5 lg:px-8">
-                            <nav className="flex items-center justify-between">
-                                <a href="#" className="flex flex-col items-start gap-1">
-                                    <span className="w-full text-center text-3xl font-extrabold tracking-tight">LEXIA</span>
-                                    <span className="sr-only">LEXIA</span>
-                                    <span className="hidden text-xs font-medium text-slate-300 sm:block">Espacio legal inteligente</span>
-                                </a>
-
-                                <div className="hidden items-center gap-8 text-[15px] font-medium text-white/90 lg:flex">
-                                    {navItems.map((item, index) => (
-                                        <a key={item} href="#" className={index === 0 ? "border-b-2 border-bluex pb-3 text-soft" : "pb-3 transition hover:text-soft"}>
-                                            {item}
-                                        </a>
-                                    ))}
-                                </div>
-
-                                <div className="flex items-center gap-4">
-                                    <a href="/login" className="hidden rounded-md border border-soft/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/8 sm:inline-flex">Iniciar sesión</a>
-                                    <a href="/registro" className="rounded-md bg-bluex px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:bg-blue-500">Registrarse</a>
-                                </div>
-                            </nav>
-
-                            <div className="grid min-h-[620px] items-center gap-8 pt-8 lg:grid-cols-[.9fr_1.1fr]">
-                                <div className="max-w-[620px]">
-                                    <div className="mb-5 inline-flex rounded-full border border-bluex px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-soft">
-                                        Plataforma legal para trabajar mejor
-                                    </div>
-                                    <h1 className="text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
-                                        Tu espacio legal inteligente, <span className="text-bluex">en un solo lugar.</span>
-                                    </h1>
-                                    <p className="mt-5 max-w-[520px] text-base leading-7 text-slate-300">
-                                        LEXIA reúne consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas para que tu operación legal avance con orden y criterio.
-                                    </p>
-
-                                    <div className="mt-7 flex max-w-[560px] items-center rounded-md bg-white p-2 shadow-glow">
-                                        <input className="min-h-12 flex-1 rounded-md px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400" placeholder="Busca una norma, caso, cliente o documento..." />
-                                        <button className="grid h-11 w-11 place-items-center rounded-full bg-[#0A1737] text-white transition hover:bg-bluex">
-                                            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
-                                        </button>
-                                    </div>
-
-                                    <div className="mt-5 flex max-w-[640px] items-center gap-2 text-[11px] text-slate-300">
-                                        <span className="pt-1.5">Ejemplos:</span>
-                                        <div className="flex flex-nowrap items-center gap-1.5">
-                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">¿Cómo demandar por alimentos?</span>
-                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">¿Qué es la nulidad de contrato?</span>
-                                            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">Plazo de prescripción penal</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="relative h-[590px]">
-                                    <img src="robot.png.png" alt="Robot legal de LEXIA" className="absolute left-1/2 top-[40%] z-20 h-[510px] w-[510px] -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_34px_68px_rgba(0,0,0,.48)]" />
-
-                                    <div className="absolute left-[2%] top-[18%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
-                                        <span className="text-bluex"><Icon type="zap" className="h-8 w-8" /></span><span><strong>Consulta</strong><br/><span className="text-slate-300">jurídica</span></span>
-                                    </div>
-                                    <div className="absolute right-[2%] top-[18%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
-                                        <span className="text-bluex"><Icon type="target" className="h-8 w-8" /></span><span><strong>Análisis</strong><br/><span className="text-slate-300">precisos</span></span>
-                                    </div>
-                                    <div className="absolute left-[-4%] top-[38%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
-                                        <span className="text-bluex"><Icon type="file" className="h-8 w-8" /></span><span><strong>Normas</strong><br/><span className="text-slate-300">actualizadas</span></span>
-                                    </div>
-                                    <div className="absolute right-[-4%] top-[38%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
-                                        <span className="text-bluex"><Icon type="landmark" className="h-8 w-8" /></span><span><strong>Jurisprudencia</strong><br/><span className="text-slate-300">confiable</span></span>
-                                    </div>
-
-                                    <div className="absolute bottom-0 left-1/2 z-30 grid w-[84%] -translate-x-1/2 grid-cols-4 rounded-xl border border-white/10 bg-white/5 py-5 text-center shadow-glow backdrop-blur-md">
-                                        {[
-                                            ["8", "Módulos legales"],
-                                            ["24/7", "Consulta disponible"],
-                                            ["98%", "Flujo organizado"],
-                                            ["1", "Espacio de trabajo"]
-                                        ].map(([value, label], index) => (
-                                            <div key={label} className={index ? "border-l border-white/10 px-4" : "px-4"}>
-                                                <p className="text-3xl font-extrabold text-soft">{value}</p>
-                                                <p className="mt-1 text-sm leading-5 text-white">{label}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section className="bg-white px-6 py-7 lg:px-10">
-                        <div className="mx-auto max-w-[1280px]">
-                            <h2 className="text-center text-2xl font-extrabold text-[#071244]">Explora todas las áreas del Derecho</h2>
-                            <div className="mt-6 grid gap-5 md:grid-cols-3 xl:grid-cols-6">
-                                {areas.map(([icon, title, text, color]) => (
-                                    <article key={title} className="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card">
-                                        <div className="mx-auto mb-3 flex h-10 items-center justify-center" style={{ color }}><AreaIcon type={icon} /></div>
-                                        <h3 className="font-semibold text-[#071244]">{title}</h3>
-                                        <p className="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">{text}</p>
-                                        <a href="#" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a>
-                                    </article>
-                                ))}
-                            </div>
-                        </div>
-                    </section>
-
-                    <section className="bg-white px-6 pb-8 lg:px-10">
-                        <div className="mx-auto grid max-w-[1280px] gap-8 border-t border-slate-200 pt-7 lg:grid-cols-[1.35fr_.65fr]">
+        <section class="section" id="caracteristicas">
+            <div class="wrap why">
+                <div>
+                    <h2>¿Por qué elegir LEXIA?</h2>
+                    <div class="benefits">
+                        <article class="benefit">
+                            <span class="icon">✓</span>
                             <div>
-                                <h2 className="text-2xl font-extrabold text-[#071244]">¿Por qué elegir LEXIA?</h2>
-                                <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-                                    {benefits.map(([icon, title, text]) => (
-                                        <article key={title} className="flex gap-4">
-                                            <span className="flex-none text-soft"><BenefitIcon type={icon} /></span>
-                                            <div>
-                                                <h3 className="font-semibold text-[#071244]">{title}</h3>
-                                                <p className="mt-1 text-sm leading-6 text-slate-500">{text}</p>
-                                            </div>
-                                        </article>
-                                    ))}
-                                </div>
+                                <h3>Base jurídica</h3>
+                                <p>Consulta normativa, jurisprudencia y criterios con trazabilidad.</p>
                             </div>
-
-                            <aside className="rounded-lg border border-slate-200 bg-white p-7 shadow-card">
-                                <h3 className="font-extrabold text-[#071244]">Confían en nosotros</h3>
-                                <div className="mt-6 grid grid-cols-3 items-center gap-4 text-center text-[11px] font-bold leading-4 text-slate-600">
-                                    {logos.map((logo) => <div key={logo}>{logo}</div>)}
-                                </div>
-                            </aside>
-                        </div>
-                    </section>
-
-                    <section className="bg-white px-6 pb-8 lg:px-10">
-                        <div className="mx-auto flex max-w-[1280px] flex-col items-start justify-between gap-5 rounded-lg bg-[#03113A] px-8 py-7 text-white shadow-card md:flex-row md:items-center">
-                            <div className="flex items-center gap-5">
-                                <span className="grid h-16 w-16 place-items-center rounded-full bg-white/10 text-white"><i className="fa-solid fa-scale-balanced text-3xl" aria-hidden="true"></i></span>
-                                <div>
-                                    <h2 className="text-xl font-extrabold">Ordena tu práctica legal desde hoy</h2>
-                                    <p className="mt-1 text-sm text-slate-300">Centraliza consultas, documentos, clientes, casos, agenda y plantillas en LEXIA.</p>
-                                </div>
+                        </article>
+                        <article class="benefit">
+                            <span class="icon">◷</span>
+                            <div>
+                                <h3>Gestión diaria</h3>
+                                <p>Organiza clientes, casos, documentos, plazos y agenda.</p>
                             </div>
-                            <div className="flex gap-4">
-                                <a href="#" className="rounded-md border border-bluex px-8 py-3 text-sm font-bold">Conocer más</a>
-                                <a href="/registro" className="rounded-md bg-bluex px-8 py-3 text-sm font-bold">Registrarse gratis →</a>
+                        </article>
+                        <article class="benefit">
+                            <span class="icon">✦</span>
+                            <div>
+                                <h3>Consulta asistida</h3>
+                                <p>Usa IA como apoyo dentro de un flujo legal completo.</p>
                             </div>
-                        </div>
-                    </section>
-                </main>
-            );
-        }
+                        </article>
+                        <article class="benefit">
+                            <span class="icon">●</span>
+                            <div>
+                                <h3>Trabajo ordenado</h3>
+                                <p>Centraliza información legal sin dispersarla en herramientas sueltas.</p>
+                            </div>
+                        </article>
+                    </div>
+                </div>
 
-        ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-    </script>
+                <aside class="trust">
+                    <h3>Confían en nosotros</h3>
+                    <p>LEXIA está diseñada para profesionales y equipos que necesitan consultar, organizar y avanzar con claridad.</p>
+                    <div class="logos" style="margin-top:20px;">
+                        <div>Estudio Jurídico Díaz & Asociados</div>
+                        <div>Municipalidad de Miraflores</div>
+                        <div>Universidad Nacional Mayor de San Marcos</div>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        <section class="cta" id="contacto">
+            <div class="wrap">
+                <div class="cta-box">
+                    <div>
+                        <h2>Ordena tu práctica legal desde hoy</h2>
+                        <p>Centraliza consultas, documentos, clientes, casos, agenda y plantillas en LEXIA.</p>
+                    </div>
+                    <div class="cta-actions">
+                        <a class="btn secondary" href="/login">Iniciar sesión</a>
+                        <a class="btn primary" href="/registro">Registrarse gratis →</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
 </body>
 </html>
