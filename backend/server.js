@@ -19,7 +19,8 @@ const port = process.env.PORT || 3000;
 const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
 const openAiKey = process.env.OPENAI_API_KEY;
 const legacyDataDir = path.join(projectRoot, 'data');
-const databaseUrl = process.env.DATABASE_URL || '';
+const databaseUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || '';
+const databaseProvider = process.env.SUPABASE_DATABASE_URL ? 'supabase' : 'postgres';
 const defaultDataDir = process.env.RENDER && databaseUrl ? '/var/data' : legacyDataDir;
 const dataDir = process.env.DATA_DIR || defaultDataDir;
 const accountsPath = process.env.ACCOUNTS_PATH || path.join(dataDir, 'accounts.json');
@@ -145,7 +146,7 @@ function readLegacyAccounts() {
 
 function ensureProductionDatabaseConfigured() {
   if (process.env.RENDER && !accountsPool) {
-    console.warn('DATABASE_URL no está configurada. Usando accounts.json como respaldo de autenticación.');
+    console.warn('SUPABASE_DATABASE_URL o DATABASE_URL no está configurada. Usando accounts.json como respaldo de autenticación.');
   }
 }
 
@@ -252,6 +253,7 @@ async function getAccountsStoreStatus() {
       return {
         ok: true,
         storage: 'postgres',
+        provider: databaseProvider,
         databaseUrlConfigured: true,
         accounts: await countAccounts()
       };
@@ -259,6 +261,7 @@ async function getAccountsStoreStatus() {
       return {
         ok: false,
         storage: 'postgres',
+        provider: databaseProvider,
         databaseUrlConfigured: true,
         error: error.message
       };
@@ -276,7 +279,7 @@ async function getAccountsStoreStatus() {
       accountsPath,
       usingPersistentDataDir: dataDir === '/var/data',
       warning: process.env.RENDER
-        ? 'DATABASE_URL no está configurada. Usando accounts.json como respaldo de autenticación.'
+        ? 'SUPABASE_DATABASE_URL o DATABASE_URL no está configurada. Usando accounts.json como respaldo de autenticación.'
         : undefined,
       accounts: await countAccounts(),
       updatedAt: stats.mtime.toISOString()
@@ -373,7 +376,7 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (error) {
     console.error('Error registrando cuenta:', error.message);
     return res.status(500).json({
-      error: 'No se pudo guardar la cuenta. Revisa que Render tenga una base PostgreSQL conectada en DATABASE_URL.'
+      error: 'No se pudo guardar la cuenta. Revisa que Render tenga SUPABASE_DATABASE_URL o DATABASE_URL configurada.'
     });
   }
 });

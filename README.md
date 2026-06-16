@@ -42,7 +42,30 @@ OPENAI_MODEL=gpt-3.5-turbo
 PORT=3000
 ```
 
-### 3. Alimentar la base jurídica con LP Derecho
+### 3. Configurar Supabase para cuentas
+La autenticación usa PostgreSQL cuando existe `SUPABASE_DATABASE_URL` o `DATABASE_URL`.
+Con Supabase no necesitas crear la tabla manualmente: el backend crea y migra la tabla `accounts` al iniciar.
+
+En Supabase:
+- Crea un proyecto.
+- Ve a **Project Settings > Database > Connection string**.
+- Copia la URI del **Transaction pooler** o la conexión directa si tu despliegue tiene soporte IPv4.
+- Reemplaza `[YOUR-PASSWORD]` por la contraseña real de la base.
+
+En `.env` local o variables de Render:
+```env
+SUPABASE_DATABASE_URL=postgresql://postgres.tu-ref:tu-password@aws-0-region.pooler.supabase.com:6543/postgres
+PGSSLMODE=require
+```
+
+Para verificar:
+```bash
+curl http://localhost:3000/api/auth/status
+```
+
+Debe responder `storage: "postgres"` y `provider: "supabase"`.
+
+### 4. Alimentar la base jurídica con LP Derecho
 ```bash
 npm run ingest-lpderecho
 ```
@@ -70,7 +93,7 @@ npm run ingest-lpderecho
 
 Despues de una nueva ingestion, reinicia el servidor para que cargue la base actualizada.
 
-### 4. Iniciar Servidor
+### 5. Iniciar Servidor
 ```bash
 npm start
 ```
