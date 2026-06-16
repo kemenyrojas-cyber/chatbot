@@ -19,11 +19,11 @@ const port = process.env.PORT || 3000;
 const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
 const openAiKey = process.env.OPENAI_API_KEY;
 const legacyDataDir = path.join(projectRoot, 'data');
-const defaultDataDir = process.env.RENDER ? '/var/data' : legacyDataDir;
+const databaseUrl = process.env.DATABASE_URL || '';
+const defaultDataDir = process.env.RENDER && databaseUrl ? '/var/data' : legacyDataDir;
 const dataDir = process.env.DATA_DIR || defaultDataDir;
 const accountsPath = process.env.ACCOUNTS_PATH || path.join(dataDir, 'accounts.json');
 const legacyAccountsPath = path.join(legacyDataDir, 'accounts.json');
-const databaseUrl = process.env.DATABASE_URL || '';
 const accountsPool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
