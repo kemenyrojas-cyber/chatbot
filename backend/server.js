@@ -31,6 +31,7 @@ const accountsPool = databaseUrl
     })
   : null;
 let accountsDbReady = null;
+let accountsJsonSynced = false;
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -59,6 +60,53 @@ function ensureAccountsStore() {
     }
     fs.accessSync(accountsDir, fs.constants.R_OK | fs.constants.W_OK);
     fs.accessSync(accountsPath, fs.constants.R_OK | fs.constants.W_OK);
+
+    if (!accountsJsonSynced && accountsPath !== legacyAccountsPath && fs.existsSync(legacyAccountsPath)) {
+      const raw = fs.readFileSync(accountsPath, 'utf8');
+      const accounts = JSON.parse(raw);
+      const currentAccounts = Array.isArray(accounts) ? accounts : [];
+      const legacyAccounts = readLegacyAccounts();
+      let changed = false;
+
+      for (const account of legacyAccounts) {
+        const email = normalizeEmail(account.email);
+        const password = String(account.password || '');
+        const name = String(account.name || '').trim();
+        const profile = String(account.profile || '').trim();
+        if (!email || !password || !name || !profile) continue;
+
+        const existingIndex = currentAccounts.findIndex(item => normalizeEmail(item.email) === email);
+        const existing = existingIndex >= 0 ? currentAccounts[existingIndex] : null;
+        const nextAccount = {
+          email,
+          password,
+          name,
+          profile,
+          createdAt: existing?.createdAt || account.createdAt || new Date().toISOString()
+        };
+
+        if (existingIndex >= 0) {
+          if (
+            String(existing.password || '') !== password
+            || String(existing.name || '').trim() !== name
+            || String(existing.profile || '').trim() !== profile
+          ) {
+            currentAccounts[existingIndex] = nextAccount;
+            changed = true;
+          }
+        } else {
+          currentAccounts.push(nextAccount);
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        const tempPath = `${accountsPath}.tmp`;
+        fs.writeFileSync(tempPath, JSON.stringify(currentAccounts, null, 2), 'utf8');
+        fs.renameSync(tempPath, accountsPath);
+      }
+      accountsJsonSynced = true;
+    }
   } catch (error) {
     throw new Error(`No se puede usar el archivo de cuentas en ${accountsPath}: ${error.message}`);
   }
@@ -97,7 +145,7 @@ function readLegacyAccounts() {
 
 function ensureProductionDatabaseConfigured() {
   if (process.env.RENDER && !accountsPool) {
-    throw new Error('DATABASE_URL no está configurada. Crea una base PostgreSQL en Render y conecta la variable DATABASE_URL al servicio web.');
+    console.warn('DATABASE_URL no está configurada. Usando accounts.json como respaldo de autenticación.');
   }
 }
 
@@ -217,15 +265,6 @@ async function getAccountsStoreStatus() {
     }
   }
 
-  if (process.env.RENDER) {
-    return {
-      ok: false,
-      storage: 'postgres',
-      databaseUrlConfigured: false,
-      error: 'DATABASE_URL no está configurada. Conecta una base PostgreSQL al servicio en Render.'
-    };
-  }
-
   try {
     ensureAccountsStore();
     const stats = fs.statSync(accountsPath);
@@ -236,6 +275,9 @@ async function getAccountsStoreStatus() {
       dataDir,
       accountsPath,
       usingPersistentDataDir: dataDir === '/var/data',
+      warning: process.env.RENDER
+        ? 'DATABASE_URL no está configurada. Usando accounts.json como respaldo de autenticación.'
+        : undefined,
       accounts: await countAccounts(),
       updatedAt: stats.mtime.toISOString()
     };

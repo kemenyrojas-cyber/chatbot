@@ -197,6 +197,10 @@
                     showStatus(status, "La contraseña es incorrecta.", "error");
                     return;
                 }
+                if (error.status >= 500) {
+                    showStatus(status, error.message || "No se pudo leer la base de cuentas.", "error");
+                    return;
+                }
 
                 try {
                     const fallbackAccount = findAccount(email) || await fetchAccount(email);
