@@ -60,6 +60,9 @@
         const existingIndex = accounts.findIndex(item => normalizeEmail(item.email) === normalizedEmail);
 
         if (existingIndex >= 0) {
+            if (!nextAccount.password && accounts[existingIndex]?.password) {
+                nextAccount.password = String(accounts[existingIndex].password || "");
+            }
             accounts[existingIndex] = nextAccount;
         } else {
             accounts.push(nextAccount);

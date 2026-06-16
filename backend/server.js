@@ -131,7 +131,10 @@ async function ensureAccountsDatabase() {
           await accountsPool.query(
             `INSERT INTO accounts (email, password, name, profile, created_at)
              VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()))
-             ON CONFLICT (email) DO NOTHING`,
+             ON CONFLICT (email) DO UPDATE
+             SET password = EXCLUDED.password,
+                 name = EXCLUDED.name,
+                 profile = EXCLUDED.profile`,
             [email, password, name, profile, account.createdAt || null]
           );
         }
