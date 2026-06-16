@@ -305,12 +305,19 @@ function sanitizeAccount(account) {
   };
 }
 
+function sendView(res, filename) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.sendFile(path.join(viewsRoot, filename));
+}
+
 app.get('/', (req, res) => {
-  res.sendFile(path.join(viewsRoot, 'landing.html'));
+  sendView(res, 'landing.html');
 });
 
 app.get('/app', (req, res) => {
-  res.sendFile(path.join(viewsRoot, 'index.html'));
+  sendView(res, 'index.html');
 });
 
 app.use('/css', express.static(path.join(frontendSrcRoot, 'css'), { index: false }));
@@ -319,15 +326,15 @@ app.use('/img', express.static(path.join(publicRoot, 'img'), { index: false }));
 app.use(express.static(publicRoot, { index: false }));
 
 app.get('/login', (req, res) => {
-  res.sendFile(path.join(viewsRoot, 'login.html'));
+  sendView(res, 'login.html');
 });
 
 app.get('/registro', (req, res) => {
-  res.sendFile(path.join(viewsRoot, 'registro.html'));
+  sendView(res, 'registro.html');
 });
 
 app.get('/recuperar-password', (req, res) => {
-  res.sendFile(path.join(viewsRoot, 'recuperar-password.html'));
+  sendView(res, 'recuperar-password.html');
 });
 
 app.get('/api/auth/status', async (req, res) => {
