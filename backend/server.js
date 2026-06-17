@@ -1135,6 +1135,21 @@ function classifyLegalIntent(query) {
   };
 }
 
+function mergeConversationIntent(currentIntent, memoryIntent) {
+  const useMemoryArea = currentIntent?.area?.confidence !== 'alta' && memoryIntent?.area?.confidence === 'alta';
+  const useMemoryTopic = currentIntent?.topic?.confidence !== 'alta' && memoryIntent?.topic?.confidence === 'alta';
+  const area = useMemoryArea ? memoryIntent.area : currentIntent.area;
+  const topic = useMemoryTopic ? memoryIntent.topic : currentIntent.topic;
+
+  return {
+    type: currentIntent?.type?.confidence === 'alta' ? currentIntent.type : (memoryIntent?.type || currentIntent.type),
+    area,
+    topic,
+    originalQuery: currentIntent?.originalQuery || '',
+    needsMoreFacts: area?.confidence !== 'alta' || topic?.confidence !== 'alta'
+  };
+}
+
 function isGreetingOnly(text) {
   const normalized = normalizeText(text);
   return /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ola|hi|hello)( lexia)?$/.test(normalized);
@@ -2020,15 +2035,9 @@ app.post('/api/chat', async (req, res) => {
     );
     const memorySearchQuery = buildMemorySearchQuery(userQuery, conversationMemory);
     const currentIntent = classifyLegalIntent(userQuery);
-    const intent = classifyLegalIntent(memorySearchQuery);
+    const memoryIntent = classifyLegalIntent(memorySearchQuery);
+    const intent = mergeConversationIntent(currentIntent, memoryIntent);
     const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
-    const fallbackQuestion = conversationMemory.length
-      ? [
-          'Responde la pregunta actual usando la memoria reciente de esta conversación.',
-          conversationMemoryContext,
-          `Pregunta actual: ${userQuery}`
-        ].filter(Boolean).join('\n\n')
-      : userQuery;
     const persistAnswer = async (answer, metadata = {}) => {
       if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
       return persistChatExchange(chatEmail, chatSession, userMessage, {
@@ -2070,7 +2079,7 @@ app.post('/api/chat', async (req, res) => {
     logLocalSearchSufficiency('/api/chat', memorySearchQuery, localSearchEvaluation);
     const ragContext = buildRagContext(memorySearchQuery, localResults);
     if (!openAiKey) {
-      const answer = buildConversationalLegalAnswer(fallbackQuestion, intent, ragContext.results);
+      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
       const persisted = await persistAnswer(answer, {
         model: 'local-rag-engine',
         source: 'LEXIA RAG Local',
@@ -2192,7 +2201,7 @@ REGLAS:
       }
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
-      const answer = buildConversationalLegalAnswer(fallbackQuestion, intent, ragContext.results);
+      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
       const persisted = await persistAnswer(answer, {
         model: 'local-rag-engine',
         source: 'LEXIA RAG Local',
