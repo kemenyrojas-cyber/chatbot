@@ -124,6 +124,7 @@ a {
 
 .auth-copy {
     max-width: 620px;
+    transform: translateY(-76px);
 }
 
 .eyebrow {
@@ -363,6 +364,7 @@ a {
 
     .auth-copy {
         max-width: none;
+        transform: none;
     }
 }
 
