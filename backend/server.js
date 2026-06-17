@@ -1022,6 +1022,82 @@ function searchLegalEngine(query, limit = 12) {
     .slice(0, limit);
 }
 
+function truncateForRag(value, maxLength = 900) {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength).trim()}...`;
+}
+
+function buildRagContext(query, structuredResults = [], limit = 8) {
+  const documentResults = searchLegalEngine(query, 8);
+  const normalizedStructured = structuredResults.map(item => ({
+    id: `kb:${item.modulo || 'base'}:${item.id}`,
+    title: item.titulo || 'Referencia jurídica',
+    source: item.fuente || 'Base jurídica local LEXIA',
+    module: item.modulo || 'base_juridica',
+    matter: item.materia || '',
+    url: item.url || '',
+    excerpt: item.resumen || item.contenido || '',
+    content: item.contenido || item.resumen || '',
+    relevance: item.relevance || 0
+  }));
+  const normalizedDocuments = documentResults.map(item => ({
+    id: `doc:${item.id}`,
+    title: item.title || 'Documento legal',
+    source: item.source || 'Archivo jurídico local',
+    module: item.type || 'documento',
+    matter: '',
+    url: '',
+    excerpt: item.excerpt || '',
+    content: item.excerpt || '',
+    relevance: item.relevance || 0
+  }));
+
+  const merged = [...normalizedStructured, ...normalizedDocuments]
+    .sort((a, b) => b.relevance - a.relevance)
+    .reduce((acc, item) => {
+      if (!acc.some(existing => existing.id === item.id)) acc.push(item);
+      return acc;
+    }, [])
+    .slice(0, limit);
+
+  if (!merged.length) {
+    return {
+      context: '',
+      results: [],
+      sources: []
+    };
+  }
+
+  const context = [
+    'CONTEXTO RAG RECUPERADO DE LA BASE LOCAL DE LEXIA:',
+    'Usa estas referencias como fuente principal. Si una respuesta requiere una fuente que no está aquí, dilo claramente y sugiere verificar en una fuente oficial.'
+  ];
+
+  merged.forEach((item, index) => {
+    const sourceId = `R${index + 1}`;
+    const matter = item.matter ? ` | Materia: ${item.matter}` : '';
+    const url = item.url ? ` | URL: ${item.url}` : '';
+    context.push('');
+    context.push(`[${sourceId}] ${item.title} | Fuente: ${item.source} | Tipo: ${item.module}${matter}${url}`);
+    context.push(truncateForRag(item.content || item.excerpt));
+  });
+
+  return {
+    context: context.join('\n'),
+    results: merged,
+    sources: merged.map((item, index) => ({
+      id: `R${index + 1}`,
+      title: item.title,
+      source: item.source,
+      module: item.module,
+      matter: item.matter,
+      url: item.url,
+      relevance: item.relevance
+    }))
+  };
+}
+
 function buildLocalLegalAnswer(query, results) {
   if (!results.length) {
     return `Entiendo tu consulta sobre "${query}". Con esos términos no encontré una coincidencia directa en la base jurídica local.\n\nPara orientarte mejor, agrega datos como materia, norma, institución jurídica, documento disponible, fecha aproximada o el hecho principal. Con eso puedo acercarme más a tu situación.`;
@@ -1209,14 +1285,16 @@ app.post('/api/chat', async (req, res) => {
       });
     }
     const localResults = searchLegalKnowledgeBase(userQuery);
+    const ragContext = buildRagContext(userQuery, localResults);
     if (!openAiKey) {
       return res.json({
-        answer: buildConversationalLegalAnswer(userQuery, intent, localResults),
+        answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results),
         intent,
-        results: localResults,
-        source: 'LEXIA Legal Knowledge Base',
+        results: ragContext.results,
+        ragSources: ragContext.sources,
+        source: 'LEXIA RAG Local',
         fallback: true,
-        model: 'local-legal-engine'
+        model: 'local-rag-engine'
       });
     }
 
@@ -1245,6 +1323,7 @@ CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
 - Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
 - Fuentes citadas: termina con una sección "Fuentes y verificación" indicando las normas o referencias usadas. Si no hay fuente específica en el contexto, dilo claramente y recomienda verificar en El Peruano, SPIJ, PJ, TC o la entidad competente.
+- RAG: antes de responder, usa el "CONTEXTO RAG RECUPERADO" cuando exista. Cita las referencias recuperadas como [R1], [R2], etc. No inventes fuentes que no estén en ese contexto.
 
 ESPECIALIDAD EN DERECHO PERUANO:
 - Civil: contratos, obligaciones, bienes, herencias, familia.
@@ -1273,36 +1352,7 @@ REGLAS:
 - No hagas valoraciones morales; limita la respuesta al análisis legal.
 - No afirmes tener información en tiempo real si no está disponible en el contexto.`;
 
-    // RECUPERACIÓN DE CONTEXTO (búsqueda por relevancia)
-    let retrieved = '';
-    const promptLower = prompt.toLowerCase();
-    
-    // Búsqueda simple pero efectiva
-    if (kbContent.length > 0) {
-      const promptTerms = (promptLower.match(/[a-záéíóúñü0-9]{4,}/g) || [])
-        .filter((word, index, words) => words.indexOf(word) === index);
-      const sentences = kbContent.split(/[.!?\n]+/);
-      const relevant = sentences
-        .filter(s => {
-          const lowerSentence = s.toLowerCase();
-          const relevanceScore = promptTerms.reduce((score, word) => {
-            if (lowerSentence.includes(word)) score += 1;
-            return score;
-          }, 0);
-          return relevanceScore > 0;
-        })
-        .slice(0, 10)
-        .map(s => s.trim())
-        .filter(s => s.length > 20);
-
-      if (relevant.length > 0) {
-        retrieved = relevant.map(r => `• ${r}`).join('\n');
-      }
-    }
-
-    const context = retrieved 
-      ? `REFERENCIAS RELEVANTES DE LA BASE DE CONOCIMIENTO:\n${retrieved}\n\n`
-      : '';
+    const context = ragContext.context;
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,
@@ -1323,7 +1373,7 @@ REGLAS:
         messages: [
           { 
             role: 'system', 
-            content: systemPrompt + '\n\n' + intentContext + (context ? '\n\n' + context : '') + (kbContent.length > 0 ? '\n\nBASE DE CONOCIMIENTO:\n' + kbContent.substring(0, 4000) : '')
+            content: systemPrompt + '\n\n' + intentContext + (context ? '\n\n' + context : '')
           },
           { 
             role: 'user', 
@@ -1346,14 +1396,15 @@ REGLAS:
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
       return res.json({
-        answer: buildConversationalLegalAnswer(userQuery, intent, localResults),
+        answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results),
         intent,
-        results: localResults,
-        source: 'LEXIA Legal Knowledge Base',
+        results: ragContext.results,
+        ragSources: ragContext.sources,
+        source: 'LEXIA RAG Local',
         fallback: true,
         providerError: mapped.error,
         providerCode: parsedError?.error?.code || null,
-        model: 'local-legal-engine'
+        model: 'local-rag-engine'
       });
     }
 
@@ -1363,8 +1414,13 @@ REGLAS:
     res.json({ 
       answer,
       intent,
+      ragSources: ragContext.sources,
       source: 'LEXIA (lpderecho.pe + OpenAI)',
-      model
+      model,
+      retrieval: {
+        mode: 'rag',
+        results: ragContext.results.length
+      }
     });
   } catch (error) {
     console.error('❌ Error interno:', error);
