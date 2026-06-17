@@ -325,7 +325,15 @@ document.addEventListener("DOMContentLoaded", () => {
             const localSessions = getChatSessions();
             const data = await apiJson(`/api/chats?email=${encodeURIComponent(currentEmail)}&role=${encodeURIComponent(currentRole)}`);
             const remoteSessions = Array.isArray(data.chats) ? data.chats.map(normalizeRemoteSession) : [];
-            const localOnlySessions = localSessions.filter(localSession => (
+            const deletedChatIds = new Set(Array.isArray(data.deletedChatIds) ? data.deletedChatIds : []);
+            const activeLocalSessions = localSessions.filter(localSession => !deletedChatIds.has(localSession.id));
+            if (activeLocalSessions.length !== localSessions.length) {
+                saveChatSessions(activeLocalSessions);
+                if (activeChatSessionId && deletedChatIds.has(activeChatSessionId)) {
+                    activeChatSessionId = activeLocalSessions[0]?.id || remoteSessions[0]?.id || null;
+                }
+            }
+            const localOnlySessions = activeLocalSessions.filter(localSession => (
                 !remoteSessions.some(remoteSession => remoteSession.id === localSession.id)
             ));
 
@@ -345,8 +353,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            if (localSessions.length) {
-                await migrateLocalChatsToApi(localSessions);
+            if (activeLocalSessions.length) {
+                await migrateLocalChatsToApi(activeLocalSessions);
+            } else if (deletedChatIds.size) {
+                saveChatSessions([]);
+                activeChatSessionId = null;
+                renderChatSessions();
+                renderChatThread();
+                renderAppState();
             }
         } catch (error) {
             console.warn("LEXIA usará chats locales como respaldo:", error.message);
@@ -671,7 +685,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const sessions = getChatSessions().filter(item => item.id !== sessionId);
         saveChatSessions(sessions);
         if (currentEmail) {
-            void apiJson(`/api/chats/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(currentEmail)}`, {
+            void apiJson(`/api/chats/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(currentEmail)}&role=${encodeURIComponent(currentRole)}`, {
                 method: "DELETE"
             }).catch(error => {
                 console.warn("No se pudo eliminar la conversación remota:", error.message);

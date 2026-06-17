@@ -320,6 +320,8 @@ async function ensureChatsDatabase() {
         )
       `);
 
+      await accountsPool.query('ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ');
+
       await accountsPool.query(`
         CREATE TABLE IF NOT EXISTS chat_messages (
           id TEXT PRIMARY KEY,
@@ -333,6 +335,7 @@ async function ensureChatsDatabase() {
       `);
 
       await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_chat_sessions_account_updated ON chat_sessions(account_email, updated_at DESC)');
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_chat_sessions_account_deleted ON chat_sessions(account_email, deleted_at)');
       await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created ON chat_messages(session_id, created_at ASC)');
     })();
   }
@@ -393,11 +396,12 @@ async function upsertChatSessionRecord(email, session) {
      SET role = EXCLUDED.role,
          title = EXCLUDED.title,
          updated_at = GREATEST(chat_sessions.updated_at, EXCLUDED.updated_at)
+     WHERE chat_sessions.deleted_at IS NULL
      RETURNING id, account_email, role, title, created_at, updated_at`,
     [id, normalizedEmail, role, title, createdAt, updatedAt]
   );
 
-  return result.rows[0];
+  return result.rows[0] || null;
 }
 
 async function insertChatMessageRecord(email, sessionId, message) {
@@ -415,6 +419,14 @@ async function insertChatMessageRecord(email, sessionId, message) {
     throw new Error('Datos de mensaje incompletos.');
   }
 
+  const sessionResult = await accountsPool.query(
+    'SELECT 1 FROM chat_sessions WHERE id = $1 AND account_email = $2 AND deleted_at IS NULL',
+    [sessionId, normalizedEmail]
+  );
+  if (!sessionResult.rowCount) {
+    throw new Error('La conversación fue eliminada.');
+  }
+
   const result = await accountsPool.query(
     `INSERT INTO chat_messages (id, session_id, account_email, role, content, metadata, created_at)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
@@ -426,7 +438,7 @@ async function insertChatMessageRecord(email, sessionId, message) {
   );
 
   await accountsPool.query(
-    'UPDATE chat_sessions SET updated_at = GREATEST(updated_at, $2::timestamptz) WHERE id = $1',
+    'UPDATE chat_sessions SET updated_at = GREATEST(updated_at, $2::timestamptz) WHERE id = $1 AND deleted_at IS NULL',
     [sessionId, createdAt]
   );
 
@@ -458,7 +470,7 @@ async function getChatSessions(email, role = '') {
   const result = await accountsPool.query(
     `SELECT id, account_email, role, title, created_at, updated_at
      FROM chat_sessions
-     WHERE account_email = $1 ${roleClause}
+     WHERE account_email = $1 ${roleClause} AND deleted_at IS NULL
      ORDER BY updated_at DESC
      LIMIT 120`,
     values
@@ -471,10 +483,31 @@ async function getChatSessions(email, role = '') {
   return sessions;
 }
 
+async function getDeletedChatIds(email, role = '') {
+  const ready = await ensureChatsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
+
+  const values = [normalizeEmail(email)];
+  const roleClause = role ? 'AND role = $2' : '';
+  if (role) values.push(String(role));
+
+  const result = await accountsPool.query(
+    `SELECT id
+     FROM chat_sessions
+     WHERE account_email = $1 ${roleClause} AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC
+     LIMIT 500`,
+    values
+  );
+
+  return result.rows.map(row => row.id);
+}
+
 async function persistChatExchange(email, session, userMessage, assistantMessage) {
   if (!email || !session?.id || !userMessage?.content || !assistantMessage?.content) return false;
   try {
-    await upsertChatSessionRecord(email, session);
+    const row = await upsertChatSessionRecord(email, session);
+    if (!row) return false;
     await insertChatMessageRecord(email, session.id, userMessage);
     await insertChatMessageRecord(email, session.id, assistantMessage);
     return true;
@@ -718,7 +751,8 @@ app.get('/api/chats', async (req, res) => {
     }
 
     const chats = await getChatSessions(email, role);
-    return res.json({ chats });
+    const deletedChatIds = await getDeletedChatIds(email, role);
+    return res.json({ chats, deletedChatIds });
   } catch (error) {
     console.error('Error consultando chats:', error.message);
     const status = error.message.includes('PostgreSQL') ? 503 : 500;
@@ -735,6 +769,10 @@ app.post('/api/chats', async (req, res) => {
     }
 
     const row = await upsertChatSessionRecord(email, session);
+    if (!row) {
+      return res.status(200).json({ deleted: true });
+    }
+
     const messages = Array.isArray(session.messages) ? session.messages : [];
     for (const message of messages) {
       if (message?.role === 'system') continue;
@@ -789,6 +827,7 @@ app.post('/api/chats/:id/messages', async (req, res) => {
 app.delete('/api/chats/:id', async (req, res) => {
   try {
     const email = normalizeEmail(req.query.email || req.body?.email);
+    const role = String(req.query.role || req.body?.role || 'abogado-independiente').trim() || 'abogado-independiente';
     const sessionId = String(req.params.id || '').trim();
     if (!email || !sessionId) {
       return res.status(400).json({ error: 'Email e id de conversación son obligatorios.' });
@@ -800,8 +839,13 @@ app.delete('/api/chats/:id', async (req, res) => {
     }
 
     await accountsPool.query(
-      'DELETE FROM chat_sessions WHERE id = $1 AND account_email = $2',
-      [sessionId, email]
+      `INSERT INTO chat_sessions (id, account_email, role, title, deleted_at)
+       VALUES ($1, $2, $3, 'Conversación eliminada', NOW())
+       ON CONFLICT (id) DO UPDATE
+       SET deleted_at = NOW(),
+           account_email = EXCLUDED.account_email,
+           role = COALESCE(chat_sessions.role, EXCLUDED.role)`,
+      [sessionId, email, role]
     );
     return res.json({ ok: true });
   } catch (error) {
