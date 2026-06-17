@@ -1221,6 +1221,19 @@ document.addEventListener("DOMContentLoaded", () => {
         Respuestas basadas en lpderecho.pe y legislación peruana vigente.`;
     }
 
+    function serializeConversationMemory(messages = []) {
+        return messages
+            .filter(message => ["user", "assistant"].includes(message.role))
+            .filter(message => (message.content || "").trim())
+            .slice(-12)
+            .map(message => ({
+                id: message.id,
+                role: message.role,
+                content: message.content,
+                createdAt: message.createdAt
+            }));
+    }
+
     async function sendMessage(initialText = "") {
         const text = (typeof initialText === "string" && initialText ? initialText : chatComposerInput.value).trim();
         if (!text || isSending) return;
@@ -1264,7 +1277,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     userMessageId,
                     assistantMessageId,
                     userCreatedAt: createdAt,
-                    assistantCreatedAt
+                    assistantCreatedAt,
+                    conversationMessages: serializeConversationMemory(stableMessages)
                 })
             });
 

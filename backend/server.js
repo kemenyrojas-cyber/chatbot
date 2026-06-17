@@ -459,6 +459,22 @@ async function getChatMessages(sessionId, email) {
   return result.rows.map(serializeChatMessage);
 }
 
+async function getRecentChatMessages(sessionId, email, limit = 12) {
+  const ready = await ensureChatsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
+
+  const result = await accountsPool.query(
+    `SELECT id, role, content, metadata, created_at
+     FROM chat_messages
+     WHERE session_id = $1 AND account_email = $2
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [sessionId, normalizeEmail(email), Math.max(1, Math.min(Number(limit) || 12, 12))]
+  );
+
+  return result.rows.reverse().map(serializeChatMessage);
+}
+
 async function getChatSessions(email, role = '') {
   const ready = await ensureChatsDatabase();
   if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
@@ -1147,6 +1163,84 @@ function extractUserQuery(prompt) {
   return text.slice(markerIndex + marker.length).trim();
 }
 
+function isTemporaryChatMessage(message) {
+  const role = String(message?.role || '').trim();
+  const content = String(message?.content || '').replace(/\s+/g, ' ').trim();
+  if (!content) return true;
+  if (role === 'system') return true;
+  return /^procesando consulta jur[ií]dica\.?$/i.test(content);
+}
+
+function normalizeMemoryMessages(messages = []) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter(message => !isTemporaryChatMessage(message))
+    .filter(message => ['user', 'assistant'].includes(String(message.role || '').trim()))
+    .slice(-12)
+    .map(message => ({
+      role: String(message.role || '').trim(),
+      content: truncateForRag(message.content, 700),
+      createdAt: message.createdAt || message.created_at || null
+    }));
+}
+
+async function loadConversationMemory(email, sessionId, fallbackMessages = []) {
+  const fallback = normalizeMemoryMessages(fallbackMessages);
+  if (!email || !sessionId) return fallback;
+
+  try {
+    const persistedMessages = await getRecentChatMessages(sessionId, email, 12);
+    const normalized = normalizeMemoryMessages(persistedMessages);
+    return normalized.length ? normalized : fallback;
+  } catch (error) {
+    console.warn('LEXIA usará memoria local enviada por el frontend:', error.message);
+    return fallback;
+  }
+}
+
+function buildConversationMemoryContext(messages = [], intent = null) {
+  const normalized = normalizeMemoryMessages(messages);
+  if (!normalized.length) return '';
+
+  const lines = ['MEMORIA CONVERSACIONAL RECIENTE DE ESTA MISMA CONVERSACIÓN:'];
+  if (intent) {
+    lines.push(`Tema jurídico detectado: ${intent.area.label} / ${intent.topic.label}.`);
+  }
+  lines.push('Usa este contexto para resolver referencias como "eso", "ese caso", "qué plazo", "qué hago ahora" o preguntas de seguimiento. No inventes datos que no estén en la memoria.');
+
+  normalized.forEach((message, index) => {
+    const speaker = message.role === 'assistant' ? 'LEXIA' : 'Usuario';
+    lines.push(`${index + 1}. ${speaker}: ${message.content}`);
+  });
+
+  return lines.join('\n');
+}
+
+function buildMemorySearchQuery(userQuery, messages = []) {
+  const normalized = normalizeMemoryMessages(messages);
+  if (!normalized.length) return userQuery;
+
+  const recentUserFacts = normalized
+    .filter(message => message.role === 'user')
+    .slice(-4)
+    .map(message => message.content)
+    .join(' ');
+  const recentAssistantContext = normalized
+    .filter(message => message.role === 'assistant')
+    .slice(-2)
+    .map(message => message.content)
+    .join(' ');
+
+  return truncateForRag(
+    [
+      recentUserFacts ? `Hechos y tema previos: ${recentUserFacts}` : '',
+      recentAssistantContext ? `Orientación previa: ${recentAssistantContext}` : '',
+      `Pregunta actual: ${userQuery}`
+    ].filter(Boolean).join('\n'),
+    1800
+  );
+}
+
 function buildGreetingAnswer() {
   return [
     'Hola, soy LEXIA. Estoy aquí para ayudarte a entender tu consulta legal paso a paso, con lenguaje claro y sin complicarte con tecnicismos innecesarios.',
@@ -1804,6 +1898,22 @@ app.post('/api/chat', async (req, res) => {
           createdAt: userCreatedAt
         }
       : null;
+    const conversationMemory = await loadConversationMemory(
+      chatEmail,
+      chatSessionId,
+      Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []
+    );
+    const memorySearchQuery = buildMemorySearchQuery(userQuery, conversationMemory);
+    const currentIntent = classifyLegalIntent(userQuery);
+    const intent = classifyLegalIntent(memorySearchQuery);
+    const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
+    const fallbackQuestion = conversationMemory.length
+      ? [
+          'Responde la pregunta actual usando la memoria reciente de esta conversación.',
+          conversationMemoryContext,
+          `Pregunta actual: ${userQuery}`
+        ].filter(Boolean).join('\n\n')
+      : userQuery;
     const persistAnswer = async (answer, metadata = {}) => {
       if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
       return persistChatExchange(chatEmail, chatSession, userMessage, {
@@ -1814,7 +1924,6 @@ app.post('/api/chat', async (req, res) => {
         metadata
       });
     };
-    const intent = classifyLegalIntent(userQuery);
     if (isGreetingOnly(userQuery)) {
       const answer = buildGreetingAnswer();
       const persisted = await persistAnswer(answer, { model: 'local-greeting', source: 'LEXIA' });
@@ -1828,12 +1937,12 @@ app.post('/api/chat', async (req, res) => {
         persisted
       });
     }
-    if (isConversationalFollowUp(userQuery)) {
+    if (isConversationalFollowUp(userQuery) && !conversationMemory.length) {
       const answer = buildFollowUpClarificationAnswer();
       const persisted = await persistAnswer(answer, { model: 'local-follow-up', source: 'LEXIA' });
       return res.json({
         answer,
-        intent,
+        intent: currentIntent,
         results: [],
         source: 'LEXIA',
         fallback: false,
@@ -1841,11 +1950,11 @@ app.post('/api/chat', async (req, res) => {
         persisted
       });
     }
-    const localResults = searchLegalKnowledgeBase(userQuery);
-    const ragContext = buildRagContext(userQuery, localResults);
+    const localResults = searchLegalKnowledgeBase(memorySearchQuery);
+    const ragContext = buildRagContext(memorySearchQuery, localResults);
     if (!openAiKey) {
-      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
-      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources });
+      const answer = buildConversationalLegalAnswer(fallbackQuestion, intent, ragContext.results);
+      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources, memoryMessages: conversationMemory.length });
       return res.json({
         answer,
         intent,
@@ -1912,7 +2021,7 @@ REGLAS:
 - No hagas valoraciones morales; limita la respuesta al análisis legal.
 - No afirmes tener información en tiempo real si no está disponible en el contexto.`;
 
-    const context = ragContext.context;
+    const context = [conversationMemoryContext, ragContext.context].filter(Boolean).join('\n\n');
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,
@@ -1920,6 +2029,20 @@ REGLAS:
       `Tema: ${intent.topic.label}`,
       `Confianza: tipo=${intent.type.confidence}, área=${intent.area.confidence}, tema=${intent.topic.confidence}`
     ].join('\n');
+    const openAiMessages = [
+      {
+        role: 'system',
+        content: systemPrompt + '\n\n' + intentContext + (context ? '\n\n' + context : '')
+      },
+      ...conversationMemory.map(message => ({
+        role: message.role,
+        content: message.content
+      })),
+      {
+        role: 'user',
+        content: prompt
+      }
+    ];
 
     // LLAMADA A OPENAI
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1930,16 +2053,7 @@ REGLAS:
       },
       body: JSON.stringify({
         model,
-        messages: [
-          { 
-            role: 'system', 
-            content: systemPrompt + '\n\n' + intentContext + (context ? '\n\n' + context : '')
-          },
-          { 
-            role: 'user', 
-            content: prompt 
-          }
-        ],
+        messages: openAiMessages,
         max_tokens: 2000,
         temperature
       })
@@ -1955,8 +2069,8 @@ REGLAS:
       }
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
-      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
-      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources, providerError: mapped.error });
+      const answer = buildConversationalLegalAnswer(fallbackQuestion, intent, ragContext.results);
+      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources, providerError: mapped.error, memoryMessages: conversationMemory.length });
       return res.json({
         answer,
         intent,
@@ -1973,7 +2087,7 @@ REGLAS:
 
     const data = await response.json();
     const answer = data.choices?.[0]?.message?.content?.trim() || 'No se pudo generar respuesta';
-    const persisted = await persistAnswer(answer, { model, source: 'LEXIA (lpderecho.pe + OpenAI)', ragSources: ragContext.sources });
+    const persisted = await persistAnswer(answer, { model, source: 'LEXIA (lpderecho.pe + OpenAI)', ragSources: ragContext.sources, memoryMessages: conversationMemory.length });
     
     res.json({ 
       answer,
@@ -1983,7 +2097,8 @@ REGLAS:
       model,
       retrieval: {
         mode: 'rag',
-        results: ragContext.results.length
+        results: ragContext.results.length,
+        memoryMessages: conversationMemory.length
       },
       persisted
     });
