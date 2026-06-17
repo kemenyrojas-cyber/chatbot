@@ -246,6 +246,113 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.setItem(key, JSON.stringify(value));
     }
 
+    function getApiBase() {
+        return window.LEXIA_CONFIG?.apiBaseUrl || window.BACKEND_URL || window.location.origin;
+    }
+
+    async function apiJson(path, options = {}) {
+        const response = await fetch(`${getApiBase()}${path}`, {
+            headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+            ...options
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || "No se pudo sincronizar con el servidor.");
+        }
+        return data;
+    }
+
+    function buildStableMessageId(sessionId, message, index) {
+        return message.id || `${sessionId}:${index}:${message.role}:${message.createdAt || ""}`;
+    }
+
+    function normalizeRemoteSession(session) {
+        return {
+            id: session.id,
+            role: session.role || currentRole,
+            title: session.title || "Nueva consulta",
+            createdAt: session.createdAt || new Date().toISOString(),
+            updatedAt: session.updatedAt || session.createdAt || new Date().toISOString(),
+            messages: Array.isArray(session.messages) ? session.messages : []
+        };
+    }
+
+    function serializeSessionForApi(session, includeMessages = false) {
+        return {
+            id: session.id,
+            role: session.role || currentRole,
+            title: session.title || "Nueva consulta",
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt,
+            messages: includeMessages
+                ? (session.messages || [])
+                    .filter(message => message.role !== "system")
+                    .map((message, index) => ({
+                        id: buildStableMessageId(session.id, message, index),
+                        role: message.role,
+                        content: message.content,
+                        createdAt: message.createdAt,
+                        metadata: message.metadata || {}
+                    }))
+                : []
+        };
+    }
+
+    async function saveChatSessionToApi(session, includeMessages = false) {
+        if (!currentEmail || !session?.id) return false;
+        await apiJson("/api/chats", {
+            method: "POST",
+            body: JSON.stringify({
+                email: currentEmail,
+                session: serializeSessionForApi(session, includeMessages)
+            })
+        });
+        return true;
+    }
+
+    async function migrateLocalChatsToApi(localSessions) {
+        if (!currentEmail || !localSessions.length) return;
+
+        for (const session of localSessions) {
+            await saveChatSessionToApi(session, true);
+        }
+    }
+
+    async function initializeRemoteChats() {
+        if (!currentEmail) return;
+
+        try {
+            const localSessions = getChatSessions();
+            const data = await apiJson(`/api/chats?email=${encodeURIComponent(currentEmail)}&role=${encodeURIComponent(currentRole)}`);
+            const remoteSessions = Array.isArray(data.chats) ? data.chats.map(normalizeRemoteSession) : [];
+            const localOnlySessions = localSessions.filter(localSession => (
+                !remoteSessions.some(remoteSession => remoteSession.id === localSession.id)
+            ));
+
+            if (remoteSessions.length) {
+                if (localOnlySessions.length) {
+                    await migrateLocalChatsToApi(localOnlySessions);
+                }
+                const mergedSessions = [...remoteSessions, ...localOnlySessions]
+                    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+                saveChatSessions(mergedSessions);
+                if (!activeChatSessionId || !mergedSessions.some(item => item.id === activeChatSessionId)) {
+                    activeChatSessionId = mergedSessions[0]?.id || null;
+                }
+                renderChatSessions();
+                renderChatThread();
+                renderAppState();
+                return;
+            }
+
+            if (localSessions.length) {
+                await migrateLocalChatsToApi(localSessions);
+            }
+        } catch (error) {
+            console.warn("LEXIA usará chats locales como respaldo:", error.message);
+        }
+    }
+
     function formatDate(value) {
         return new Intl.DateTimeFormat("es-PE", {
             day: "2-digit",
@@ -343,6 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
         || authSession?.profile
     ) || savedRole || "abogado-independiente";
     renderRole(initialRole);
+    void initializeRemoteChats();
 
     function getHistory() {
         return loadList(storageKeys.history).filter(item => item.role === currentRole);
@@ -464,17 +572,31 @@ document.addEventListener("DOMContentLoaded", () => {
         const sessions = getChatSessions();
         saveChatSessions([nextSession, ...sessions]);
         activeChatSessionId = sessionId;
+        void saveChatSessionToApi(nextSession).catch(error => {
+            console.warn("No se pudo crear la conversación remota:", error.message);
+        });
         return nextSession;
     }
 
     function upsertChatSession(session) {
         const sessions = getChatSessions().filter(item => item.id !== session.id);
-        saveChatSessions([{ ...session, updatedAt: new Date().toISOString() }, ...sessions]);
+        const nextSession = { ...session, updatedAt: new Date().toISOString() };
+        saveChatSessions([nextSession, ...sessions]);
+        void saveChatSessionToApi(nextSession).catch(error => {
+            console.warn("No se pudo sincronizar la conversación remota:", error.message);
+        });
     }
 
     function deleteChatSession(sessionId) {
         const sessions = getChatSessions().filter(item => item.id !== sessionId);
         saveChatSessions(sessions);
+        if (currentEmail) {
+            void apiJson(`/api/chats/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(currentEmail)}`, {
+                method: "DELETE"
+            }).catch(error => {
+                console.warn("No se pudo eliminar la conversación remota:", error.message);
+            });
+        }
         if (activeChatSessionId === sessionId) {
             activeChatSessionId = sessions[0]?.id || null;
         }
@@ -1014,6 +1136,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const session = ensureActiveSession(text);
         const createdAt = new Date().toISOString();
+        const assistantCreatedAt = new Date().toISOString();
+        const userMessageId = `${session.id}:user:${createdAt}`;
+        const assistantMessageId = `${session.id}:assistant:${assistantCreatedAt}`;
         const stableMessages = [...session.messages];
 
         if (!stableMessages.length) {
@@ -1022,8 +1147,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         session.messages = [
             ...stableMessages,
-            { role: "user", content: text, createdAt },
-            { role: "system", content: "Procesando consulta jurídica...", createdAt }
+            { id: userMessageId, role: "user", content: text, createdAt },
+            { id: `${session.id}:system:${createdAt}`, role: "system", content: "Procesando consulta jurídica...", createdAt }
         ];
         upsertChatSession(session);
         renderChatSessions();
@@ -1036,7 +1161,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    prompt: `${buildRoleAssistantPrompt()}\n\nConsulta del usuario:\n${text}`
+                    prompt: `${buildRoleAssistantPrompt()}\n\nConsulta del usuario:\n${text}`,
+                    email: currentEmail,
+                    sessionId: session.id,
+                    role: currentRole,
+                    title: session.title,
+                    sessionCreatedAt: session.createdAt,
+                    userMessageId,
+                    assistantMessageId,
+                    userCreatedAt: createdAt,
+                    assistantCreatedAt
                 })
             });
 
@@ -1048,8 +1182,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const answer = (data.answer || "").trim() || "No se obtuvo una respuesta válida.";
             session.messages = [
                 ...stableMessages,
-                { role: "user", content: text, createdAt },
-                { role: "assistant", content: answer, createdAt: new Date().toISOString() }
+                { id: userMessageId, role: "user", content: text, createdAt },
+                { id: assistantMessageId, role: "assistant", content: answer, createdAt: assistantCreatedAt }
             ];
             upsertChatSession(session);
             addHistoryEntry(text, answer);
@@ -1057,11 +1191,12 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (error) {
             session.messages = [
                 ...stableMessages,
-                { role: "user", content: text, createdAt },
+                { id: userMessageId, role: "user", content: text, createdAt },
                 {
+                    id: assistantMessageId,
                     role: "assistant",
                     content: `No pude completar la consulta en este momento. ${error.message || "Verifica la conexión del backend y la clave de OpenAI."}`,
-                    createdAt: new Date().toISOString()
+                    createdAt: assistantCreatedAt
                 }
             ];
             upsertChatSession(session);

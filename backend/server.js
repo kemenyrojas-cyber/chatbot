@@ -33,6 +33,7 @@ const accountsPool = databaseUrl
   : null;
 let accountsDbReady = null;
 let accountsJsonSynced = false;
+let chatsDbReady = null;
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -297,6 +298,191 @@ async function getAccountsStoreStatus() {
   }
 }
 
+async function ensureChatsDatabase() {
+  if (!accountsPool) {
+    ensureProductionDatabaseConfigured();
+    return false;
+  }
+
+  await ensureAccountsDatabase();
+
+  if (!chatsDbReady) {
+    chatsDbReady = (async () => {
+      await accountsPool.query(`
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          account_email TEXT NOT NULL REFERENCES accounts(email) ON DELETE CASCADE,
+          role TEXT NOT NULL DEFAULT 'abogado-independiente',
+          title TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await accountsPool.query(`
+        CREATE TABLE IF NOT EXISTS chat_messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+          account_email TEXT NOT NULL REFERENCES accounts(email) ON DELETE CASCADE,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_chat_sessions_account_updated ON chat_sessions(account_email, updated_at DESC)');
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created ON chat_messages(session_id, created_at ASC)');
+    })();
+  }
+
+  await chatsDbReady;
+  return true;
+}
+
+function serializeChatMessage(row) {
+  return {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    metadata: row.metadata || {}
+  };
+}
+
+function serializeChatSession(row, messages = []) {
+  return {
+    id: row.id,
+    role: row.role,
+    title: row.title,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    messages
+  };
+}
+
+function normalizeClientDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.toISOString() : new Date().toISOString();
+}
+
+function buildMessageId(sessionId, message) {
+  return String(message?.id || `${sessionId}:${message?.role || 'message'}:${message?.createdAt || new Date().toISOString()}:${Buffer.from(String(message?.content || '')).toString('base64').slice(0, 24)}`);
+}
+
+async function upsertChatSessionRecord(email, session) {
+  const ready = await ensureChatsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
+
+  const normalizedEmail = normalizeEmail(email);
+  const id = String(session.id || '').trim();
+  const title = String(session.title || 'Nueva consulta').trim().slice(0, 120) || 'Nueva consulta';
+  const role = String(session.role || 'abogado-independiente').trim() || 'abogado-independiente';
+  const createdAt = normalizeClientDate(session.createdAt);
+  const updatedAt = normalizeClientDate(session.updatedAt || session.createdAt);
+
+  if (!normalizedEmail || !id) {
+    throw new Error('Email e id de conversación son obligatorios.');
+  }
+
+  const result = await accountsPool.query(
+    `INSERT INTO chat_sessions (id, account_email, role, title, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE
+     SET role = EXCLUDED.role,
+         title = EXCLUDED.title,
+         updated_at = GREATEST(chat_sessions.updated_at, EXCLUDED.updated_at)
+     RETURNING id, account_email, role, title, created_at, updated_at`,
+    [id, normalizedEmail, role, title, createdAt, updatedAt]
+  );
+
+  return result.rows[0];
+}
+
+async function insertChatMessageRecord(email, sessionId, message) {
+  const ready = await ensureChatsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
+
+  const normalizedEmail = normalizeEmail(email);
+  const id = buildMessageId(sessionId, message);
+  const role = String(message?.role || '').trim();
+  const content = String(message?.content || '').trim();
+  const createdAt = normalizeClientDate(message?.createdAt);
+  const metadata = message?.metadata && typeof message.metadata === 'object' ? message.metadata : {};
+
+  if (!normalizedEmail || !sessionId || !role || !content) {
+    throw new Error('Datos de mensaje incompletos.');
+  }
+
+  const result = await accountsPool.query(
+    `INSERT INTO chat_messages (id, session_id, account_email, role, content, metadata, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+     ON CONFLICT (id) DO UPDATE
+     SET content = EXCLUDED.content,
+         metadata = EXCLUDED.metadata
+     RETURNING id, session_id, account_email, role, content, metadata, created_at`,
+    [id, sessionId, normalizedEmail, role, content, JSON.stringify(metadata), createdAt]
+  );
+
+  await accountsPool.query(
+    'UPDATE chat_sessions SET updated_at = GREATEST(updated_at, $2::timestamptz) WHERE id = $1',
+    [sessionId, createdAt]
+  );
+
+  return result.rows[0];
+}
+
+async function getChatMessages(sessionId, email) {
+  const ready = await ensureChatsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
+
+  const result = await accountsPool.query(
+    `SELECT id, role, content, metadata, created_at
+     FROM chat_messages
+     WHERE session_id = $1 AND account_email = $2
+     ORDER BY created_at ASC`,
+    [sessionId, normalizeEmail(email)]
+  );
+  return result.rows.map(serializeChatMessage);
+}
+
+async function getChatSessions(email, role = '') {
+  const ready = await ensureChatsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
+
+  const values = [normalizeEmail(email)];
+  const roleClause = role ? 'AND role = $2' : '';
+  if (role) values.push(String(role));
+
+  const result = await accountsPool.query(
+    `SELECT id, account_email, role, title, created_at, updated_at
+     FROM chat_sessions
+     WHERE account_email = $1 ${roleClause}
+     ORDER BY updated_at DESC
+     LIMIT 120`,
+    values
+  );
+
+  const sessions = [];
+  for (const row of result.rows) {
+    sessions.push(serializeChatSession(row, await getChatMessages(row.id, email)));
+  }
+  return sessions;
+}
+
+async function persistChatExchange(email, session, userMessage, assistantMessage) {
+  if (!email || !session?.id || !userMessage?.content || !assistantMessage?.content) return false;
+  try {
+    await upsertChatSessionRecord(email, session);
+    await insertChatMessageRecord(email, session.id, userMessage);
+    await insertChatMessageRecord(email, session.id, assistantMessage);
+    return true;
+  } catch (error) {
+    console.warn('No se pudo persistir chat en PostgreSQL:', error.message);
+    return false;
+  }
+}
+
 function sanitizeAccount(account) {
   return {
     email: normalizeEmail(account.email),
@@ -410,6 +596,108 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (error) {
     console.error('Error iniciando sesión:', error.message);
     return res.status(500).json({ error: 'No se pudo leer la base de cuentas.' });
+  }
+});
+
+app.get('/api/chats', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.query.email);
+    const role = String(req.query.role || '').trim();
+    if (!email) {
+      return res.status(400).json({ error: 'El correo es obligatorio.' });
+    }
+
+    const chats = await getChatSessions(email, role);
+    return res.json({ chats });
+  } catch (error) {
+    console.error('Error consultando chats:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudieron consultar las conversaciones.' });
+  }
+});
+
+app.post('/api/chats', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const session = req.body?.session || req.body || {};
+    if (!email || !session.id) {
+      return res.status(400).json({ error: 'Email e id de conversación son obligatorios.' });
+    }
+
+    const row = await upsertChatSessionRecord(email, session);
+    const messages = Array.isArray(session.messages) ? session.messages : [];
+    for (const message of messages) {
+      if (message?.role === 'system') continue;
+      await insertChatMessageRecord(email, row.id, message);
+    }
+
+    return res.status(201).json({
+      chat: serializeChatSession(row, await getChatMessages(row.id, email))
+    });
+  } catch (error) {
+    console.error('Error guardando chat:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudo guardar la conversación.' });
+  }
+});
+
+app.get('/api/chats/:id/messages', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.query.email);
+    const sessionId = String(req.params.id || '').trim();
+    if (!email || !sessionId) {
+      return res.status(400).json({ error: 'Email e id de conversación son obligatorios.' });
+    }
+
+    const messages = await getChatMessages(sessionId, email);
+    return res.json({ messages });
+  } catch (error) {
+    console.error('Error consultando mensajes:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudieron consultar los mensajes.' });
+  }
+});
+
+app.post('/api/chats/:id/messages', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const sessionId = String(req.params.id || '').trim();
+    const message = req.body?.message || req.body || {};
+    if (!email || !sessionId || !message.role || !message.content) {
+      return res.status(400).json({ error: 'Email, conversación y mensaje son obligatorios.' });
+    }
+
+    const row = await insertChatMessageRecord(email, sessionId, message);
+    return res.status(201).json({ message: serializeChatMessage(row) });
+  } catch (error) {
+    console.error('Error guardando mensaje:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudo guardar el mensaje.' });
+  }
+});
+
+app.delete('/api/chats/:id', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.query.email || req.body?.email);
+    const sessionId = String(req.params.id || '').trim();
+    if (!email || !sessionId) {
+      return res.status(400).json({ error: 'Email e id de conversación son obligatorios.' });
+    }
+
+    const ready = await ensureChatsDatabase();
+    if (!ready) {
+      return res.status(503).json({ error: 'PostgreSQL no está configurado para chats.' });
+    }
+
+    await accountsPool.query(
+      'DELETE FROM chat_sessions WHERE id = $1 AND account_email = $2',
+      [sessionId, email]
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Error eliminando chat:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudo eliminar la conversación.' });
   }
 });
 
@@ -1263,38 +1551,80 @@ app.post('/api/chat', async (req, res) => {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
     const userQuery = extractUserQuery(prompt);
+    const chatEmail = normalizeEmail(req.body?.email);
+    const chatSessionId = String(req.body?.sessionId || '').trim();
+    const chatRole = String(req.body?.role || 'abogado-independiente').trim() || 'abogado-independiente';
+    const chatTitle = String(req.body?.title || userQuery || 'Nueva consulta').trim().slice(0, 120) || 'Nueva consulta';
+    const userCreatedAt = normalizeClientDate(req.body?.userCreatedAt);
+    const assistantCreatedAt = normalizeClientDate(req.body?.assistantCreatedAt);
+    const chatSession = chatSessionId
+      ? {
+          id: chatSessionId,
+          role: chatRole,
+          title: chatTitle,
+          createdAt: req.body?.sessionCreatedAt || userCreatedAt,
+          updatedAt: assistantCreatedAt
+        }
+      : null;
+    const userMessage = chatSessionId
+      ? {
+          id: req.body?.userMessageId || `${chatSessionId}:user:${userCreatedAt}`,
+          role: 'user',
+          content: userQuery,
+          createdAt: userCreatedAt
+        }
+      : null;
+    const persistAnswer = async (answer, metadata = {}) => {
+      if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
+      return persistChatExchange(chatEmail, chatSession, userMessage, {
+        id: req.body?.assistantMessageId || `${chatSessionId}:assistant:${assistantCreatedAt}`,
+        role: 'assistant',
+        content: answer,
+        createdAt: assistantCreatedAt,
+        metadata
+      });
+    };
     const intent = classifyLegalIntent(userQuery);
     if (isGreetingOnly(userQuery)) {
+      const answer = buildGreetingAnswer();
+      const persisted = await persistAnswer(answer, { model: 'local-greeting', source: 'LEXIA' });
       return res.json({
-        answer: buildGreetingAnswer(),
+        answer,
         intent,
         results: [],
         source: 'LEXIA',
         fallback: false,
-        model: 'local-greeting'
+        model: 'local-greeting',
+        persisted
       });
     }
     if (isConversationalFollowUp(userQuery)) {
+      const answer = buildFollowUpClarificationAnswer();
+      const persisted = await persistAnswer(answer, { model: 'local-follow-up', source: 'LEXIA' });
       return res.json({
-        answer: buildFollowUpClarificationAnswer(),
+        answer,
         intent,
         results: [],
         source: 'LEXIA',
         fallback: false,
-        model: 'local-follow-up'
+        model: 'local-follow-up',
+        persisted
       });
     }
     const localResults = searchLegalKnowledgeBase(userQuery);
     const ragContext = buildRagContext(userQuery, localResults);
     if (!openAiKey) {
+      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
+      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources });
       return res.json({
-        answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results),
+        answer,
         intent,
         results: ragContext.results,
         ragSources: ragContext.sources,
         source: 'LEXIA RAG Local',
         fallback: true,
-        model: 'local-rag-engine'
+        model: 'local-rag-engine',
+        persisted
       });
     }
 
@@ -1395,8 +1725,10 @@ REGLAS:
       }
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
+      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
+      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources, providerError: mapped.error });
       return res.json({
-        answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results),
+        answer,
         intent,
         results: ragContext.results,
         ragSources: ragContext.sources,
@@ -1404,12 +1736,14 @@ REGLAS:
         fallback: true,
         providerError: mapped.error,
         providerCode: parsedError?.error?.code || null,
-        model: 'local-rag-engine'
+        model: 'local-rag-engine',
+        persisted
       });
     }
 
     const data = await response.json();
     const answer = data.choices?.[0]?.message?.content?.trim() || 'No se pudo generar respuesta';
+    const persisted = await persistAnswer(answer, { model, source: 'LEXIA (lpderecho.pe + OpenAI)', ragSources: ragContext.sources });
     
     res.json({ 
       answer,
@@ -1420,7 +1754,8 @@ REGLAS:
       retrieval: {
         mode: 'rag',
         results: ragContext.results.length
-      }
+      },
+      persisted
     });
   } catch (error) {
     console.error('❌ Error interno:', error);
