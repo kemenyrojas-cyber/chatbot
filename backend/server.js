@@ -34,6 +34,7 @@ const accountsPool = databaseUrl
 let accountsDbReady = null;
 let accountsJsonSynced = false;
 let chatsDbReady = null;
+let notificationsDbReady = null;
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -483,6 +484,115 @@ async function persistChatExchange(email, session, userMessage, assistantMessage
   }
 }
 
+async function ensureNotificationsDatabase() {
+  if (!accountsPool) {
+    ensureProductionDatabaseConfigured();
+    return false;
+  }
+
+  await ensureAccountsDatabase();
+
+  if (!notificationsDbReady) {
+    notificationsDbReady = (async () => {
+      await accountsPool.query(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          account_email TEXT NOT NULL REFERENCES accounts(email) ON DELETE CASCADE,
+          role TEXT NOT NULL DEFAULT 'abogado-independiente',
+          title TEXT NOT NULL,
+          detail TEXT NOT NULL,
+          read BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_notifications_account_created ON notifications(account_email, created_at DESC)');
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_notifications_account_role_read ON notifications(account_email, role, read)');
+    })();
+  }
+
+  await notificationsDbReady;
+  return true;
+}
+
+function serializeNotification(row) {
+  return {
+    id: row.id,
+    role: row.role,
+    title: row.title,
+    detail: row.detail,
+    read: Boolean(row.read),
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at
+  };
+}
+
+async function getNotifications(email, role = '') {
+  const ready = await ensureNotificationsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para notificaciones.');
+
+  const values = [normalizeEmail(email)];
+  const roleClause = role ? 'AND role = $2' : '';
+  if (role) values.push(String(role));
+
+  const result = await accountsPool.query(
+    `SELECT id, role, title, detail, read, created_at
+     FROM notifications
+     WHERE account_email = $1 ${roleClause}
+     ORDER BY created_at DESC
+     LIMIT 100`,
+    values
+  );
+
+  return result.rows.map(serializeNotification);
+}
+
+async function upsertNotificationRecord(email, notification) {
+  const ready = await ensureNotificationsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para notificaciones.');
+
+  const normalizedEmail = normalizeEmail(email);
+  const id = String(notification?.id || '').trim();
+  const role = String(notification?.role || 'abogado-independiente').trim() || 'abogado-independiente';
+  const title = String(notification?.title || '').trim().slice(0, 160);
+  const detail = String(notification?.detail || '').trim().slice(0, 1000);
+  const read = Boolean(notification?.read);
+  const createdAt = normalizeClientDate(notification?.createdAt);
+
+  if (!normalizedEmail || !id || !title) {
+    throw new Error('Email, id y título de notificación son obligatorios.');
+  }
+
+  const result = await accountsPool.query(
+    `INSERT INTO notifications (id, account_email, role, title, detail, read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (id) DO UPDATE
+     SET role = EXCLUDED.role,
+         title = EXCLUDED.title,
+         detail = EXCLUDED.detail,
+         read = EXCLUDED.read
+     RETURNING id, role, title, detail, read, created_at`,
+    [id, normalizedEmail, role, title, detail, read, createdAt]
+  );
+
+  return result.rows[0];
+}
+
+async function markNotificationsRead(email, role = '') {
+  const ready = await ensureNotificationsDatabase();
+  if (!ready) throw new Error('PostgreSQL no está configurado para notificaciones.');
+
+  const values = [normalizeEmail(email)];
+  const roleClause = role ? 'AND role = $2' : '';
+  if (role) values.push(String(role));
+
+  await accountsPool.query(
+    `UPDATE notifications
+     SET read = TRUE
+     WHERE account_email = $1 ${roleClause}`,
+    values
+  );
+}
+
 function sanitizeAccount(account) {
   return {
     email: normalizeEmail(account.email),
@@ -698,6 +808,82 @@ app.delete('/api/chats/:id', async (req, res) => {
     console.error('Error eliminando chat:', error.message);
     const status = error.message.includes('PostgreSQL') ? 503 : 500;
     return res.status(status).json({ error: 'No se pudo eliminar la conversación.' });
+  }
+});
+
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.query.email);
+    const role = String(req.query.role || '').trim();
+    if (!email) {
+      return res.status(400).json({ error: 'El correo es obligatorio.' });
+    }
+
+    const notifications = await getNotifications(email, role);
+    return res.json({ notifications });
+  } catch (error) {
+    console.error('Error consultando notificaciones:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudieron consultar las notificaciones.' });
+  }
+});
+
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const notification = req.body?.notification || req.body || {};
+    if (!email || !notification.id || !notification.title) {
+      return res.status(400).json({ error: 'Email, id y título de notificación son obligatorios.' });
+    }
+
+    const row = await upsertNotificationRecord(email, notification);
+    return res.status(201).json({ notification: serializeNotification(row) });
+  } catch (error) {
+    console.error('Error guardando notificación:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudo guardar la notificación.' });
+  }
+});
+
+app.patch('/api/notifications/read-all', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email || req.query.email);
+    const role = String(req.body?.role || req.query.role || '').trim();
+    if (!email) {
+      return res.status(400).json({ error: 'El correo es obligatorio.' });
+    }
+
+    await markNotificationsRead(email, role);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Error marcando notificaciones:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudieron marcar las notificaciones.' });
+  }
+});
+
+app.patch('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email || req.query.email);
+    const id = String(req.params.id || '').trim();
+    if (!email || !id) {
+      return res.status(400).json({ error: 'Email e id de notificación son obligatorios.' });
+    }
+
+    const ready = await ensureNotificationsDatabase();
+    if (!ready) {
+      return res.status(503).json({ error: 'PostgreSQL no está configurado para notificaciones.' });
+    }
+
+    await accountsPool.query(
+      'UPDATE notifications SET read = TRUE WHERE id = $1 AND account_email = $2',
+      [id, email]
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Error marcando notificación:', error.message);
+    const status = error.message.includes('PostgreSQL') ? 503 : 500;
+    return res.status(status).json({ error: 'No se pudo marcar la notificación.' });
   }
 });
 

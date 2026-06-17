@@ -353,6 +353,81 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function normalizeRemoteNotification(notification) {
+        return {
+            id: notification.id,
+            role: notification.role || currentRole,
+            title: notification.title || "Notificación",
+            detail: notification.detail || "",
+            read: Boolean(notification.read),
+            createdAt: notification.createdAt || new Date().toISOString()
+        };
+    }
+
+    function serializeNotificationForApi(notification) {
+        return {
+            id: notification.id,
+            role: notification.role || currentRole,
+            title: notification.title || "Notificación",
+            detail: notification.detail || "",
+            read: Boolean(notification.read),
+            createdAt: notification.createdAt
+        };
+    }
+
+    async function saveNotificationToApi(notification) {
+        if (!currentEmail || !notification?.id) return false;
+        await apiJson("/api/notifications", {
+            method: "POST",
+            body: JSON.stringify({
+                email: currentEmail,
+                notification: serializeNotificationForApi(notification)
+            })
+        });
+        return true;
+    }
+
+    async function migrateLocalNotificationsToApi(localNotifications) {
+        if (!currentEmail || !localNotifications.length) return;
+
+        for (const notification of localNotifications) {
+            await saveNotificationToApi(notification);
+        }
+    }
+
+    async function initializeRemoteNotifications() {
+        if (!currentEmail) return;
+
+        try {
+            const localNotifications = getNotifications();
+            const data = await apiJson(`/api/notifications?email=${encodeURIComponent(currentEmail)}&role=${encodeURIComponent(currentRole)}`);
+            const remoteNotifications = Array.isArray(data.notifications)
+                ? data.notifications.map(normalizeRemoteNotification)
+                : [];
+            const localOnlyNotifications = localNotifications.filter(localNotification => (
+                !remoteNotifications.some(remoteNotification => remoteNotification.id === localNotification.id)
+            ));
+
+            if (remoteNotifications.length) {
+                if (localOnlyNotifications.length) {
+                    await migrateLocalNotificationsToApi(localOnlyNotifications);
+                }
+                const otherRoles = loadList(storageKeys.notifications).filter(item => item.role !== currentRole);
+                const mergedNotifications = [...remoteNotifications, ...localOnlyNotifications]
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                saveList(storageKeys.notifications, [...otherRoles, ...mergedNotifications].slice(0, 100));
+                renderAppState();
+                return;
+            }
+
+            if (localNotifications.length) {
+                await migrateLocalNotificationsToApi(localNotifications);
+            }
+        } catch (error) {
+            console.warn("LEXIA usará notificaciones locales como respaldo:", error.message);
+        }
+    }
+
     function formatDate(value) {
         return new Intl.DateTimeFormat("es-PE", {
             day: "2-digit",
@@ -451,6 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ) || savedRole || "abogado-independiente";
     renderRole(initialRole);
     void initializeRemoteChats();
+    void initializeRemoteNotifications();
 
     function getHistory() {
         return loadList(storageKeys.history).filter(item => item.role === currentRole);
@@ -462,15 +538,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function addNotification(title, detail) {
         const notifications = loadList(storageKeys.notifications);
-        notifications.unshift({
+        const notification = {
             id: createId(),
             role: currentRole,
             title,
             detail,
             read: false,
             createdAt: new Date().toISOString()
-        });
+        };
+        notifications.unshift(notification);
         saveList(storageKeys.notifications, notifications.slice(0, 50));
+        void saveNotificationToApi(notification).catch(error => {
+            console.warn("No se pudo sincronizar la notificación remota:", error.message);
+        });
     }
 
     function renderHistory() {
@@ -1329,6 +1409,17 @@ document.addEventListener("DOMContentLoaded", () => {
             item.role === currentRole ? { ...item, read: true } : item
         ));
         saveList(storageKeys.notifications, notifications);
+        if (currentEmail) {
+            void apiJson("/api/notifications/read-all", {
+                method: "PATCH",
+                body: JSON.stringify({
+                    email: currentEmail,
+                    role: currentRole
+                })
+            }).catch(error => {
+                console.warn("No se pudieron marcar notificaciones remotas:", error.message);
+            });
+        }
         renderAppState();
     });
 
