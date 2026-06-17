@@ -28,273 +28,138 @@
             }
         };
     </script>
-    <style>
-        .static-fallback {
-            min-height: 100vh;
-            background: linear-gradient(180deg, #020B22 0%, #071B4A 66%, #ffffff 66%);
-            color: #ffffff;
-            font-family: Inter, "Segoe UI", Arial, sans-serif;
-        }
-
-        .static-fallback a {
-            color: inherit;
-            text-decoration: none;
-        }
-
-        .static-wrap {
-            width: min(1180px, calc(100% - 32px));
-            margin: 0 auto;
-            padding: 24px 0 40px;
-        }
-
-        .static-nav,
-        .static-actions,
-        .static-hero,
-        .static-cards {
-            display: flex;
-        }
-
-        .static-nav {
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-        }
-
-        .static-brand strong {
-            display: block;
-            font-size: 30px;
-            line-height: 1;
-            font-weight: 900;
-        }
-
-        .static-brand span,
-        .static-copy p,
-        .static-chip {
-            color: #cbd5e1;
-        }
-
-        .static-actions {
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .static-link,
-        .static-button {
-            min-height: 44px;
-            padding: 0 18px;
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        .static-link {
-            border: 1px solid rgba(124, 162, 255, .65);
-        }
-
-        .static-button {
-            background: #3267FF;
-        }
-
-        .static-hero {
-            min-height: 560px;
-            align-items: center;
-            justify-content: space-between;
-            gap: 48px;
-        }
-
-        .static-copy {
-            max-width: 600px;
-        }
-
-        .static-chip {
-            display: inline-flex;
-            margin-bottom: 18px;
-            border: 1px solid #3267FF;
-            border-radius: 999px;
-            padding: 8px 14px;
-            font-size: 12px;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
-
-        .static-copy h1 {
-            margin: 0;
-            font-size: clamp(40px, 6vw, 68px);
-            line-height: 1.04;
-            font-weight: 900;
-        }
-
-        .static-copy h1 span {
-            color: #3267FF;
-        }
-
-        .static-copy p {
-            max-width: 540px;
-            margin: 22px 0 0;
-            font-size: 17px;
-            line-height: 1.7;
-        }
-
-        .static-search {
-            margin-top: 28px;
-            max-width: 560px;
-            min-height: 60px;
-            padding: 8px;
-            border-radius: 8px;
-            background: #ffffff;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 24px 80px rgba(50, 103, 255, .22);
-        }
-
-        .static-search input {
-            min-width: 0;
-            flex: 1;
-            border: 0;
-            outline: 0;
-            padding: 0 14px;
-            color: #0f172a;
-            font: inherit;
-        }
-
-        .static-search a {
-            width: 46px;
-            height: 46px;
-            border-radius: 999px;
-            background: #0A1737;
-            display: grid;
-            place-items: center;
-        }
-
-        .static-visual {
-            position: relative;
-            flex: 0 1 500px;
-            min-height: 460px;
-            display: grid;
-            place-items: center;
-        }
-
-        .static-visual img {
-            width: min(500px, 100%);
-            filter: drop-shadow(0 34px 68px rgba(0,0,0,.48));
-        }
-
-        .static-card {
-            position: absolute;
-            border: 1px solid rgba(255,255,255,.12);
-            border-radius: 10px;
-            background: rgba(255,255,255,.08);
-            padding: 14px 16px;
-            box-shadow: 0 24px 80px rgba(50, 103, 255, .22);
-            backdrop-filter: blur(12px);
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        .static-card.one { left: 0; top: 76px; }
-        .static-card.two { right: 0; top: 76px; }
-        .static-card.three { left: 0; bottom: 98px; }
-        .static-card.four { right: 0; bottom: 98px; }
-
-        .static-cards {
-            gap: 18px;
-            padding: 0 0 32px;
-            color: #071244;
-        }
-
-        .static-area {
-            flex: 1;
-            min-width: 0;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            background: #ffffff;
-            padding: 22px;
-            text-align: center;
-            box-shadow: 0 16px 48px rgba(9,22,58,.10);
-        }
-
-        .static-area i {
-            margin-bottom: 12px;
-            color: #3267FF;
-            font-size: 30px;
-        }
-
-        .static-area strong {
-            display: block;
-            margin-bottom: 8px;
-        }
-
-        .static-area span {
-            color: #64748b;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        @media (max-width: 900px) {
-            .static-hero,
-            .static-cards {
-                flex-direction: column;
-            }
-
-            .static-visual {
-                min-height: 360px;
-                width: 100%;
-            }
-
-            .static-card {
-                position: static;
-                margin: 6px;
-            }
-        }
-    </style>
 </head>
 <body class="font-sans text-[15px] antialiased">
     <div id="root">
-        <main class="static-fallback">
-            <div class="static-wrap">
-                <nav class="static-nav" aria-label="Navegación principal">
-                    <a href="/" class="static-brand">
-                        <strong>LEXIA</strong>
-                        <span>Espacio legal inteligente</span>
-                    </a>
-                    <div class="static-actions">
-                        <a class="static-link" href="/login">Iniciar sesión</a>
-                        <a class="static-button" href="/registro">Registrarse</a>
-                    </div>
-                </nav>
+        <main class="min-h-screen bg-white text-slate-950">
+            <section class="relative overflow-hidden bg-[radial-gradient(circle_at_68%_30%,rgba(50,103,255,.22),transparent_34%),linear-gradient(180deg,#020B22_0%,#071B4A_100%)] text-white">
+                <div class="absolute inset-0 opacity-[.12] [background-image:linear-gradient(90deg,transparent_0,transparent_9%,rgba(255,255,255,.14)_9.2%,transparent_9.4%),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:120px_100%,100%_72px]"></div>
+                <div class="relative mx-auto max-w-[1280px] px-6 pb-6 pt-5 lg:px-8">
+                    <nav class="flex items-center justify-between">
+                        <a href="/" class="flex flex-col items-start gap-1">
+                            <span class="w-full text-center text-3xl font-extrabold tracking-tight">LEXIA</span>
+                            <span class="sr-only">LEXIA</span>
+                            <span class="hidden text-xs font-medium text-slate-300 sm:block">Espacio legal inteligente</span>
+                        </a>
 
-                <section class="static-hero">
-                    <div class="static-copy">
-                        <span class="static-chip">Plataforma legal para trabajar mejor</span>
-                        <h1>Tu espacio legal inteligente, <span>en un solo lugar.</span></h1>
-                        <p>LEXIA reúne consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas para que tu operación legal avance con orden y criterio.</p>
-                        <div class="static-search">
-                            <input placeholder="Busca una norma, caso, cliente o documento..." aria-label="Buscar">
-                            <a href="/login" aria-label="Ir a iniciar sesión"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+                        <div class="hidden items-center gap-8 text-[15px] font-medium text-white/90 lg:flex">
+                            <a href="#" class="border-b-2 border-bluex pb-3 text-soft">Inicio</a>
+                            <a href="#" class="pb-3 transition hover:text-soft">Características</a>
+                            <a href="#" class="pb-3 transition hover:text-soft">Áreas del Derecho</a>
+                            <a href="#" class="pb-3 transition hover:text-soft">Planes</a>
+                            <a href="#" class="pb-3 transition hover:text-soft">Nosotros</a>
+                            <a href="#" class="pb-3 transition hover:text-soft">Contacto</a>
+                        </div>
+
+                        <div class="flex items-center gap-4">
+                            <a href="/login" class="hidden rounded-md border border-soft/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/8 sm:inline-flex">Iniciar sesión</a>
+                            <a href="/registro" class="rounded-md bg-bluex px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:bg-blue-500">Registrarse</a>
+                        </div>
+                    </nav>
+
+                    <div class="grid min-h-[620px] items-center gap-8 pt-8 lg:grid-cols-[.9fr_1.1fr]">
+                        <div class="max-w-[620px]">
+                            <div class="mb-5 inline-flex rounded-full border border-bluex px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-soft">Plataforma legal para trabajar mejor</div>
+                            <h1 class="text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
+                                Tu espacio legal inteligente, <span class="text-bluex">en un solo lugar.</span>
+                            </h1>
+                            <p class="mt-5 max-w-[520px] text-base leading-7 text-slate-300">LEXIA reúne consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas para que tu operación legal avance con orden y criterio.</p>
+
+                            <div class="mt-7 flex max-w-[560px] items-center rounded-md bg-white p-2 shadow-glow">
+                                <input class="min-h-12 flex-1 rounded-md px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400" placeholder="Busca una norma, caso, cliente o documento...">
+                                <a href="/login" class="grid h-11 w-11 place-items-center rounded-full bg-[#0A1737] text-white transition hover:bg-bluex" aria-label="Ir a iniciar sesión">
+                                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                                </a>
+                            </div>
+
+                            <div class="mt-5 flex max-w-[640px] items-center gap-2 text-[11px] text-slate-300">
+                                <span class="pt-1.5">Ejemplos:</span>
+                                <div class="flex flex-nowrap items-center gap-1.5">
+                                    <span class="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">¿Cómo demandar por alimentos?</span>
+                                    <span class="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">¿Qué es la nulidad de contrato?</span>
+                                    <span class="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">Plazo de prescripción penal</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="relative h-[590px]">
+                            <img src="robot.png.png" alt="Robot legal de LEXIA" class="absolute left-1/2 top-[40%] z-20 h-[510px] w-[510px] -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_34px_68px_rgba(0,0,0,.48)]">
+                            <div class="absolute left-[2%] top-[18%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
+                                <span class="text-bluex"><i class="fa-solid fa-bolt text-2xl" aria-hidden="true"></i></span><span><strong>Consulta</strong><br><span class="text-slate-300">jurídica</span></span>
+                            </div>
+                            <div class="absolute right-[2%] top-[18%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
+                                <span class="text-bluex"><i class="fa-solid fa-bullseye text-2xl" aria-hidden="true"></i></span><span><strong>Análisis</strong><br><span class="text-slate-300">precisos</span></span>
+                            </div>
+                            <div class="absolute left-[-4%] top-[38%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
+                                <span class="text-bluex"><i class="fa-regular fa-file-lines text-2xl" aria-hidden="true"></i></span><span><strong>Normas</strong><br><span class="text-slate-300">actualizadas</span></span>
+                            </div>
+                            <div class="absolute right-[-4%] top-[38%] z-30 flex items-center gap-3 rounded-lg border border-white/12 bg-white/8 px-5 py-4 text-sm shadow-glow backdrop-blur-md">
+                                <span class="text-bluex"><i class="fa-solid fa-landmark text-2xl" aria-hidden="true"></i></span><span><strong>Jurisprudencia</strong><br><span class="text-slate-300">confiable</span></span>
+                            </div>
+
+                            <div class="absolute bottom-0 left-1/2 z-30 grid w-[84%] -translate-x-1/2 grid-cols-4 rounded-xl border border-white/10 bg-white/5 py-5 text-center shadow-glow backdrop-blur-md">
+                                <div class="px-4"><p class="text-3xl font-extrabold text-soft">8</p><p class="mt-1 text-sm leading-5 text-white">Módulos legales</p></div>
+                                <div class="border-l border-white/10 px-4"><p class="text-3xl font-extrabold text-soft">24/7</p><p class="mt-1 text-sm leading-5 text-white">Consulta disponible</p></div>
+                                <div class="border-l border-white/10 px-4"><p class="text-3xl font-extrabold text-soft">98%</p><p class="mt-1 text-sm leading-5 text-white">Flujo organizado</p></div>
+                                <div class="border-l border-white/10 px-4"><p class="text-3xl font-extrabold text-soft">1</p><p class="mt-1 text-sm leading-5 text-white">Espacio de trabajo</p></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white px-6 py-7 lg:px-10">
+                <div class="mx-auto max-w-[1280px]">
+                    <h2 class="text-center text-2xl font-extrabold text-[#071244]">Explora todas las áreas del Derecho</h2>
+                    <div class="mt-6 grid gap-5 md:grid-cols-3 xl:grid-cols-6">
+                        <article class="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card"><div class="mx-auto mb-3 flex h-10 items-center justify-center text-[#2F6BFF]"><i class="fa-solid fa-scale-balanced text-4xl" aria-hidden="true"></i></div><h3 class="font-semibold text-[#071244]">Derecho Civil</h3><p class="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">Personas, bienes, contratos y obligaciones.</p><a href="#" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a></article>
+                        <article class="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card"><div class="mx-auto mb-3 flex h-10 items-center justify-center text-[#6D4AFF]"><i class="fa-solid fa-gavel text-4xl" aria-hidden="true"></i></div><h3 class="font-semibold text-[#071244]">Derecho Penal</h3><p class="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">Delitos, penas, procesos y defensas.</p><a href="#" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a></article>
+                        <article class="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card"><div class="mx-auto mb-3 flex h-10 items-center justify-center text-[#13B981]"><i class="fa-solid fa-briefcase text-4xl" aria-hidden="true"></i></div><h3 class="font-semibold text-[#071244]">Derecho Laboral</h3><p class="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">Trabajadores, empleadores, contratos y beneficios.</p><a href="#" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a></article>
+                        <article class="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card"><div class="mx-auto mb-3 flex h-10 items-center justify-center text-[#E66B1F]"><i class="fa-solid fa-building-columns text-4xl" aria-hidden="true"></i></div><h3 class="font-semibold text-[#071244]">Derecho Comercial</h3><p class="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">Empresas, sociedades, contratos y obligaciones.</p><a href="#" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a></article>
+                        <article class="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card"><div class="mx-auto mb-3 flex h-10 items-center justify-center text-[#E64D84]"><i class="fa-solid fa-users text-4xl" aria-hidden="true"></i></div><h3 class="font-semibold text-[#071244]">Derecho de Familia</h3><p class="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">Matrimonio, divorcio, alimentos, tenencia y más.</p><a href="#" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a></article>
+                        <article class="rounded-lg border border-slate-200 bg-white px-5 py-6 text-center shadow-card"><div class="mx-auto mb-3 flex h-10 items-center justify-center text-[#7C9BFF]"><i class="fa-solid fa-folder text-4xl" aria-hidden="true"></i></div><h3 class="font-semibold text-[#071244]">Procedimiento Legal</h3><p class="mt-2 min-h-[48px] text-sm leading-5 text-slate-500">Procesos, demandas, recursos y más.</p><a href="#" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-bluex">Explorar <span>→</span></a></article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white px-6 pb-8 lg:px-10">
+                <div class="mx-auto grid max-w-[1280px] gap-8 border-t border-slate-200 pt-7 lg:grid-cols-[1.35fr_.65fr]">
+                    <div>
+                        <h2 class="text-2xl font-extrabold text-[#071244]">¿Por qué elegir LEXIA?</h2>
+                        <div class="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                            <article class="flex gap-4"><span class="flex-none text-soft"><i class="fa-solid fa-shield-halved text-3xl" aria-hidden="true"></i></span><div><h3 class="font-semibold text-[#071244]">Base jurídica</h3><p class="mt-1 text-sm leading-6 text-slate-500">Consulta normativa, jurisprudencia y criterios con trazabilidad.</p></div></article>
+                            <article class="flex gap-4"><span class="flex-none text-soft"><i class="fa-solid fa-clock text-3xl" aria-hidden="true"></i></span><div><h3 class="font-semibold text-[#071244]">Gestión diaria</h3><p class="mt-1 text-sm leading-6 text-slate-500">Organiza clientes, casos, documentos, plazos y agenda.</p></div></article>
+                            <article class="flex gap-4"><span class="flex-none text-soft"><i class="fa-solid fa-brain text-3xl" aria-hidden="true"></i></span><div><h3 class="font-semibold text-[#071244]">Consulta asistida</h3><p class="mt-1 text-sm leading-6 text-slate-500">Usa IA como apoyo dentro de un flujo legal completo.</p></div></article>
+                            <article class="flex gap-4"><span class="flex-none text-soft"><i class="fa-solid fa-lock text-3xl" aria-hidden="true"></i></span><div><h3 class="font-semibold text-[#071244]">Trabajo ordenado</h3><p class="mt-1 text-sm leading-6 text-slate-500">Centraliza información legal sin dispersarla en herramientas sueltas.</p></div></article>
                         </div>
                     </div>
 
-                    <div class="static-visual" aria-label="Robot legal de LEXIA">
-                        <img src="robot.png.png" alt="Robot legal de LEXIA">
-                        <div class="static-card one"><i class="fa-solid fa-bolt" aria-hidden="true"></i> Consulta jurídica</div>
-                        <div class="static-card two"><i class="fa-solid fa-bullseye" aria-hidden="true"></i> Análisis precisos</div>
-                        <div class="static-card three"><i class="fa-regular fa-file-lines" aria-hidden="true"></i> Normas actualizadas</div>
-                        <div class="static-card four"><i class="fa-solid fa-landmark" aria-hidden="true"></i> Jurisprudencia confiable</div>
-                    </div>
-                </section>
+                    <aside class="rounded-lg border border-slate-200 bg-white p-7 shadow-card">
+                        <h3 class="font-extrabold text-[#071244]">Confían en nosotros</h3>
+                        <div class="mt-6 grid grid-cols-3 items-center gap-4 text-center text-[11px] font-bold leading-4 text-slate-600">
+                            <div>Estudio Jurídico Díaz & Asociados</div>
+                            <div>Municipalidad de Miraflores</div>
+                            <div>Universidad Nacional Mayor de San Marcos</div>
+                        </div>
+                    </aside>
+                </div>
+            </section>
 
-                <section class="static-cards" aria-label="Áreas del Derecho">
-                    <article class="static-area"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><strong>Derecho Civil</strong><span>Personas, bienes, contratos y obligaciones.</span></article>
-                    <article class="static-area"><i class="fa-solid fa-gavel" aria-hidden="true"></i><strong>Derecho Penal</strong><span>Delitos, penas, procesos y defensas.</span></article>
-                    <article class="static-area"><i class="fa-solid fa-briefcase" aria-hidden="true"></i><strong>Derecho Laboral</strong><span>Trabajadores, empleadores, contratos y beneficios.</span></article>
-                    <article class="static-area"><i class="fa-solid fa-building-columns" aria-hidden="true"></i><strong>Derecho Comercial</strong><span>Empresas, sociedades, contratos y obligaciones.</span></article>
-                </section>
-            </div>
+            <section class="bg-white px-6 pb-8 lg:px-10">
+                <div class="mx-auto flex max-w-[1280px] flex-col items-start justify-between gap-5 rounded-lg bg-[#03113A] px-8 py-7 text-white shadow-card md:flex-row md:items-center">
+                    <div class="flex items-center gap-5">
+                        <span class="grid h-16 w-16 place-items-center rounded-full bg-white/10 text-white"><i class="fa-solid fa-scale-balanced text-3xl" aria-hidden="true"></i></span>
+                        <div>
+                            <h2 class="text-xl font-extrabold">Ordena tu práctica legal desde hoy</h2>
+                            <p class="mt-1 text-sm text-slate-300">Centraliza consultas, documentos, clientes, casos, agenda y plantillas en LEXIA.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4">
+                        <a href="#" class="rounded-md border border-bluex px-8 py-3 text-sm font-bold">Conocer más</a>
+                        <a href="/registro" class="rounded-md bg-bluex px-8 py-3 text-sm font-bold">Registrarse gratis →</a>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
