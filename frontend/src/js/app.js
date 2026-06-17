@@ -210,13 +210,22 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
+    const params = new URLSearchParams(window.location.search);
+    const authSession = window.LexiaAuth?.getSession?.() || null;
+    const currentEmail = window.LexiaAuth?.normalizeEmail
+        ? window.LexiaAuth.normalizeEmail(params.get("email") || authSession?.email || "")
+        : String(params.get("email") || authSession?.email || "").trim().toLowerCase();
+    const storageOwner = currentEmail || "guest";
+    const scopedStorageKey = key => `${key}:${storageOwner}`;
+
     const storageKeys = {
-        history: "lexiaHistory",
-        chats: "lexiaChats",
-        notifications: "lexiaNotifications",
-        documents: "lexiaDocuments",
-        deadlines: "lexiaDeadlines",
-        favorites: "lexiaFavorites"
+        role: scopedStorageKey("lexiaRole"),
+        history: scopedStorageKey("lexiaHistory"),
+        chats: scopedStorageKey("lexiaChats"),
+        notifications: scopedStorageKey("lexiaNotifications"),
+        documents: scopedStorageKey("lexiaDocuments"),
+        deadlines: scopedStorageKey("lexiaDeadlines"),
+        favorites: scopedStorageKey("lexiaFavorites")
     };
 
     let currentRole = "abogado-independiente";
@@ -290,14 +299,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function buildRoleAssistantPrompt() {
         const roleConfig = roleDashboards[currentRole] || roleDashboards["abogado-independiente"];
-        return `Actúa como LEXIA para el rol ${roleConfig.label}. Responde como IA jurídica peruana con consulta de leyes, análisis de casos, jurisprudencia o criterios cuando existan, sugerencias inteligentes y fuentes citadas o rutas de verificación. Adapta la profundidad y lenguaje al perfil del usuario.`;
+        return `Actúa como LEXIA para el rol ${roleConfig.label}. Conversa como una abogada peruana cercana, paciente y clara: entiende primero la preocupación del usuario, responde en palabras sencillas, explica los términos legales necesarios y luego da análisis jurídico, próximos pasos, riesgos, jurisprudencia o criterios cuando existan, y fuentes citadas o rutas de verificación. Si faltan datos, responde lo posible con supuestos y haz preguntas concretas para continuar la conversación. Adapta la profundidad y el lenguaje al perfil del usuario.`;
     }
 
     function renderRole(role) {
         const selectedRole = roleDashboards[role] ? role : "abogado-independiente";
         const config = roleDashboards[selectedRole];
         currentRole = selectedRole;
-        localStorage.setItem("lexiaRole", selectedRole);
+        localStorage.setItem(storageKeys.role, selectedRole);
 
         greeting.textContent = config.greeting;
         dashboardSubtitle.textContent = config.subtitle;
@@ -314,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
         roleToolsGrid.innerHTML = config.tools.map(item => renderIconArticle(item, "")).join("");
         planFeatures.innerHTML = config.features.map(feature => `<li>${feature}</li>`).join("");
         chatViewTitle.textContent = `Consulta jurídica para ${config.label}`;
-        chatViewSubtitle.textContent = "Consulta leyes, jurisprudencia, normativa, documentos, casos y próximos pasos con enfoque profesional.";
+        chatViewSubtitle.textContent = "Conversa sobre tu caso, entiende tus opciones y recibe próximos pasos en lenguaje claro.";
         if (!getChatSessions().some(item => item.id === activeChatSessionId)) {
             activeChatSessionId = null;
         }
@@ -323,10 +332,7 @@ document.addEventListener("DOMContentLoaded", () => {
         renderChatThread();
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const savedRole = normalizeRole(localStorage.getItem("lexiaRole"));
-    const session = window.LexiaAuth?.getSession?.() || null;
-    const currentEmail = params.get("email") || session?.email || "";
+    const savedRole = normalizeRole(localStorage.getItem(storageKeys.role));
     const currentAccount = currentEmail && window.LexiaAuth?.findAccount
         ? window.LexiaAuth.findAccount(currentEmail)
         : null;
@@ -334,7 +340,7 @@ document.addEventListener("DOMContentLoaded", () => {
         params.get("role")
         || params.get("profile")
         || currentAccount?.profile
-        || session?.profile
+        || authSession?.profile
     ) || savedRole || "abogado-independiente";
     renderRole(initialRole);
 
@@ -527,8 +533,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!session || !session.messages.length) {
             chatThread.innerHTML = `
                 <div class="chat-empty">
-                    <strong>Consulta jurídica especializada</strong>
-                    <p>Abre una conversación y formula preguntas sobre contratos, procesos, jurisprudencia, escritos, riesgos o interpretación normativa.</p>
+                    <strong>Conversa con LEXIA sobre tu caso</strong>
+                    <p>Cuéntame qué pasó, qué documento tienes o qué duda legal te preocupa. Te responderé en lenguaje claro y te haré preguntas si falta información.</p>
                 </div>
             `;
             return;
