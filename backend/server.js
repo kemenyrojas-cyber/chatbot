@@ -606,6 +606,21 @@ function isGreetingOnly(text) {
   return /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|ola|hi|hello)( lexia)?$/.test(normalized);
 }
 
+function isConversationalFollowUp(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+  const legalTerms = getQueryTerms(text);
+  const fillerWords = new Set([
+    'asi', 'así', 'explica', 'explicame', 'explícame', 'explicamelo', 'explícamelo',
+    'entiendo', 'entendi', 'entendí', 'claro', 'mejor', 'simple', 'sencillo',
+    'resumen', 'resume', 'detalla', 'continua', 'continúa', 'sigue', 'ok',
+    'vale', 'perfecto', 'gracias', 'no', 'si', 'sí', 'eso', 'esa', 'este'
+  ]);
+  const meaningfulTerms = legalTerms.filter(term => !fillerWords.has(term));
+  const followUpPattern = /^(asi|así|explica|explicame|explícame|explicamelo|explícamelo|hazlo|dilo|ponlo|resumelo|resúmelo|resume|continua|continúa|sigue|no entendi|no entendí|no entiendo|mas claro|más claro|en simple|en sencillo|ok|vale|gracias)(\s.*)?$/;
+  return followUpPattern.test(normalized) && meaningfulTerms.length < 2 && !isLegalQuery(text);
+}
+
 function extractUserQuery(prompt) {
   const text = String(prompt || '').trim();
   const marker = 'Consulta del usuario:';
@@ -624,8 +639,22 @@ function buildGreetingAnswer() {
   ].join('\n');
 }
 
+function buildFollowUpClarificationAnswer() {
+  return [
+    'Claro. Te lo explico con gusto, pero necesito saber sobre qué tema o caso quieres que lo haga.',
+    '',
+    'Puedes escribirme una frase corta, por ejemplo:',
+    '- "Explícame el despido arbitrario"',
+    '- "Explícame qué hacer si me deben alimentos"',
+    '- "Explícame cómo responder una carta notarial"',
+    '- "Explícame este contrato"',
+    '',
+    'Si estabas respondiendo a una explicación anterior, copia una parte o dime el tema y lo pongo en palabras más simples.'
+  ].join('\n');
+}
+
 function shouldSearchLegalEngine(query) {
-  if (isGreetingOnly(query)) return false;
+  if (isGreetingOnly(query) || isConversationalFollowUp(query)) return false;
   const terms = getQueryTerms(query);
   return isLegalQuery(query) || terms.length >= 2;
 }
@@ -1167,6 +1196,16 @@ app.post('/api/chat', async (req, res) => {
         source: 'LEXIA',
         fallback: false,
         model: 'local-greeting'
+      });
+    }
+    if (isConversationalFollowUp(userQuery)) {
+      return res.json({
+        answer: buildFollowUpClarificationAnswer(),
+        intent,
+        results: [],
+        source: 'LEXIA',
+        fallback: false,
+        model: 'local-follow-up'
       });
     }
     const localResults = searchLegalKnowledgeBase(userQuery);
