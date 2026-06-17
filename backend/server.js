@@ -616,9 +616,11 @@ function extractUserQuery(prompt) {
 
 function buildGreetingAnswer() {
   return [
-    'Hola, soy LEXIA. Puedo ayudarte con consulta jurídica, jurisprudencia, normativa, documentos, clientes, casos, agenda y plantillas.',
+    'Hola, soy LEXIA. Estoy aquí para ayudarte a entender tu consulta legal paso a paso, con lenguaje claro y sin complicarte con tecnicismos innecesarios.',
     '',
-    'Escribe tu consulta con un tema concreto, por ejemplo: "posesión precaria", "despido arbitrario", "casación sobre alimentos" o "requisitos de una demanda civil".'
+    'Cuéntame qué pasó, qué documento tienes o qué duda quieres resolver. Si todavía no sabes cómo explicarlo, puedes empezar con algo simple como: "tengo un problema con mi contrato", "me despidieron", "quiero saber sobre alimentos" o "necesito preparar una demanda".',
+    '',
+    'Yo te ayudo a ordenar los hechos, ubicar el área legal y ver los siguientes pasos.'
   ].join('\n');
 }
 
@@ -873,18 +875,20 @@ function buildTopicGuidance(intent) {
 
 function buildConversationalLegalAnswer(query, intent, results) {
   const lines = [
-    `Entiendo. Tu consulta parece ser una ${intent.type.label.toLowerCase()} sobre ${intent.topic.label}, dentro de ${intent.area.label}.`,
+    `Entiendo. Por lo que me cuentas, esto parece relacionarse con ${intent.topic.label} dentro de ${intent.area.label}.`,
     ''
   ];
 
   lines.push(...buildTopicGuidance(intent));
   lines.push('');
-  lines.push('Para orientarte mejor, dime por favor:');
-  lines.push('1. ¿Esto te pasó a ti, a un familiar o solo quieres información general?');
-  lines.push('2. ¿Hubo amenazas, mensajes, llamadas, cobros o exigencia de dinero?');
-  lines.push('3. ¿Ya hiciste denuncia o todavía estás evaluando qué hacer?');
+  lines.push('Para ayudarte mejor, respóndeme solo lo que tengas a la mano:');
+  lines.push('1. ¿Qué pasó y cuándo ocurrió?');
+  lines.push('2. ¿Tienes documentos, mensajes, contrato, denuncia, carta, resolución o alguna prueba?');
+  lines.push('3. ¿Qué resultado buscas: orientarte, responder, denunciar, demandar, negociar o preparar un documento?');
   lines.push('');
-  lines.push('Esto es orientación general. Si hay riesgo actual o amenazas concretas, conviene buscar apoyo inmediato de la autoridad competente y asesoría legal directa.');
+  lines.push('Con esos datos puedo darte una orientación más precisa, próximos pasos y los documentos que conviene reunir.');
+  lines.push('');
+  lines.push('Nota: esto es orientación general. Si hay riesgo actual, amenazas concretas o plazos próximos, conviene buscar apoyo inmediato de la autoridad competente y asesoría legal directa.');
   lines.push('');
   lines.push(buildSourceSummary(results, intent));
 
@@ -1192,6 +1196,8 @@ PERSONALIDAD Y ESTILO:
 - Si faltan datos, no te limites a decir que falta información: responde lo posible con supuestos claros y formula 2 a 4 preguntas concretas para continuar la conversación.
 - Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
 - Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
+- Haz que la persona se sienta acompañada: resume su problema en una frase, valida la preocupación sin exagerar y continúa con una guía práctica.
+- No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
 
 CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
