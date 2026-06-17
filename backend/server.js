@@ -1361,6 +1361,111 @@ function searchLegalKnowledgeBase(query, limit = 12) {
     .slice(0, limit);
 }
 
+function queryRequestsFreshOrOfficialSources(query) {
+  const normalized = normalizeText(query);
+  const officialSources = [
+    'el peruano',
+    'tribunal constitucional',
+    'tc',
+    'poder judicial',
+    'sunarp',
+    'gob pe',
+    'gob.pe'
+  ];
+  const freshnessTerms = [
+    'actualizado',
+    'actualizada',
+    'vigente',
+    'vigencia',
+    'reciente',
+    'ultimas',
+    'últimas',
+    'ultimo',
+    'último',
+    'nueva ley',
+    'norma vigente',
+    'sentencia reciente',
+    'jurisprudencia actual',
+    'jurisprudencia reciente',
+    'fuente oficial',
+    'pagina oficial',
+    'página oficial'
+  ];
+
+  return [...officialSources, ...freshnessTerms].some(term => normalized.includes(normalizeText(term)));
+}
+
+function isGenericLocalResult(result) {
+  const source = normalizeText(result?.fuente || result?.source || '');
+  const title = normalizeText(result?.titulo || result?.title || '');
+  const summary = normalizeText(result?.resumen || result?.excerpt || result?.contenido || '');
+  const genericSources = [
+    'base juridica interna lexia',
+    'base juridica local lexia',
+    'base interna lexia'
+  ];
+  const genericTitles = [
+    'panorama',
+    'derechos basicos',
+    'procedimiento civil',
+    'consulta legal',
+    'guia',
+    'guía'
+  ];
+
+  return (
+    genericSources.some(item => source.includes(item))
+    || genericTitles.some(item => title.includes(normalizeText(item)))
+    || summary.length < 120
+  );
+}
+
+function evaluateLocalSearchSufficiency(query, localResults = []) {
+  const results = Array.isArray(localResults) ? localResults : [];
+  const topRelevance = results.reduce((max, item) => Math.max(max, Number(item.relevance || 0)), 0);
+  const genericCount = results.filter(isGenericLocalResult).length;
+  const genericRatio = results.length ? genericCount / results.length : 0;
+  const asksFreshOrOfficial = queryRequestsFreshOrOfficialSources(query);
+  const weakReasons = [];
+
+  if (!results.length) {
+    return {
+      localSearchStatus: 'empty',
+      shouldUseExternalSources: shouldSearchLegalEngine(query),
+      reason: 'sin resultados locales',
+      metrics: {
+        resultCount: 0,
+        topRelevance: 0,
+        genericRatio: 0,
+        asksFreshOrOfficial
+      }
+    };
+  }
+
+  if (results.length < 3) weakReasons.push('menos de 3 resultados');
+  if (topRelevance < 18) weakReasons.push('relevancia maxima baja');
+  if (genericRatio >= 0.6) weakReasons.push('resultados demasiado genericos');
+  if (asksFreshOrOfficial) weakReasons.push('consulta pide fuente oficial o informacion actualizada');
+
+  return {
+    localSearchStatus: weakReasons.length ? 'weak' : 'strong',
+    shouldUseExternalSources: weakReasons.length > 0,
+    reason: weakReasons.length ? weakReasons.join('; ') : 'base local suficiente',
+    metrics: {
+      resultCount: results.length,
+      topRelevance,
+      genericRatio: Number(genericRatio.toFixed(2)),
+      asksFreshOrOfficial
+    }
+  };
+}
+
+function logLocalSearchSufficiency(scope, query, evaluation) {
+  console.log(
+    `[LEXIA Local Search] ${scope}: status=${evaluation.localSearchStatus}; external=${evaluation.shouldUseExternalSources}; reason=${evaluation.reason}; results=${evaluation.metrics.resultCount}; top=${evaluation.metrics.topRelevance}; generic=${evaluation.metrics.genericRatio}; query="${truncateForRag(query, 140)}"`
+  );
+}
+
 function getLegalKnowledgeCounts() {
   return legalKnowledgeModules.reduce((acc, moduleName) => {
     acc[moduleName] = legalKnowledgeBase[moduleName].length;
@@ -1840,11 +1945,16 @@ app.post('/api/legal-query', (req, res) => {
   }
 
   const results = searchLegalEngine(query);
+  const localSearchEvaluation = evaluateLocalSearchSufficiency(query, results);
+  logLocalSearchSufficiency('/api/legal-query', query, localSearchEvaluation);
   return res.json({
     query,
     intent: classifyLegalIntent(query),
     results,
     searched: shouldSearchLegalEngine(query),
+    localSearchStatus: localSearchEvaluation.localSearchStatus,
+    shouldUseExternalSources: localSearchEvaluation.shouldUseExternalSources,
+    reason: localSearchEvaluation.reason,
     collections: {
       legal_documents: legalIndex.legal_documents.length,
       legal_articles: legalIndex.legal_articles.length,
@@ -1861,11 +1971,16 @@ app.post('/api/legal-search', (req, res) => {
   }
 
   const results = searchLegalKnowledgeBase(query);
+  const localSearchEvaluation = evaluateLocalSearchSufficiency(query, results);
+  logLocalSearchSufficiency('/api/legal-search', query, localSearchEvaluation);
   return res.json({
     query,
     intent: classifyLegalIntent(query),
     results,
     searched: shouldSearchLegalEngine(query),
+    localSearchStatus: localSearchEvaluation.localSearchStatus,
+    shouldUseExternalSources: localSearchEvaluation.shouldUseExternalSources,
+    reason: localSearchEvaluation.reason,
     modules: getLegalKnowledgeCounts()
   });
 });
@@ -1951,10 +2066,18 @@ app.post('/api/chat', async (req, res) => {
       });
     }
     const localResults = searchLegalKnowledgeBase(memorySearchQuery);
+    const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
+    logLocalSearchSufficiency('/api/chat', memorySearchQuery, localSearchEvaluation);
     const ragContext = buildRagContext(memorySearchQuery, localResults);
     if (!openAiKey) {
       const answer = buildConversationalLegalAnswer(fallbackQuestion, intent, ragContext.results);
-      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources, memoryMessages: conversationMemory.length });
+      const persisted = await persistAnswer(answer, {
+        model: 'local-rag-engine',
+        source: 'LEXIA RAG Local',
+        ragSources: ragContext.sources,
+        memoryMessages: conversationMemory.length,
+        localSearchEvaluation
+      });
       return res.json({
         answer,
         intent,
@@ -2070,7 +2193,14 @@ REGLAS:
       console.error('❌ Error OpenAI:', errorBody);
       const mapped = mapOpenAiError(response.status, parsedError);
       const answer = buildConversationalLegalAnswer(fallbackQuestion, intent, ragContext.results);
-      const persisted = await persistAnswer(answer, { model: 'local-rag-engine', source: 'LEXIA RAG Local', ragSources: ragContext.sources, providerError: mapped.error, memoryMessages: conversationMemory.length });
+      const persisted = await persistAnswer(answer, {
+        model: 'local-rag-engine',
+        source: 'LEXIA RAG Local',
+        ragSources: ragContext.sources,
+        providerError: mapped.error,
+        memoryMessages: conversationMemory.length,
+        localSearchEvaluation
+      });
       return res.json({
         answer,
         intent,
@@ -2087,7 +2217,13 @@ REGLAS:
 
     const data = await response.json();
     const answer = data.choices?.[0]?.message?.content?.trim() || 'No se pudo generar respuesta';
-    const persisted = await persistAnswer(answer, { model, source: 'LEXIA (lpderecho.pe + OpenAI)', ragSources: ragContext.sources, memoryMessages: conversationMemory.length });
+    const persisted = await persistAnswer(answer, {
+      model,
+      source: 'LEXIA (lpderecho.pe + OpenAI)',
+      ragSources: ragContext.sources,
+      memoryMessages: conversationMemory.length,
+      localSearchEvaluation
+    });
     
     res.json({ 
       answer,
