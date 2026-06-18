@@ -47,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const brainSourceList = document.getElementById("brainSourceList");
     const brainSourceCounter = document.getElementById("brainSourceCounter");
     const refreshBrainSources = document.getElementById("refreshBrainSources");
+    const brainNavItems = document.querySelectorAll('[data-action="brain"]');
 
     const roleAliases = {
         "abogado independiente": "abogado-independiente",
@@ -242,6 +243,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentView = "dashboard";
     let activeChatSessionId = null;
     let isSending = false;
+    let canManageBrain = false;
 
     function loadList(key) {
         try {
@@ -551,6 +553,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRole(initialRole);
     void initializeRemoteChats();
     void initializeRemoteNotifications();
+    void initializeBrainAccess();
 
     function getHistory() {
         return loadList(storageKeys.history).filter(item => item.role === currentRole);
@@ -647,10 +650,50 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    function setBrainNavigationVisibility(visible) {
+        brainNavItems.forEach(item => {
+            item.hidden = !visible;
+        });
+    }
+
+    async function initializeBrainAccess() {
+        setBrainNavigationVisibility(false);
+        canManageBrain = false;
+        if (!currentEmail) return;
+        try {
+            const data = await apiJson(`/api/legal-admin/status?email=${encodeURIComponent(currentEmail)}`);
+            canManageBrain = Boolean(data.isAdmin);
+            setBrainNavigationVisibility(canManageBrain);
+            if (canManageBrain && window.location.hash === "#cerebro") {
+                showView("brain");
+                return;
+            }
+            if (!canManageBrain && window.location.hash === "#cerebro") {
+                history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+                showView("dashboard");
+                addNotification("Acceso restringido", "El Centro de Control del cerebro solo está disponible para administradores.");
+                renderAppState();
+            }
+        } catch (error) {
+            canManageBrain = false;
+            setBrainNavigationVisibility(false);
+            console.warn("No se pudo verificar acceso al cerebro:", error.message);
+        }
+    }
+
     function showView(viewName) {
         currentView = viewName;
         const showChat = viewName === "chat";
         const showBrain = viewName === "brain";
+        if (showBrain && !canManageBrain) {
+            currentView = "dashboard";
+            dashboardView.hidden = false;
+            legalChatView.hidden = true;
+            if (brainView) brainView.hidden = true;
+            mainPanel?.classList.toggle("chat-mode", false);
+            updateNav("home");
+            return;
+        }
         dashboardView.hidden = showChat || showBrain;
         legalChatView.hidden = !showChat;
         if (brainView) brainView.hidden = !showBrain;
@@ -724,9 +767,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadBrainSources() {
         if (!brainSourceList) return;
+        if (!canManageBrain) return;
         try {
             setBrainStatus("");
-            const data = await apiJson("/api/legal-ingest");
+            const data = await apiJson(`/api/legal-ingest?email=${encodeURIComponent(currentEmail || "")}`);
             renderBrainSources(Array.isArray(data.sources) ? data.sources : []);
         } catch (error) {
             renderBrainSources([]);
@@ -735,6 +779,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function ingestBrainUrl() {
+        if (!canManageBrain) {
+            setBrainStatus("No tienes permiso para gestionar el cerebro de LEXIA.", "error");
+            return;
+        }
         const url = brainUrlInput?.value.trim();
         if (!url) return;
         brainAnalyzeButton.disabled = true;
@@ -761,6 +809,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function updateBrainSourceStatus(sourceId, reviewStatus) {
+        if (!canManageBrain) {
+            setBrainStatus("No tienes permiso para gestionar el cerebro de LEXIA.", "error");
+            return;
+        }
         if (!sourceId || !reviewStatus) return;
         setBrainStatus("Actualizando estado de la fuente...");
         try {

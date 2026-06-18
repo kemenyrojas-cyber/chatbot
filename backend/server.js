@@ -1391,11 +1391,17 @@ function getLegalAdminEmails() {
     .filter(Boolean);
 }
 
-function assertLegalAdminAccess(email) {
+function isLegalAdminEmail(email) {
   const admins = getLegalAdminEmails();
-  if (!admins.length) return true;
   const normalized = normalizeEmail(email);
-  if (normalized && admins.includes(normalized)) return true;
+  if (!admins.length) {
+    return !process.env.RENDER && process.env.NODE_ENV !== 'production';
+  }
+  return Boolean(normalized && admins.includes(normalized));
+}
+
+function assertLegalAdminAccess(email) {
+  if (isLegalAdminEmail(email)) return true;
   const error = new Error('No tienes permiso para gestionar el cerebro de LEXIA.');
   error.statusCode = 403;
   throw error;
@@ -3112,6 +3118,16 @@ app.post('/api/legal-query', async (req, res) => {
   });
 });
 
+app.get('/api/legal-admin/status', (req, res) => {
+  const email = normalizeEmail(req.query.email);
+  const configured = getLegalAdminEmails().length > 0;
+  return res.json({
+    ok: true,
+    configured,
+    isAdmin: isLegalAdminEmail(email)
+  });
+});
+
 app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res) => {
   try {
     const body = req.body || {};
@@ -3328,6 +3344,7 @@ app.post('/api/legal-ingest-url', async (req, res) => {
 
 app.get('/api/legal-ingest', async (req, res) => {
   try {
+    assertLegalAdminAccess(req.query.email);
     const ready = await ensureLegalIngestionDatabase();
     if (!ready) {
       return res.json({ ok: true, storage: 'local', sources: [], entries: legalIngestedCorpus.length });
@@ -3344,6 +3361,9 @@ app.get('/api/legal-ingest', async (req, res) => {
     return res.json({ ok: true, storage: 'postgres', sources: result.rows, entries: legalIngestedCorpus.length });
   } catch (error) {
     console.error('Error listando ingestas:', error.message);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
     return res.json({
       ok: true,
       storage: 'local',
