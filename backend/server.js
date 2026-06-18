@@ -1,8 +1,11 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const fetch = global.fetch || require('node-fetch');
 const cors = require('cors');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
 const { Pool } = require('pg');
 
 const projectRoot = path.join(__dirname, '..');
@@ -40,6 +43,16 @@ let accountsDbReady = null;
 let accountsJsonSynced = false;
 let chatsDbReady = null;
 let notificationsDbReady = null;
+let legalIngestionDbReady = null;
+let legalIngestedCorpusLoaded = false;
+let legalIngestedCorpus = [];
+const legalIngestUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: Number(process.env.LEGAL_INGEST_MAX_FILE_MB || 10) * 1024 * 1024,
+    files: 1
+  }
+});
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -50,7 +63,7 @@ if (ollamaEnabled) {
   console.log(`🧠 Ollama configurado: ${ollamaBaseUrl} | Modelo: ${ollamaModel}`);
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 app.use(cors());
 
 function normalizeEmail(email) {
@@ -1006,6 +1019,166 @@ function getQueryTerms(query) {
     .filter(term => term.length >= 3 && !stopwords.has(term));
 }
 
+function safeFileStem(fileName) {
+  const parsed = path.parse(String(fileName || 'documento'));
+  const base = parsed.name || 'documento';
+  return normalizeText(base)
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9ñ-]/g, '')
+    .slice(0, 80) || 'documento';
+}
+
+function hashContent(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+function inferLegalMatterFromText(fileName, text) {
+  const normalized = normalizeText(`${fileName} ${text.slice(0, 12000)}`);
+  const rules = [
+    ['Derecho Constitucional', ['constitucion', 'constitucional', 'amparo', 'habeas corpus', 'habeas data', 'derechos fundamentales']],
+    ['Derecho Laboral', ['trabajo', 'laboral', 'despido', 'remuneracion', 'cts', 'vacaciones', 'trabajador']],
+    ['Derecho Penal', ['penal', 'delito', 'fiscalia', 'ministerio publico', 'pena', 'denuncia', 'imputado']],
+    ['Derecho Civil', ['civil', 'contrato', 'obligacion', 'propiedad', 'posesion', 'herencia', 'compraventa']],
+    ['Derecho de Familia', ['alimentos', 'tenencia', 'visitas', 'divorcio', 'filiacion', 'menor']],
+    ['Derecho Administrativo', ['administrativo', 'procedimiento administrativo', 'sunarp', 'municipalidad', 'entidad publica']],
+    ['Derecho Comercial', ['empresa', 'sociedad', 'mercantil', 'comercial', 'insolvencia']],
+    ['Derecho Tributario', ['tributario', 'sunat', 'impuesto', 'tributo']]
+  ];
+
+  const match = rules.find(([, terms]) => terms.some(term => normalized.includes(term)));
+  return match ? match[0] : 'Derecho Peruano';
+}
+
+function inferLegalKnowledgeModule(fileName, text, preferredModule = '') {
+  const normalizedPreferred = normalizeText(preferredModule);
+  if (legalKnowledgeModules.includes(normalizedPreferred)) return normalizedPreferred;
+
+  const normalized = normalizeText(`${fileName} ${text.slice(0, 12000)}`);
+  if (normalized.includes('tribunal constitucional') || normalized.includes('sentencia del tribunal constitucional')) return 'sentencias_tc';
+  if (normalized.includes('casacion') || normalized.includes('casación')) return 'casaciones';
+  if (normalized.includes('jurisprudencia') || normalized.includes('sentencia') || normalized.includes('precedente')) return 'jurisprudencia';
+  return 'normativa';
+}
+
+function extractLegalSignals(text) {
+  const normalized = normalizeText(text);
+  const documents = [];
+  const risks = [];
+  const steps = [];
+  const questions = [];
+
+  if (normalized.includes('plazo') || normalized.includes('caducidad') || normalized.includes('prescripcion')) {
+    risks.push('verificar plazos, caducidad o prescripción antes de definir la estrategia');
+    questions.push('¿Cuál es la fecha exacta del hecho o notificación?');
+  }
+  if (normalized.includes('prueba') || normalized.includes('documento') || normalized.includes('expediente')) {
+    documents.push('documentos, expediente, comunicaciones y pruebas relacionadas');
+    steps.push('ordenar documentos y cronología antes del análisis jurídico');
+  }
+  if (normalized.includes('demanda') || normalized.includes('proceso') || normalized.includes('juzgado')) {
+    risks.push('revisar competencia, vía procesal y requisitos de admisibilidad');
+    steps.push('identificar autoridad competente y vía aplicable');
+  }
+  if (normalized.includes('derecho fundamental') || normalized.includes('constitucional')) {
+    risks.push('evaluar afectación de derechos fundamentales y garantía constitucional aplicable');
+    steps.push('identificar derecho afectado, acto lesivo y urgencia');
+  }
+  if (normalized.includes('trabajador') || normalized.includes('despido')) {
+    documents.push('contrato, boletas, carta de despido, comunicaciones y asistencia');
+    questions.push('¿Hubo carta de despido o comunicación escrita?');
+  }
+  if (normalized.includes('alimentos') || normalized.includes('menor')) {
+    documents.push('partida, gastos, ingresos y documentos del menor');
+    questions.push('¿Qué necesidades del menor están acreditadas?');
+  }
+
+  return {
+    hechos_clave: ['identificar hechos, fechas, partes involucradas y documentos disponibles'],
+    problemas_juridicos: ['determinar regla aplicable, autoridad competente y consecuencia jurídica'],
+    reglas_practicas: ['no concluir sin revisar texto fuente y hechos concretos', 'usar la fuente como apoyo, no como respuesta automática definitiva'],
+    riesgos: [...new Set(risks)].slice(0, 5),
+    documentos: [...new Set(documents)].slice(0, 5),
+    pasos: [...new Set(steps.length ? steps : ['resumir hechos', 'contrastar con la fuente', 'formular próximos pasos'])].slice(0, 5),
+    preguntas: [...new Set(questions.length ? questions : ['¿Qué ocurrió, cuándo y qué documento tienes?'])].slice(0, 5)
+  };
+}
+
+function splitTextForLegalKnowledge(text, maxChunks = 8) {
+  const clean = String(text || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  if (!clean) return [];
+
+  const sections = clean
+    .split(/\n{2,}|(?=^#{1,3}\s)|(?=\bArticulo\s+\d)|(?=\bArtículo\s+\d)/im)
+    .map(section => section.replace(/\s+/g, ' ').trim())
+    .filter(section => section.length >= 180);
+
+  const source = sections.length ? sections : [clean.replace(/\s+/g, ' ').trim()];
+  const chunks = [];
+  for (const section of source) {
+    if (chunks.length >= maxChunks) break;
+    if (section.length <= 2400) {
+      chunks.push(section);
+      continue;
+    }
+    for (let index = 0; index < section.length && chunks.length < maxChunks; index += 2200) {
+      chunks.push(section.slice(index, index + 2400).trim());
+    }
+  }
+  return chunks;
+}
+
+async function extractTextFromLegalUpload(file, body = {}) {
+  if (body.content) return String(body.content);
+  if (body.base64) return Buffer.from(String(body.base64), 'base64').toString('utf8');
+  if (!file) throw new Error('Debes enviar un archivo o contenido.');
+
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const mime = String(file.mimetype || '').toLowerCase();
+  if (ext === '.pdf' || mime.includes('pdf')) {
+    const parsed = await pdfParse(file.buffer);
+    return String(parsed.text || '');
+  }
+  if (['.txt', '.md', '.json'].includes(ext) || mime.startsWith('text/') || mime.includes('json')) {
+    return file.buffer.toString('utf8');
+  }
+
+  throw new Error('Formato no soportado. Usa PDF, TXT, Markdown o JSON.');
+}
+
+function buildIngestedLegalEntries({ sourceId, fileName, title, text, materia, fecha, fuente, url, modulo }) {
+  const sourceTitle = String(title || '').trim() || path.parse(fileName).name.replace(/[_-]/g, ' ');
+  const inferredMatter = materia || inferLegalMatterFromText(fileName, text);
+  const inferredModule = inferLegalKnowledgeModule(fileName, text, modulo);
+  const chunks = splitTextForLegalKnowledge(text);
+  const stem = safeFileStem(fileName);
+  const dateValue = fecha || new Date().toISOString().slice(0, 10);
+  const sourceLabel = fuente || sourceTitle || 'Documento cargado en LEXIA';
+
+  return chunks.map((chunk, index) => {
+    const entryTitle = chunks.length > 1 ? `${sourceTitle} - parte ${index + 1}` : sourceTitle;
+    return normalizeLegalKnowledgeRecord(inferredModule, {
+      id: `ingest-${stem}-${hashContent(`${sourceId}:${index}:${chunk}`).slice(0, 12)}`,
+      titulo: entryTitle,
+      materia: inferredMatter,
+      fecha: dateValue,
+      fuente: sourceLabel,
+      url: url || '',
+      contenido: chunk,
+      resumen: chunk.slice(0, 420),
+      inteligencia: extractLegalSignals(chunk)
+    }, index);
+  });
+}
+
+function getCombinedLegalKnowledgeCorpus() {
+  const seen = new Set();
+  return [...legalKnowledgeCorpus, ...legalIngestedCorpus].filter(item => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 const legalIntentTypes = [
   {
     id: 'consulta_informativa',
@@ -1370,7 +1543,7 @@ function searchLegalKnowledgeBase(query, limit = 12) {
   const terms = getQueryTerms(query);
   if (!terms.length) return [];
 
-  return legalKnowledgeCorpus
+  return getCombinedLegalKnowledgeCorpus()
     .map(record => ({
       id: record.id,
       titulo: record.titulo,
@@ -1495,10 +1668,208 @@ function logLocalSearchSufficiency(scope, query, evaluation) {
 }
 
 function getLegalKnowledgeCounts() {
-  return legalKnowledgeModules.reduce((acc, moduleName) => {
+  const counts = legalKnowledgeModules.reduce((acc, moduleName) => {
     acc[moduleName] = legalKnowledgeBase[moduleName].length;
     return acc;
   }, {});
+  for (const item of legalIngestedCorpus) {
+    const moduleName = legalKnowledgeModules.includes(item.modulo) ? item.modulo : 'normativa';
+    counts[moduleName] = (counts[moduleName] || 0) + 1;
+  }
+  return counts;
+}
+
+function mergeRuntimeLegalKnowledge(entries) {
+  const existing = new Set(legalIngestedCorpus.map(item => item.id));
+  for (const entry of entries) {
+    if (existing.has(entry.id)) continue;
+    legalIngestedCorpus.push(entry);
+    existing.add(entry.id);
+  }
+}
+
+async function ensureLegalIngestionDatabase() {
+  if (!accountsPool) return false;
+  if (!legalIngestionDbReady) {
+    legalIngestionDbReady = (async () => {
+      await accountsPool.query(`
+        CREATE TABLE IF NOT EXISTS legal_ingested_sources (
+          id TEXT PRIMARY KEY,
+          account_email TEXT,
+          original_name TEXT NOT NULL,
+          mime_type TEXT,
+          size_bytes INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          source_label TEXT NOT NULL,
+          source_url TEXT,
+          content_hash TEXT UNIQUE NOT NULL,
+          extracted_text TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await accountsPool.query(`
+        CREATE TABLE IF NOT EXISTS legal_ingested_entries (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL REFERENCES legal_ingested_sources(id) ON DELETE CASCADE,
+          account_email TEXT,
+          modulo TEXT NOT NULL,
+          titulo TEXT NOT NULL,
+          materia TEXT,
+          fecha TEXT,
+          fuente TEXT,
+          url TEXT,
+          contenido TEXT NOT NULL,
+          resumen TEXT,
+          inteligencia JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_legal_ingested_entries_modulo ON legal_ingested_entries (modulo)');
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_legal_ingested_sources_hash ON legal_ingested_sources (content_hash)');
+    })();
+  }
+  try {
+    await legalIngestionDbReady;
+  } catch (error) {
+    legalIngestionDbReady = null;
+    throw error;
+  }
+  return true;
+}
+
+async function loadLegalIngestedKnowledgeFromDb(force = false) {
+  if (!accountsPool) return [];
+  if (legalIngestedCorpusLoaded && !force) return legalIngestedCorpus;
+  const ready = await ensureLegalIngestionDatabase();
+  if (!ready) return [];
+
+  const result = await accountsPool.query(`
+    SELECT id, modulo, titulo, materia, fecha, fuente, url, contenido, resumen, inteligencia
+    FROM legal_ingested_entries
+    ORDER BY created_at DESC
+    LIMIT 800
+  `);
+  legalIngestedCorpus = result.rows.map((row, index) => normalizeLegalKnowledgeRecord(row.modulo, row, index));
+  legalIngestedCorpusLoaded = true;
+  return legalIngestedCorpus;
+}
+
+async function ensureLegalKnowledgeAvailable() {
+  try {
+    await loadLegalIngestedKnowledgeFromDb();
+  } catch (error) {
+    console.warn('⚠️ No se pudo cargar conocimiento ingerido desde PostgreSQL:', error.message);
+  }
+}
+
+async function persistIngestedLegalKnowledgeToDb({ source, entries }) {
+  const ready = await ensureLegalIngestionDatabase();
+  if (!ready) return false;
+
+  await accountsPool.query(
+    `INSERT INTO legal_ingested_sources (
+       id, account_email, original_name, mime_type, size_bytes, title,
+       source_label, source_url, content_hash, extracted_text
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT (content_hash) DO UPDATE
+     SET title = EXCLUDED.title,
+         source_label = EXCLUDED.source_label,
+         source_url = EXCLUDED.source_url,
+         extracted_text = EXCLUDED.extracted_text`,
+    [
+      source.id,
+      source.email || null,
+      source.originalName,
+      source.mimeType || null,
+      source.sizeBytes || 0,
+      source.title,
+      source.sourceLabel,
+      source.url || null,
+      source.contentHash,
+      source.text
+    ]
+  );
+
+  for (const entry of entries) {
+    await accountsPool.query(
+      `INSERT INTO legal_ingested_entries (
+         id, source_id, account_email, modulo, titulo, materia, fecha, fuente,
+         url, contenido, resumen, inteligencia
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+       ON CONFLICT (id) DO UPDATE
+       SET titulo = EXCLUDED.titulo,
+           materia = EXCLUDED.materia,
+           fecha = EXCLUDED.fecha,
+           fuente = EXCLUDED.fuente,
+           url = EXCLUDED.url,
+           contenido = EXCLUDED.contenido,
+           resumen = EXCLUDED.resumen,
+           inteligencia = EXCLUDED.inteligencia`,
+      [
+        entry.id,
+        source.id,
+        source.email || null,
+        entry.modulo,
+        entry.titulo,
+        entry.materia,
+        entry.fecha,
+        entry.fuente,
+        entry.url,
+        entry.contenido,
+        entry.resumen,
+        JSON.stringify(entry.inteligencia || {})
+      ]
+    );
+  }
+
+  return true;
+}
+
+function persistIngestedLegalKnowledgeLocally({ source, entries }) {
+  const kbDir = path.join(aiEngineRoot, 'kb');
+  const kbPath = path.join(kbDir, 'legal_knowledge_base.json');
+  fs.mkdirSync(kbDir, { recursive: true });
+
+  const mdFile = `ingested_${safeFileStem(source.originalName)}_${source.contentHash.slice(0, 10)}.md`;
+  const mdPath = path.join(kbDir, mdFile);
+  if (!fs.existsSync(mdPath)) {
+    fs.writeFileSync(mdPath, `# ${source.title}\n\n${source.text}`, 'utf8');
+  }
+
+  const parsed = fs.existsSync(kbPath)
+    ? JSON.parse(fs.readFileSync(kbPath, 'utf8'))
+    : legalKnowledgeModules.reduce((acc, moduleName) => {
+        acc[moduleName] = [];
+        return acc;
+      }, {});
+  for (const moduleName of legalKnowledgeModules) {
+    if (!Array.isArray(parsed[moduleName])) parsed[moduleName] = [];
+  }
+
+  let changed = false;
+  for (const entry of entries) {
+    const moduleName = legalKnowledgeModules.includes(entry.modulo) ? entry.modulo : 'normativa';
+    if (parsed[moduleName].some(item => item.id === entry.id)) continue;
+    parsed[moduleName].push({
+      id: entry.id,
+      titulo: entry.titulo,
+      materia: entry.materia,
+      fecha: entry.fecha,
+      fuente: entry.fuente,
+      url: entry.url,
+      contenido: entry.contenido,
+      resumen: entry.resumen,
+      inteligencia: entry.inteligencia || {}
+    });
+    changed = true;
+  }
+
+  if (changed) {
+    fs.writeFileSync(kbPath, JSON.stringify(parsed, null, 2), 'utf8');
+  }
+  return { mdFile, changed };
 }
 
 function buildLegalKnowledgeAnswer(query, results) {
@@ -2352,6 +2723,7 @@ async function runLegalIntelligence(options = {}) {
     };
   }
 
+  await ensureLegalKnowledgeAvailable();
   const localResults = searchLegalKnowledgeBase(memorySearchQuery);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
   logLocalSearchSufficiency('Legal Intelligence Engine', memorySearchQuery, localSearchEvaluation);
@@ -2467,12 +2839,13 @@ app.post('/api/legal-intent', (req, res) => {
   });
 });
 
-app.post('/api/legal-query', (req, res) => {
+app.post('/api/legal-query', async (req, res) => {
   const query = String(req.body?.query || '').trim();
   if (!query) {
     return res.status(400).json({ error: 'La consulta es obligatoria.' });
   }
 
+  await ensureLegalKnowledgeAvailable();
   const results = searchLegalEngine(query);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(query, results);
   logLocalSearchSufficiency('/api/legal-query', query, localSearchEvaluation);
@@ -2493,12 +2866,121 @@ app.post('/api/legal-query', (req, res) => {
   });
 });
 
-app.post('/api/legal-search', (req, res) => {
+app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const file = req.file || null;
+    const originalName = String(file?.originalname || body.fileName || body.filename || 'documento.txt').trim();
+    const text = (await extractTextFromLegalUpload(file, body)).replace(/\u0000/g, '').trim();
+
+    if (text.length < 120) {
+      return res.status(400).json({ error: 'El documento no tiene texto suficiente para alimentar el motor.' });
+    }
+
+    const contentHash = hashContent(text);
+    const source = {
+      id: `source-${contentHash.slice(0, 16)}`,
+      email: normalizeEmail(body.email),
+      originalName,
+      mimeType: file?.mimetype || body.mimeType || '',
+      sizeBytes: file?.size || Buffer.byteLength(text, 'utf8'),
+      title: String(body.title || path.parse(originalName).name.replace(/[_-]/g, ' ')).trim().slice(0, 180),
+      sourceLabel: String(body.source || body.fuente || path.parse(originalName).name.replace(/[_-]/g, ' ')).trim().slice(0, 180),
+      url: String(body.url || '').trim(),
+      contentHash,
+      text
+    };
+    const entries = buildIngestedLegalEntries({
+      sourceId: source.id,
+      fileName: originalName,
+      title: source.title,
+      text,
+      materia: String(body.materia || '').trim(),
+      fecha: String(body.fecha || '').trim(),
+      fuente: source.sourceLabel,
+      url: source.url,
+      modulo: String(body.modulo || '').trim()
+    });
+
+    if (!entries.length) {
+      return res.status(400).json({ error: 'No se pudieron crear entradas jurídicas desde el documento.' });
+    }
+
+    let storage = 'local';
+    let dbPersisted = false;
+    if (accountsPool) {
+      try {
+        dbPersisted = await persistIngestedLegalKnowledgeToDb({ source, entries });
+        storage = dbPersisted ? 'postgres' : 'local';
+      } catch (error) {
+        console.warn('⚠️ No se pudo persistir ingesta en PostgreSQL, usando fallback local:', error.message);
+      }
+    }
+
+    let localBackup = null;
+    if (!dbPersisted || process.env.LEGAL_INGEST_WRITE_LOCAL === 'true') {
+      localBackup = persistIngestedLegalKnowledgeLocally({ source, entries });
+    }
+
+    mergeRuntimeLegalKnowledge(entries);
+    if (dbPersisted) legalIngestedCorpusLoaded = true;
+    console.log(`[LEXIA Ingest] source=${source.id}; storage=${storage}; entries=${entries.length}; file="${originalName}"`);
+
+    return res.json({
+      ok: true,
+      source: {
+        id: source.id,
+        title: source.title,
+        originalName: source.originalName,
+        hash: source.contentHash,
+        storage
+      },
+      entries: entries.map(entry => ({
+        id: entry.id,
+        titulo: entry.titulo,
+        materia: entry.materia,
+        modulo: entry.modulo,
+        resumen: entry.resumen
+      })),
+      localBackup,
+      modules: getLegalKnowledgeCounts()
+    });
+  } catch (error) {
+    console.error('❌ Error en legal-ingest:', error);
+    const message = error.message || 'No se pudo procesar el documento.';
+    const status = message.includes('Formato no soportado') || message.includes('Debes enviar') ? 400 : 500;
+    return res.status(status).json({ error: message });
+  }
+});
+
+app.get('/api/legal-ingest', async (req, res) => {
+  try {
+    const ready = await ensureLegalIngestionDatabase();
+    if (!ready) {
+      return res.json({ ok: true, storage: 'local', sources: [], entries: legalIngestedCorpus.length });
+    }
+
+    const result = await accountsPool.query(`
+      SELECT id, original_name AS "originalName", title, source_label AS "sourceLabel",
+             source_url AS "sourceUrl", size_bytes AS "sizeBytes", created_at AS "createdAt"
+      FROM legal_ingested_sources
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+    return res.json({ ok: true, storage: 'postgres', sources: result.rows, entries: legalIngestedCorpus.length });
+  } catch (error) {
+    console.error('Error listando ingestas:', error.message);
+    return res.status(500).json({ error: 'No se pudo listar el conocimiento ingerido.' });
+  }
+});
+
+app.post('/api/legal-search', async (req, res) => {
   const query = String(req.body?.query || '').trim();
   if (!query) {
     return res.status(400).json({ error: 'La consulta es obligatoria.' });
   }
 
+  await ensureLegalKnowledgeAvailable();
   const results = searchLegalKnowledgeBase(query);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(query, results);
   logLocalSearchSufficiency('/api/legal-search', query, localSearchEvaluation);
