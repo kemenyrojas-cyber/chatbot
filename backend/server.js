@@ -2542,6 +2542,227 @@ function buildLegalReasoningContext(reasoningProfile) {
   ].join('\n');
 }
 
+const legalGraphRelationWeights = {
+  PERTENECE_A: 0.72,
+  REGULA: 0.86,
+  INTERPRETA: 0.82,
+  REQUIERE_PRUEBA: 0.7,
+  GENERA_RIESGO: 0.68,
+  SUGIERE_PASO: 0.62,
+  SE_RELACIONA_CON: 0.55,
+  FUENTE_SUSTENTA: 0.78
+};
+
+const legalGraphSourceTrust = {
+  normativa: 0.82,
+  jurisprudencia: 0.78,
+  casaciones: 0.8,
+  sentencias_tc: 0.84
+};
+
+function makeGraphNode(type, label, metadata = {}) {
+  const cleanLabel = String(label || '').replace(/\s+/g, ' ').trim();
+  if (!cleanLabel) return null;
+  return {
+    id: `${type}:${normalizeText(cleanLabel).replace(/\s+/g, '_').slice(0, 90)}`,
+    type,
+    label: cleanLabel,
+    metadata
+  };
+}
+
+function makeGraphEdge(from, relation, to, options = {}) {
+  if (!from?.id || !to?.id) return null;
+  const baseWeight = legalGraphRelationWeights[relation] || legalGraphRelationWeights.SE_RELACIONA_CON;
+  const sourceTrust = Number(options.sourceTrust ?? 0.65);
+  const evidenceStrength = Math.min(Number(options.evidenceCount || 1) / 4, 1);
+  const weight = Number(Math.min(0.98, (baseWeight * 0.58) + (sourceTrust * 0.28) + (evidenceStrength * 0.14)).toFixed(3));
+  return {
+    from: from.id,
+    relation,
+    to: to.id,
+    weight,
+    evidence: options.evidence || [],
+    sourceTrust
+  };
+}
+
+function addGraphNode(graph, node) {
+  if (!node) return null;
+  if (!graph.nodes.has(node.id)) graph.nodes.set(node.id, node);
+  return graph.nodes.get(node.id);
+}
+
+function addGraphEdge(graph, edge) {
+  if (!edge) return;
+  const key = `${edge.from}|${edge.relation}|${edge.to}`;
+  const current = graph.edges.get(key);
+  if (!current || edge.weight > current.weight) {
+    graph.edges.set(key, edge);
+  }
+}
+
+function buildKnowledgeGraphFromResults(intent, results = []) {
+  const graph = { nodes: new Map(), edges: new Map() };
+  const areaNode = addGraphNode(graph, makeGraphNode('materia', intent?.area?.label, { confidence: intent?.area?.confidence }));
+  const topicNode = addGraphNode(graph, makeGraphNode('institucion', intent?.topic?.label, { confidence: intent?.topic?.confidence }));
+  const objectiveNode = addGraphNode(graph, makeGraphNode('objetivo', intent?.objective?.label, { confidence: intent?.objective?.confidence }));
+
+  if (topicNode && areaNode) {
+    addGraphEdge(graph, makeGraphEdge(topicNode, 'PERTENECE_A', areaNode, {
+      sourceTrust: 0.72,
+      evidence: ['interpretacion_consulta']
+    }));
+  }
+  if (objectiveNode && topicNode) {
+    addGraphEdge(graph, makeGraphEdge(objectiveNode, 'SE_RELACIONA_CON', topicNode, {
+      sourceTrust: 0.68,
+      evidence: ['objetivo_usuario']
+    }));
+  }
+
+  for (const item of Array.isArray(results) ? results.slice(0, 8) : []) {
+    const sourceTrust = legalGraphSourceTrust[item.modulo] || 0.66;
+    const sourceNode = addGraphNode(graph, makeGraphNode('fuente', item.titulo, {
+      modulo: item.modulo,
+      fuente: item.fuente,
+      relevance: item.relevance,
+      url: item.url
+    }));
+    const matterNode = addGraphNode(graph, makeGraphNode('materia', item.materia || intent?.area?.label, { source: item.id }));
+    if (sourceNode && matterNode) {
+      addGraphEdge(graph, makeGraphEdge(sourceNode, 'PERTENECE_A', matterNode, {
+        sourceTrust,
+        evidence: [item.id],
+        evidenceCount: 1
+      }));
+    }
+    if (sourceNode && topicNode) {
+      const relation = item.modulo === 'jurisprudencia' || item.modulo === 'casaciones' || item.modulo === 'sentencias_tc'
+        ? 'INTERPRETA'
+        : 'REGULA';
+      addGraphEdge(graph, makeGraphEdge(sourceNode, relation, topicNode, {
+        sourceTrust,
+        evidence: [item.id],
+        evidenceCount: Math.max(1, Math.round(Number(item.relevance || 0) / 35))
+      }));
+    }
+
+    const intelligence = item.inteligencia && typeof item.inteligencia === 'object' ? item.inteligencia : {};
+    for (const doc of Array.isArray(intelligence.documentos) ? intelligence.documentos.slice(0, 4) : []) {
+      const docNode = addGraphNode(graph, makeGraphNode('prueba', doc, { source: item.id }));
+      addGraphEdge(graph, makeGraphEdge(topicNode, 'REQUIERE_PRUEBA', docNode, {
+        sourceTrust,
+        evidence: [item.id]
+      }));
+    }
+    for (const risk of Array.isArray(intelligence.riesgos) ? intelligence.riesgos.slice(0, 4) : []) {
+      const riskNode = addGraphNode(graph, makeGraphNode('riesgo', risk, { source: item.id }));
+      addGraphEdge(graph, makeGraphEdge(topicNode, 'GENERA_RIESGO', riskNode, {
+        sourceTrust,
+        evidence: [item.id]
+      }));
+    }
+    for (const step of Array.isArray(intelligence.pasos) ? intelligence.pasos.slice(0, 3) : []) {
+      const stepNode = addGraphNode(graph, makeGraphNode('paso', step, { source: item.id }));
+      addGraphEdge(graph, makeGraphEdge(topicNode, 'SUGIERE_PASO', stepNode, {
+        sourceTrust,
+        evidence: [item.id]
+      }));
+    }
+  }
+
+  return {
+    nodes: [...graph.nodes.values()],
+    edges: [...graph.edges.values()]
+  };
+}
+
+function scoreLegalGraphHypothesis(hypothesis, graph, intent, results = []) {
+  const normalizedTopic = normalizeText(hypothesis.topic || '');
+  const relevantEdges = graph.edges.filter(edge => {
+    const from = graph.nodes.find(node => node.id === edge.from);
+    const to = graph.nodes.find(node => node.id === edge.to);
+    return normalizeText(`${from?.label || ''} ${to?.label || ''}`).includes(normalizedTopic);
+  });
+  const evidenceScore = Math.min(relevantEdges.reduce((sum, edge) => sum + edge.weight, 0) / 4, 0.38);
+  const retrievalScore = Math.min((Array.isArray(results) ? results : []).reduce((sum, item) => sum + Number(item.relevance || 0), 0) / 500, 0.24);
+  const intentScore = (intent?.area?.confidence === 'alta' ? 0.16 : intent?.area?.confidence === 'media' ? 0.1 : 0.04)
+    + (intent?.topic?.confidence === 'alta' ? 0.14 : intent?.topic?.confidence === 'media' ? 0.08 : 0.03);
+  const complexityPenalty = intent?.complexity === 'alta' ? 0.04 : 0;
+  const hasMissingInfo = Array.isArray(intent?.missingInfo) && intent.missingInfo.length > 0;
+  const cap = hasMissingInfo ? 0.94 : 0.98;
+  return Number(Math.max(0.05, Math.min(cap, hypothesis.base + evidenceScore + retrievalScore + intentScore - complexityPenalty)).toFixed(3));
+}
+
+function buildLegalGraphHypotheses(intent, graph, results = []) {
+  const hypotheses = [];
+  const area = intent?.area?.label || 'Materia no determinada';
+  const topic = intent?.topic?.label || 'Tema no determinado';
+
+  hypotheses.push({
+    id: 'h_principal',
+    label: `${topic} dentro de ${area}`,
+    topic,
+    area,
+    base: 0.18,
+    explanation: 'Hipótesis principal derivada de la interpretación de la consulta.'
+  });
+
+  const modules = [...new Set((Array.isArray(results) ? results : []).map(item => item.modulo).filter(Boolean))];
+  for (const moduleName of modules.slice(0, 3)) {
+    hypotheses.push({
+      id: `h_${moduleName}`,
+      label: `${topic} sustentado por ${moduleName}`,
+      topic,
+      area,
+      base: moduleName === 'normativa' ? 0.16 : 0.14,
+      explanation: `Hipótesis reforzada por resultados de ${moduleName}.`
+    });
+  }
+
+  return hypotheses
+    .map(item => ({
+      ...item,
+      probability: scoreLegalGraphHypothesis(item, graph, intent, results),
+      evidence: graph.edges
+        .filter(edge => edge.evidence?.length)
+        .sort((a, b) => b.weight - a.weight)
+        .slice(0, 5)
+    }))
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 5);
+}
+
+function buildLegalGraphReasoning(intent, results = []) {
+  const graph = buildKnowledgeGraphFromResults(intent, results);
+  const hypotheses = buildLegalGraphHypotheses(intent, graph, results);
+  return {
+    graph,
+    hypotheses,
+    summary: {
+      nodes: graph.nodes.length,
+      edges: graph.edges.length,
+      strongestHypothesis: hypotheses[0]?.label || null,
+      probability: hypotheses[0]?.probability || 0
+    }
+  };
+}
+
+function buildLegalGraphContext(graphReasoning) {
+  if (!graphReasoning?.hypotheses?.length) return '';
+  const lines = [
+    'LEGAL KNOWLEDGE GRAPH:',
+    `Nodos activados: ${graphReasoning.summary.nodes}. Relaciones evaluadas: ${graphReasoning.summary.edges}.`,
+    'Hipótesis jurídicas ponderadas:'
+  ];
+  graphReasoning.hypotheses.slice(0, 3).forEach((hypothesis, index) => {
+    lines.push(`${index + 1}. ${hypothesis.label} | probabilidad=${hypothesis.probability} | ${hypothesis.explanation}`);
+  });
+  lines.push('Usa estas hipótesis como razonamiento interno. No afirmes una hipótesis como definitiva si faltan hechos o documentos.');
+  return lines.join('\n');
+}
+
 function buildReasoningSummary(reasoningProfile) {
   if (!reasoningProfile) return [];
   const lines = [];
@@ -3181,8 +3402,10 @@ async function runLegalIntelligence(options = {}) {
   const ragContext = buildRagContext(interpretationSearchQuery, localResults);
   const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory, ragContext.results);
   const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
+  const legalGraphReasoning = buildLegalGraphReasoning(intent, ragContext.results);
+  const legalGraphContext = buildLegalGraphContext(legalGraphReasoning);
   const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
-  const context = [conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n');
+  const context = [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context].filter(Boolean).join('\n\n');
   const intentContext = [
     'INTENCIÓN JURÍDICA DETECTADA:',
     `Tipo: ${intent.type.label}`,
@@ -3235,6 +3458,7 @@ async function runLegalIntelligence(options = {}) {
         memoryMessages: conversationMemory.length,
         localSearchEvaluation,
         legalReasoningProfile,
+        legalGraphReasoning,
         legalInterpretation: intent
       }
     };
@@ -3261,6 +3485,7 @@ async function runLegalIntelligence(options = {}) {
       memoryMessages: conversationMemory.length,
       localSearchEvaluation,
       legalReasoningProfile,
+      legalGraphReasoning,
       legalInterpretation: intent,
       providerErrors: providerResult.providerErrors
     }
@@ -3291,10 +3516,23 @@ app.post('/api/legal-intent', (req, res) => {
     return res.status(400).json({ error: 'La consulta es obligatoria.' });
   }
   const memoryMessages = Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : [];
+  const intent = interpretLegalQuery(extractUserQuery(query), memoryMessages);
+  const includeGraph = req.body?.includeGraph === true;
+  const localResults = includeGraph
+    ? getCombinedLegalKnowledgeCorpus()
+        .map(record => ({
+          ...record,
+          relevance: scoreLegalKnowledgeRecord(record, buildInterpretationSearchQuery(query, intent, query), getQueryTerms(query))
+        }))
+        .filter(item => item.relevance > 0)
+        .sort((a, b) => b.relevance - a.relevance)
+        .slice(0, 8)
+    : [];
 
   return res.json({
     query,
-    intent: interpretLegalQuery(extractUserQuery(query), memoryMessages)
+    intent,
+    graphReasoning: includeGraph ? buildLegalGraphReasoning(intent, localResults) : undefined
   });
 });
 
