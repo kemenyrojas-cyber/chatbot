@@ -2212,6 +2212,186 @@ async function generateWithConfiguredProvider(messages, options = {}) {
   return { answer: '', provider: 'local', model: 'local-rag-engine', source: 'LEXIA RAG Local', providerErrors: errors };
 }
 
+function buildLexiaSystemPrompt() {
+  return `Eres LEXIA, una IA jurídica especializada en Derecho peruano. Tu función en "Nueva Consulta (IA)" es conversar con la persona como lo haría un abogado cercano, paciente y claro: escuchas primero, explicas con palabras entendibles y luego das criterio jurídico riguroso, útil y verificable cuando existan fuentes.
+
+PERSONALIDAD Y ESTILO:
+- Mantén una conversación amable, humana y profesional. No respondas como un buscador ni como un formulario.
+- Empieza reconociendo brevemente la preocupación del usuario cuando corresponda: "Entiendo", "Veamos el caso", "Con esos datos, lo importante es...".
+- Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
+- Si faltan datos, no te limites a decir que falta información: responde lo posible con supuestos claros y formula 2 a 4 preguntas concretas para continuar la conversación.
+- Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
+- Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
+- Haz que la persona se sienta acompañada: resume su problema en una frase, valida la preocupación sin exagerar y continúa con una guía práctica.
+- No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
+
+CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
+- Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
+- Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
+- Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
+- Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
+- Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
+- Fuentes citadas: termina con una sección "Fuentes y verificación" indicando las normas o referencias usadas. Si no hay fuente específica en el contexto, dilo claramente y recomienda verificar en El Peruano, SPIJ, PJ, TC o la entidad competente.
+- RAG: antes de responder, usa el "CONTEXTO RAG RECUPERADO" cuando exista. Cita las referencias recuperadas como [R1], [R2], etc. No inventes fuentes que no estén en ese contexto.
+
+ESPECIALIDAD EN DERECHO PERUANO:
+- Civil: contratos, obligaciones, bienes, herencias, familia.
+- Penal: delitos, penas y procedimiento penal.
+- Laboral: trabajo, remuneración, seguridad social y despidos.
+- Comercial: empresas, sociedades e insolvencia.
+- Tributario: impuestos y obligaciones fiscales.
+- Procesal: juicios, recursos y medidas cautelares.
+- Administrativo: actos, recursos y contratación pública.
+- Constitucional: derechos fundamentales y garantías.
+
+FORMATO DE RESPUESTA:
+No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación clara con estas partes cuando aporten valor:
+1. Primero, una respuesta directa y entendible.
+2. Luego, la explicación legal en lenguaje sencillo.
+3. Si corresponde, base legal, criterios o jurisprudencia relevante.
+4. Después, pasos prácticos y documentos que conviene reunir.
+5. Cierra con preguntas de seguimiento útiles o con "Fuentes y verificación" cuando hayas usado normas o referencias.
+
+REGLAS:
+- Siempre responde en español, con tono profesional, cercano y claro.
+- Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
+- Si falta información clave, responde con supuestos explícitos y preguntas concretas.
+- Advierte cuando sea necesaria revisión de un abogado o documento real.
+- No presentes orientación general como asesoría legal definitiva.
+- No hagas valoraciones morales; limita la respuesta al análisis legal.
+- No afirmes tener información en tiempo real si no está disponible en el contexto.`;
+}
+
+async function runLegalIntelligence(options = {}) {
+  const userQuery = String(options.userQuery || '').trim();
+  const prompt = String(options.prompt || `Consulta del usuario:\n${userQuery}`);
+  const conversationMemory = normalizeMemoryMessages(options.conversationMemory || []);
+  const memorySearchQuery = buildMemorySearchQuery(userQuery, conversationMemory);
+  const currentIntent = classifyLegalIntent(userQuery);
+  const memoryIntent = classifyLegalIntent(memorySearchQuery);
+  const intent = mergeConversationIntent(currentIntent, memoryIntent);
+  const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
+  const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory);
+  const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
+
+  if (isGreetingOnly(userQuery)) {
+    return {
+      answer: buildGreetingAnswer(),
+      intent,
+      results: [],
+      ragSources: [],
+      source: 'LEXIA',
+      fallback: false,
+      model: 'local-greeting',
+      provider: 'local',
+      metadata: {
+        model: 'local-greeting',
+        source: 'LEXIA'
+      }
+    };
+  }
+
+  if (isConversationalFollowUp(userQuery) && !conversationMemory.length) {
+    return {
+      answer: buildFollowUpClarificationAnswer(),
+      intent: currentIntent,
+      results: [],
+      ragSources: [],
+      source: 'LEXIA',
+      fallback: false,
+      model: 'local-follow-up',
+      provider: 'local',
+      metadata: {
+        model: 'local-follow-up',
+        source: 'LEXIA'
+      }
+    };
+  }
+
+  const localResults = searchLegalKnowledgeBase(memorySearchQuery);
+  const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
+  logLocalSearchSufficiency('Legal Intelligence Engine', memorySearchQuery, localSearchEvaluation);
+  const ragContext = buildRagContext(memorySearchQuery, localResults);
+  const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
+  const context = [conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n');
+  const intentContext = [
+    'INTENCIÓN JURÍDICA DETECTADA:',
+    `Tipo: ${intent.type.label}`,
+    `Área: ${intent.area.label}`,
+    `Tema: ${intent.topic.label}`,
+    `Confianza: tipo=${intent.type.confidence}, área=${intent.area.confidence}, tema=${intent.topic.confidence}`
+  ].join('\n');
+  const messages = [
+    {
+      role: 'system',
+      content: buildLexiaSystemPrompt() + '\n\n' + intentContext + (context ? '\n\n' + context : '')
+    },
+    ...conversationMemory.map(message => ({
+      role: message.role,
+      content: message.content
+    })),
+    {
+      role: 'user',
+      content: prompt
+    }
+  ];
+
+  const providerResult = await generateWithConfiguredProvider(messages, { temperature });
+  if (!providerResult.answer) {
+    return {
+      answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile),
+      intent,
+      results: ragContext.results,
+      ragSources: ragContext.sources,
+      source: 'LEXIA RAG Local',
+      fallback: true,
+      model: 'local-rag-engine',
+      provider: 'local',
+      providerError: providerResult.providerErrors?.[0]?.error || null,
+      providerCode: providerResult.providerErrors?.[0]?.code || null,
+      retrieval: {
+        mode: 'rag',
+        results: ragContext.results.length,
+        memoryMessages: conversationMemory.length
+      },
+      metadata: {
+        model: 'local-rag-engine',
+        source: 'LEXIA RAG Local',
+        ragSources: ragContext.sources,
+        providerErrors: providerResult.providerErrors,
+        memoryMessages: conversationMemory.length,
+        localSearchEvaluation,
+        legalReasoningProfile
+      }
+    };
+  }
+
+  return {
+    answer: providerResult.answer,
+    intent,
+    results: ragContext.results,
+    ragSources: ragContext.sources,
+    source: providerResult.source,
+    fallback: false,
+    model: providerResult.model,
+    provider: providerResult.provider,
+    retrieval: {
+      mode: 'rag',
+      results: ragContext.results.length,
+      memoryMessages: conversationMemory.length
+    },
+    metadata: {
+      model: providerResult.model,
+      source: providerResult.source,
+      ragSources: ragContext.sources,
+      memoryMessages: conversationMemory.length,
+      localSearchEvaluation,
+      legalReasoningProfile,
+      providerErrors: providerResult.providerErrors
+    }
+  };
+}
+
 // Detector robusto de consultas jurídicas
 function isLegalQuery(text) {
   if (!text) return false;
@@ -2321,13 +2501,6 @@ app.post('/api/chat', async (req, res) => {
       chatSessionId,
       Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []
     );
-    const memorySearchQuery = buildMemorySearchQuery(userQuery, conversationMemory);
-    const currentIntent = classifyLegalIntent(userQuery);
-    const memoryIntent = classifyLegalIntent(memorySearchQuery);
-    const intent = mergeConversationIntent(currentIntent, memoryIntent);
-    const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
-    const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory);
-    const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
     const persistAnswer = async (answer, metadata = {}) => {
       if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
       return persistChatExchange(chatEmail, chatSession, userMessage, {
@@ -2338,161 +2511,26 @@ app.post('/api/chat', async (req, res) => {
         metadata
       });
     };
-    if (isGreetingOnly(userQuery)) {
-      const answer = buildGreetingAnswer();
-      const persisted = await persistAnswer(answer, { model: 'local-greeting', source: 'LEXIA' });
-      return res.json({
-        answer,
-        intent,
-        results: [],
-        source: 'LEXIA',
-        fallback: false,
-        model: 'local-greeting',
-        persisted
-      });
-    }
-    if (isConversationalFollowUp(userQuery) && !conversationMemory.length) {
-      const answer = buildFollowUpClarificationAnswer();
-      const persisted = await persistAnswer(answer, { model: 'local-follow-up', source: 'LEXIA' });
-      return res.json({
-        answer,
-        intent: currentIntent,
-        results: [],
-        source: 'LEXIA',
-        fallback: false,
-        model: 'local-follow-up',
-        persisted
-      });
-    }
-    const localResults = searchLegalKnowledgeBase(memorySearchQuery);
-    const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
-    logLocalSearchSufficiency('/api/chat', memorySearchQuery, localSearchEvaluation);
-    const ragContext = buildRagContext(memorySearchQuery, localResults);
 
-    // CONFIG
-    const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
-
-    // SISTEMA EXPERTO EN DERECHO PERUANO
-    const systemPrompt = `Eres LEXIA, una IA jurídica especializada en Derecho peruano. Tu función en "Nueva Consulta (IA)" es conversar con la persona como lo haría un abogado cercano, paciente y claro: escuchas primero, explicas con palabras entendibles y luego das criterio jurídico riguroso, útil y verificable cuando existan fuentes.
-
-PERSONALIDAD Y ESTILO:
-- Mantén una conversación amable, humana y profesional. No respondas como un buscador ni como un formulario.
-- Empieza reconociendo brevemente la preocupación del usuario cuando corresponda: "Entiendo", "Veamos el caso", "Con esos datos, lo importante es...".
-- Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
-- Si faltan datos, no te limites a decir que falta información: responde lo posible con supuestos claros y formula 2 a 4 preguntas concretas para continuar la conversación.
-- Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
-- Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
-- Haz que la persona se sienta acompañada: resume su problema en una frase, valida la preocupación sin exagerar y continúa con una guía práctica.
-- No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
-
-CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
-- Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
-- Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
-- Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
-- Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
-- Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
-- Fuentes citadas: termina con una sección "Fuentes y verificación" indicando las normas o referencias usadas. Si no hay fuente específica en el contexto, dilo claramente y recomienda verificar en El Peruano, SPIJ, PJ, TC o la entidad competente.
-- RAG: antes de responder, usa el "CONTEXTO RAG RECUPERADO" cuando exista. Cita las referencias recuperadas como [R1], [R2], etc. No inventes fuentes que no estén en ese contexto.
-
-ESPECIALIDAD EN DERECHO PERUANO:
-- Civil: contratos, obligaciones, bienes, herencias, familia.
-- Penal: delitos, penas y procedimiento penal.
-- Laboral: trabajo, remuneración, seguridad social y despidos.
-- Comercial: empresas, sociedades e insolvencia.
-- Tributario: impuestos y obligaciones fiscales.
-- Procesal: juicios, recursos y medidas cautelares.
-- Administrativo: actos, recursos y contratación pública.
-- Constitucional: derechos fundamentales y garantías.
-
-FORMATO DE RESPUESTA:
-No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación clara con estas partes cuando aporten valor:
-1. Primero, una respuesta directa y entendible.
-2. Luego, la explicación legal en lenguaje sencillo.
-3. Si corresponde, base legal, criterios o jurisprudencia relevante.
-4. Después, pasos prácticos y documentos que conviene reunir.
-5. Cierra con preguntas de seguimiento útiles o con "Fuentes y verificación" cuando hayas usado normas o referencias.
-
-REGLAS:
-- Siempre responde en español, con tono profesional, cercano y claro.
-- Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
-- Si falta información clave, responde con supuestos explícitos y preguntas concretas.
-- Advierte cuando sea necesaria revisión de un abogado o documento real.
-- No presentes orientación general como asesoría legal definitiva.
-- No hagas valoraciones morales; limita la respuesta al análisis legal.
-- No afirmes tener información en tiempo real si no está disponible en el contexto.`;
-
-    const context = [conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n');
-    const intentContext = [
-      'INTENCIÓN JURÍDICA DETECTADA:',
-      `Tipo: ${intent.type.label}`,
-      `Área: ${intent.area.label}`,
-      `Tema: ${intent.topic.label}`,
-      `Confianza: tipo=${intent.type.confidence}, área=${intent.area.confidence}, tema=${intent.topic.confidence}`
-    ].join('\n');
-    const openAiMessages = [
-      {
-        role: 'system',
-        content: systemPrompt + '\n\n' + intentContext + (context ? '\n\n' + context : '')
-      },
-      ...conversationMemory.map(message => ({
-        role: message.role,
-        content: message.content
-      })),
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
-
-    const providerResult = await generateWithConfiguredProvider(openAiMessages, { temperature });
-    if (!providerResult.answer) {
-      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile);
-      const persisted = await persistAnswer(answer, {
-        model: 'local-rag-engine',
-        source: 'LEXIA RAG Local',
-        ragSources: ragContext.sources,
-        providerErrors: providerResult.providerErrors,
-        memoryMessages: conversationMemory.length,
-        localSearchEvaluation,
-        legalReasoningProfile
-      });
-      return res.json({
-        answer,
-        intent,
-        results: ragContext.results,
-        ragSources: ragContext.sources,
-        source: 'LEXIA RAG Local',
-        fallback: true,
-        providerError: providerResult.providerErrors?.[0]?.error || null,
-        providerCode: providerResult.providerErrors?.[0]?.code || null,
-        model: 'local-rag-engine',
-        persisted
-      });
-    }
-
-    const answer = providerResult.answer;
-    const persisted = await persistAnswer(answer, {
-      model: providerResult.model,
-      source: providerResult.source,
-      ragSources: ragContext.sources,
-      memoryMessages: conversationMemory.length,
-      localSearchEvaluation,
-      legalReasoningProfile,
-      providerErrors: providerResult.providerErrors
+    const intelligenceResult = await runLegalIntelligence({
+      userQuery,
+      prompt,
+      conversationMemory
     });
-    
-    res.json({ 
-      answer,
-      intent,
-      ragSources: ragContext.sources,
-      source: providerResult.source,
-      model: providerResult.model,
-      provider: providerResult.provider,
-      retrieval: {
-        mode: 'rag',
-        results: ragContext.results.length,
-        memoryMessages: conversationMemory.length
-      },
+    const persisted = await persistAnswer(intelligenceResult.answer, intelligenceResult.metadata);
+
+    return res.json({
+      answer: intelligenceResult.answer,
+      intent: intelligenceResult.intent,
+      results: intelligenceResult.results,
+      ragSources: intelligenceResult.ragSources,
+      source: intelligenceResult.source,
+      fallback: intelligenceResult.fallback,
+      providerError: intelligenceResult.providerError,
+      providerCode: intelligenceResult.providerCode,
+      model: intelligenceResult.model,
+      provider: intelligenceResult.provider,
+      retrieval: intelligenceResult.retrieval,
       persisted
     });
   } catch (error) {
