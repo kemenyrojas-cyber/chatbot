@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260611-legal-workspace">
+    <link rel="stylesheet" href="/css/style.css?v=20260618-brain-control">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -41,6 +41,7 @@
 
             <div class="nav-group">
                 <p>Herramientas</p>
+                <a class="nav-item" href="#cerebro" data-action="brain"><span><i class="fa-solid fa-brain icon" aria-hidden="true"></i></span> Cerebro LEXIA</a>
                 <a class="nav-item" href="#herramientas" data-action="tools"><span><i class="fa-solid fa-calculator icon" aria-hidden="true"></i></span> Calculadoras Jurídicas</a>
                 <a class="nav-item" href="#plazos" data-action="deadlines"><span><i class="fa-regular fa-calendar-days icon" aria-hidden="true"></i></span> Plazos y Vencimientos</a>
                 <a class="nav-item" href="#notificaciones" data-action="notifications"><span><i class="fa-regular fa-bell icon" aria-hidden="true"></i></span> Notificaciones</a>
@@ -188,6 +189,77 @@
                 </section>
             </div>
 
+            <section class="brain-view" id="brainView" hidden>
+                <div class="brain-header">
+                    <div>
+                        <h2>Centro de Control LEXIA</h2>
+                        <p>Gestiona fuentes jurídicas antes de que alimenten Nueva Consulta.</p>
+                    </div>
+                    <button class="chat-secondary-button" id="refreshBrainSources" type="button">
+                        <i class="fa-solid fa-rotate icon" aria-hidden="true"></i>
+                        Actualizar
+                    </button>
+                </div>
+
+                <div class="brain-grid">
+                    <section class="brain-panel">
+                        <div class="panel-title">
+                            <h3>Agregar fuente web</h3>
+                        </div>
+                        <form class="brain-form" id="brainUrlForm">
+                            <label>
+                                URL jurídica
+                                <input id="brainUrlInput" type="url" placeholder="https://elperuano.pe/..." required>
+                            </label>
+                            <div class="brain-form-row">
+                                <label>
+                                    Materia
+                                    <select id="brainMatterInput">
+                                        <option value="">Detectar automáticamente</option>
+                                        <option>Derecho Constitucional</option>
+                                        <option>Derecho Civil</option>
+                                        <option>Derecho Penal</option>
+                                        <option>Derecho Laboral</option>
+                                        <option>Derecho de Familia</option>
+                                        <option>Derecho Administrativo</option>
+                                        <option>Derecho Comercial</option>
+                                        <option>Derecho Tributario</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    Módulo
+                                    <select id="brainModuleInput">
+                                        <option value="">Detectar</option>
+                                        <option value="normativa">Normativa</option>
+                                        <option value="jurisprudencia">Jurisprudencia</option>
+                                        <option value="casaciones">Casaciones</option>
+                                        <option value="sentencias_tc">Sentencias TC</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <button class="brain-primary-button" id="brainAnalyzeButton" type="submit">
+                                <i class="fa-solid fa-magnifying-glass icon" aria-hidden="true"></i>
+                                Analizar fuente
+                            </button>
+                        </form>
+                        <div class="brain-status" id="brainStatus" role="status" hidden></div>
+                    </section>
+
+                    <section class="brain-panel">
+                        <div class="panel-title">
+                            <h3>Fuentes conectadas</h3>
+                            <span class="brain-counter" id="brainSourceCounter">0</span>
+                        </div>
+                        <div class="brain-source-list" id="brainSourceList">
+                            <div class="empty-state compact">
+                                <strong>Sin fuentes cargadas.</strong>
+                                <span>Agrega una URL jurídica para empezar a alimentar el cerebro.</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </section>
+
             <section class="chat-view" id="legalChatView" hidden>
                 <aside class="chat-history-panel">
                     <div class="chat-history-head">
@@ -226,7 +298,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260611-legal-workspace"></script>
+    <script src="/js/app.js?v=20260618-brain-control"></script>
 </body>
 </html>
 

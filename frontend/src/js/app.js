@@ -30,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mainPanel = document.getElementById("mainPanel");
     const dashboardView = document.getElementById("dashboardView");
     const legalChatView = document.getElementById("legalChatView");
+    const brainView = document.getElementById("brainView");
     const chatSessionList = document.getElementById("chatSessionList");
     const chatThread = document.getElementById("chatThread");
     const chatComposerInput = document.getElementById("chatComposerInput");
@@ -37,6 +38,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatViewTitle = document.getElementById("chatViewTitle");
     const chatViewSubtitle = document.getElementById("chatViewSubtitle");
     const newChatSessionButton = document.getElementById("newChatSessionButton");
+    const brainUrlForm = document.getElementById("brainUrlForm");
+    const brainUrlInput = document.getElementById("brainUrlInput");
+    const brainMatterInput = document.getElementById("brainMatterInput");
+    const brainModuleInput = document.getElementById("brainModuleInput");
+    const brainAnalyzeButton = document.getElementById("brainAnalyzeButton");
+    const brainStatus = document.getElementById("brainStatus");
+    const brainSourceList = document.getElementById("brainSourceList");
+    const brainSourceCounter = document.getElementById("brainSourceCounter");
+    const refreshBrainSources = document.getElementById("refreshBrainSources");
 
     const roleAliases = {
         "abogado independiente": "abogado-independiente",
@@ -632,7 +642,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function updateNav(activeAction) {
-        document.querySelectorAll(".side-nav .nav-item").forEach(item => {
+        document.querySelectorAll(".nav-item").forEach(item => {
             item.classList.toggle("active", item.dataset.action === activeAction);
         });
     }
@@ -640,10 +650,129 @@ document.addEventListener("DOMContentLoaded", () => {
     function showView(viewName) {
         currentView = viewName;
         const showChat = viewName === "chat";
-        dashboardView.hidden = showChat;
+        const showBrain = viewName === "brain";
+        dashboardView.hidden = showChat || showBrain;
         legalChatView.hidden = !showChat;
+        if (brainView) brainView.hidden = !showBrain;
         mainPanel?.classList.toggle("chat-mode", showChat);
-        updateNav(showChat ? "new-query" : "home");
+        updateNav(showChat ? "new-query" : showBrain ? "brain" : "home");
+        if (showBrain) {
+            void loadBrainSources();
+        }
+    }
+
+    function setBrainStatus(message, type = "info") {
+        if (!brainStatus) return;
+        brainStatus.hidden = !message;
+        brainStatus.classList.toggle("error", type === "error");
+        brainStatus.textContent = message || "";
+    }
+
+    function formatBrainStatus(status) {
+        const labels = {
+            approved: "Aprobado",
+            pending_review: "Pendiente",
+            rejected: "Rechazado"
+        };
+        return labels[status] || status || "Pendiente";
+    }
+
+    function renderBrainSources(sources = []) {
+        if (brainSourceCounter) brainSourceCounter.textContent = String(sources.length);
+        if (!brainSourceList) return;
+
+        if (!sources.length) {
+            brainSourceList.innerHTML = `
+                <div class="empty-state compact">
+                    <strong>Sin fuentes cargadas.</strong>
+                    <span>Agrega una URL jurídica para empezar a alimentar el cerebro.</span>
+                </div>
+            `;
+            return;
+        }
+
+        brainSourceList.innerHTML = sources.map(source => {
+            const status = source.reviewStatus || "pending_review";
+            const score = Number(source.legalScore || 0);
+            const url = source.sourceUrl || source.originalName || "";
+            return `
+                <article class="brain-source-item" data-source-id="${escapeHtml(source.id)}">
+                    <div class="brain-source-head">
+                        <strong>${escapeHtml(source.title || source.originalName || "Fuente jurídica")}</strong>
+                        <span class="brain-status-pill ${escapeHtml(status)}">${formatBrainStatus(status)}</span>
+                    </div>
+                    <div class="brain-source-meta">
+                        <span>${escapeHtml(source.sourceType || "fuente")}</span>
+                        <span>Puntaje jurídico: ${score}</span>
+                        <span>${formatDate(source.createdAt)}</span>
+                    </div>
+                    ${url ? `<div class="brain-source-url" title="${escapeHtml(url)}">${escapeHtml(url)}</div>` : ""}
+                    <div class="brain-actions">
+                        <button class="brain-action-button" type="button" data-brain-status="approved" ${status === "approved" ? "disabled" : ""}>
+                            <i class="fa-solid fa-check icon" aria-hidden="true"></i>
+                            Aprobar
+                        </button>
+                        <button class="brain-action-button reject" type="button" data-brain-status="rejected" ${status === "rejected" ? "disabled" : ""}>
+                            <i class="fa-solid fa-xmark icon" aria-hidden="true"></i>
+                            Rechazar
+                        </button>
+                    </div>
+                </article>
+            `;
+        }).join("");
+    }
+
+    async function loadBrainSources() {
+        if (!brainSourceList) return;
+        try {
+            setBrainStatus("");
+            const data = await apiJson("/api/legal-ingest");
+            renderBrainSources(Array.isArray(data.sources) ? data.sources : []);
+        } catch (error) {
+            renderBrainSources([]);
+            setBrainStatus(error.message || "No se pudieron cargar las fuentes.", "error");
+        }
+    }
+
+    async function ingestBrainUrl() {
+        const url = brainUrlInput?.value.trim();
+        if (!url) return;
+        brainAnalyzeButton.disabled = true;
+        setBrainStatus("Analizando fuente jurídica...");
+        try {
+            const data = await apiJson("/api/legal-ingest-url", {
+                method: "POST",
+                body: JSON.stringify({
+                    url,
+                    email: currentEmail,
+                    materia: brainMatterInput?.value || "",
+                    modulo: brainModuleInput?.value || "",
+                    reviewStatus: "pending_review"
+                })
+            });
+            brainUrlForm?.reset();
+            setBrainStatus(`Fuente analizada. Estado: ${formatBrainStatus(data.source?.reviewStatus)}. Puntaje jurídico: ${data.source?.legalScore || 0}.`);
+            await loadBrainSources();
+        } catch (error) {
+            setBrainStatus(error.message || "No se pudo analizar la fuente.", "error");
+        } finally {
+            brainAnalyzeButton.disabled = false;
+        }
+    }
+
+    async function updateBrainSourceStatus(sourceId, reviewStatus) {
+        if (!sourceId || !reviewStatus) return;
+        setBrainStatus("Actualizando estado de la fuente...");
+        try {
+            await apiJson(`/api/legal-ingest/${encodeURIComponent(sourceId)}/status`, {
+                method: "PATCH",
+                body: JSON.stringify({ reviewStatus, email: currentEmail })
+            });
+            setBrainStatus(`Fuente marcada como ${formatBrainStatus(reviewStatus)}.`);
+            await loadBrainSources();
+        } catch (error) {
+            setBrainStatus(error.message || "No se pudo actualizar la fuente.", "error");
+        }
     }
 
     function formatChatContent(content) {
@@ -790,6 +919,10 @@ document.addEventListener("DOMContentLoaded", () => {
     function syncViewWithHash() {
         if (window.location.hash === "#consulta-ia" || window.location.hash === "#consulta") {
             openChatView();
+            return;
+        }
+        if (window.location.hash === "#cerebro") {
+            showView("brain");
             return;
         }
         showView("dashboard");
@@ -1471,6 +1604,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
                 showView("dashboard");
             }
+            if (action === "brain") {
+                event.preventDefault();
+                history.replaceState(null, "", `${window.location.pathname}${window.location.search}#cerebro`);
+                showView("brain");
+            }
             if (action === "history") {
                 event.preventDefault();
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}#historial`);
@@ -1490,6 +1628,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 notificationButton.setAttribute("aria-expanded", "true");
             }
         });
+    });
+
+    brainUrlForm?.addEventListener("submit", event => {
+        event.preventDefault();
+        void ingestBrainUrl();
+    });
+
+    refreshBrainSources?.addEventListener("click", () => {
+        void loadBrainSources();
+    });
+
+    brainSourceList?.addEventListener("click", event => {
+        const button = event.target.closest("[data-brain-status]");
+        if (!button) return;
+        const item = button.closest("[data-source-id]");
+        const sourceId = item?.dataset.sourceId;
+        const reviewStatus = button.dataset.brainStatus;
+        void updateBrainSourceStatus(sourceId, reviewStatus);
     });
 
     document.addEventListener("click", event => {

@@ -1384,6 +1384,23 @@ function normalizeReviewStatus(value, fallback = 'pending_review') {
   return ['approved', 'pending_review', 'rejected'].includes(status) ? status : fallback;
 }
 
+function getLegalAdminEmails() {
+  return String(process.env.LEGAL_ADMIN_EMAILS || '')
+    .split(',')
+    .map(normalizeEmail)
+    .filter(Boolean);
+}
+
+function assertLegalAdminAccess(email) {
+  const admins = getLegalAdminEmails();
+  if (!admins.length) return true;
+  const normalized = normalizeEmail(email);
+  if (normalized && admins.includes(normalized)) return true;
+  const error = new Error('No tienes permiso para gestionar el cerebro de LEXIA.');
+  error.statusCode = 403;
+  throw error;
+}
+
 const legalIntentTypes = [
   {
     id: 'consulta_informativa',
@@ -3098,6 +3115,7 @@ app.post('/api/legal-query', async (req, res) => {
 app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res) => {
   try {
     const body = req.body || {};
+    assertLegalAdminAccess(body.email);
     const file = req.file || null;
     const originalName = String(file?.originalname || body.fileName || body.filename || 'documento.txt').trim();
     const text = (await extractTextFromLegalUpload(file, body)).replace(/\u0000/g, '').trim();
@@ -3184,7 +3202,7 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
   } catch (error) {
     console.error('❌ Error en legal-ingest:', error);
     const message = error.message || 'No se pudo procesar el documento.';
-    const status = message.includes('Formato no soportado') || message.includes('Debes enviar') ? 400 : 500;
+    const status = message.includes('Formato no soportado') || message.includes('Debes enviar') ? 400 : error.statusCode || 500;
     return res.status(status).json({ error: message });
   }
 });
@@ -3192,6 +3210,7 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
 app.post('/api/legal-ingest-url', async (req, res) => {
   try {
     const body = req.body || {};
+    assertLegalAdminAccess(body.email);
     const rawUrl = String(body.url || '').trim();
     if (!rawUrl) return res.status(400).json({ error: 'La URL es obligatoria.' });
 
@@ -3302,7 +3321,7 @@ app.post('/api/legal-ingest-url', async (req, res) => {
       || message.includes('robots.txt')
       || message.includes('no soportado')
       ? 400
-      : 500;
+      : error.statusCode || 500;
     return res.status(status).json({ error: message });
   }
 });
@@ -3325,12 +3344,19 @@ app.get('/api/legal-ingest', async (req, res) => {
     return res.json({ ok: true, storage: 'postgres', sources: result.rows, entries: legalIngestedCorpus.length });
   } catch (error) {
     console.error('Error listando ingestas:', error.message);
-    return res.status(500).json({ error: 'No se pudo listar el conocimiento ingerido.' });
+    return res.json({
+      ok: true,
+      storage: 'local',
+      sources: [],
+      entries: legalIngestedCorpus.length,
+      warning: 'PostgreSQL no estuvo disponible al listar fuentes.'
+    });
   }
 });
 
 app.patch('/api/legal-ingest/:id/status', async (req, res) => {
   try {
+    assertLegalAdminAccess(req.body?.email);
     const ready = await ensureLegalIngestionDatabase();
     if (!ready) return res.status(503).json({ error: 'PostgreSQL no está configurado para ingesta jurídica.' });
 

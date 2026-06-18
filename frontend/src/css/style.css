@@ -597,7 +597,8 @@ button {
 }
 
 #dashboardView[hidden],
-.chat-view[hidden] {
+.chat-view[hidden],
+.brain-view[hidden] {
     display: none !important;
 }
 
@@ -932,6 +933,213 @@ button {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 18px;
+}
+
+.brain-view {
+    display: grid;
+    gap: 18px;
+}
+
+.brain-header {
+    padding: 22px 24px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.brain-header h2 {
+    color: #07142F;
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.brain-header p {
+    margin-top: 5px;
+    color: #4B6388;
+    font-size: 13px;
+}
+
+.brain-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.75fr) minmax(0, 1.25fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.brain-panel {
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #FFFFFF;
+}
+
+.brain-form {
+    margin-top: 18px;
+    display: grid;
+    gap: 14px;
+}
+
+.brain-form label {
+    display: grid;
+    gap: 7px;
+    color: #1F3356;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.brain-form input,
+.brain-form select {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid #C9D8EF;
+    border-radius: 7px;
+    background: #F8FBFF;
+    color: #0B1B3A;
+    font-size: 13px;
+    padding: 0 12px;
+}
+
+.brain-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.brain-primary-button,
+.brain-action-button {
+    min-height: 38px;
+    border: 0;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.brain-primary-button {
+    background: #2563EB;
+    color: #FFFFFF;
+}
+
+.brain-primary-button:disabled,
+.brain-action-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+}
+
+.brain-status {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #EEF6FF;
+    color: #1F3356;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.brain-status.error {
+    background: #FFF1F2;
+    color: #9F1239;
+}
+
+.brain-counter {
+    min-width: 28px;
+    height: 24px;
+    border-radius: 999px;
+    background: #EAF2FF;
+    color: #2563EB;
+    display: inline-grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.brain-source-list {
+    margin-top: 18px;
+    display: grid;
+    gap: 12px;
+}
+
+.brain-source-item {
+    padding: 14px;
+    border: 1px solid #E4ECF7;
+    border-radius: 8px;
+    background: #F8FBFF;
+    display: grid;
+    gap: 10px;
+}
+
+.brain-source-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.brain-source-head strong {
+    color: #07142F;
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.brain-source-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: #4B6388;
+    font-size: 11px;
+}
+
+.brain-source-url {
+    overflow: hidden;
+    color: #315A9C;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brain-status-pill {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: #EAF2FF;
+    color: #1D4ED8;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.brain-status-pill.approved {
+    background: #DCFCE7;
+    color: #166534;
+}
+
+.brain-status-pill.rejected {
+    background: #FFE4E6;
+    color: #9F1239;
+}
+
+.brain-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.brain-action-button {
+    padding: 0 12px;
+    border: 1px solid #C9D8EF;
+    background: #FFFFFF;
+    color: #0B5CFF;
+}
+
+.brain-action-button.reject {
+    color: #9F1239;
 }
 
 .chat-view {
@@ -1345,6 +1553,10 @@ button {
         grid-template-columns: 1fr;
     }
 
+    .brain-grid {
+        grid-template-columns: 1fr;
+    }
+
     .chat-history-panel,
     .chat-thread-panel {
         min-height: 0;
@@ -1449,8 +1661,15 @@ button {
     .quick-grid,
     .right-stack,
     .tools-grid,
-    .chat-view {
+    .chat-view,
+    .brain-grid,
+    .brain-form-row {
         grid-template-columns: 1fr;
+    }
+
+    .brain-header {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .right-stack,
