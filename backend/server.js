@@ -1384,26 +1384,33 @@ function normalizeReviewStatus(value, fallback = 'pending_review') {
   return ['approved', 'pending_review', 'rejected'].includes(status) ? status : fallback;
 }
 
-function getLegalAdminEmails() {
-  return String(process.env.LEGAL_ADMIN_EMAILS || '')
+function getLegalCuratorEmails() {
+  return String(process.env.LEGAL_CURATOR_EMAILS || '')
     .split(',')
     .map(normalizeEmail)
     .filter(Boolean);
 }
 
-function isLegalAdminEmail(email) {
-  const admins = getLegalAdminEmails();
+function isLegalCuratorEmail(email) {
+  const curators = getLegalCuratorEmails();
   const normalized = normalizeEmail(email);
-  if (!admins.length) {
+  if (!curators.length) {
     return !process.env.RENDER && process.env.NODE_ENV !== 'production';
   }
-  return Boolean(normalized && admins.includes(normalized));
+  return Boolean(normalized && curators.includes(normalized));
 }
 
-function assertLegalAdminAccess(email) {
-  if (isLegalAdminEmail(email)) return true;
-  const error = new Error('No tienes permiso para gestionar el cerebro de LEXIA.');
+function assertLegalCuratorAccess(email) {
+  if (isLegalCuratorEmail(email)) return true;
+  const error = new Error('Esta acción requiere curaduría interna de LEXIA.');
   error.statusCode = 403;
+  throw error;
+}
+
+function assertLoggedBrainContributor(email) {
+  if (normalizeEmail(email)) return true;
+  const error = new Error('Debes iniciar sesión para proponer fuentes al cerebro de LEXIA.');
+  error.statusCode = 401;
   throw error;
 }
 
@@ -3118,20 +3125,21 @@ app.post('/api/legal-query', async (req, res) => {
   });
 });
 
-app.get('/api/legal-admin/status', (req, res) => {
+app.get('/api/legal-brain/status', (req, res) => {
   const email = normalizeEmail(req.query.email);
-  const configured = getLegalAdminEmails().length > 0;
+  const configured = getLegalCuratorEmails().length > 0;
   return res.json({
     ok: true,
     configured,
-    isAdmin: isLegalAdminEmail(email)
+    canSuggest: Boolean(email),
+    canCurate: isLegalCuratorEmail(email)
   });
 });
 
 app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res) => {
   try {
     const body = req.body || {};
-    assertLegalAdminAccess(body.email);
+    assertLoggedBrainContributor(body.email);
     const file = req.file || null;
     const originalName = String(file?.originalname || body.fileName || body.filename || 'documento.txt').trim();
     const text = (await extractTextFromLegalUpload(file, body)).replace(/\u0000/g, '').trim();
@@ -3151,9 +3159,11 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
       sourceLabel: String(body.source || body.fuente || path.parse(originalName).name.replace(/[_-]/g, ' ')).trim().slice(0, 180),
       url: String(body.url || '').trim(),
       sourceType: 'file',
-      reviewStatus: normalizeReviewStatus(body.reviewStatus || body.status, 'approved'),
+      reviewStatus: isLegalCuratorEmail(body.email)
+        ? normalizeReviewStatus(body.reviewStatus || body.status, 'pending_review')
+        : 'pending_review',
       legalScore: 100,
-      legalEvaluation: { isLegal: true, score: 100, reason: 'archivo cargado por administrador' },
+      legalEvaluation: { isLegal: true, score: 100, reason: 'archivo propuesto por usuario de LEXIA' },
       contentHash,
       text
     };
@@ -3226,7 +3236,7 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
 app.post('/api/legal-ingest-url', async (req, res) => {
   try {
     const body = req.body || {};
-    assertLegalAdminAccess(body.email);
+    assertLoggedBrainContributor(body.email);
     const rawUrl = String(body.url || '').trim();
     if (!rawUrl) return res.status(400).json({ error: 'La URL es obligatoria.' });
 
@@ -3247,7 +3257,9 @@ app.post('/api/legal-ingest-url', async (req, res) => {
     }
 
     const reviewStatus = normalizeReviewStatus(
-      body.reviewStatus || body.status || (body.autoApprove === true || body.autoApprove === 'true' ? 'approved' : 'pending_review'),
+      isLegalCuratorEmail(body.email)
+        ? body.reviewStatus || body.status || (body.autoApprove === true || body.autoApprove === 'true' ? 'approved' : 'pending_review')
+        : 'pending_review',
       'pending_review'
     );
     const contentHash = hashContent(`${parsedUrl.toString()}\n${text}`);
@@ -3344,7 +3356,9 @@ app.post('/api/legal-ingest-url', async (req, res) => {
 
 app.get('/api/legal-ingest', async (req, res) => {
   try {
-    assertLegalAdminAccess(req.query.email);
+    assertLoggedBrainContributor(req.query.email);
+    const email = normalizeEmail(req.query.email);
+    const canCurate = isLegalCuratorEmail(email);
     const ready = await ensureLegalIngestionDatabase();
     if (!ready) {
       return res.json({ ok: true, storage: 'local', sources: [], entries: legalIngestedCorpus.length });
@@ -3355,10 +3369,11 @@ app.get('/api/legal-ingest', async (req, res) => {
              source_url AS "sourceUrl", source_type AS "sourceType", review_status AS "reviewStatus",
              legal_score AS "legalScore", size_bytes AS "sizeBytes", created_at AS "createdAt"
       FROM legal_ingested_sources
+      ${canCurate ? '' : 'WHERE account_email = $1'}
       ORDER BY created_at DESC
       LIMIT 50
-    `);
-    return res.json({ ok: true, storage: 'postgres', sources: result.rows, entries: legalIngestedCorpus.length });
+    `, canCurate ? [] : [email]);
+    return res.json({ ok: true, storage: 'postgres', sources: result.rows, entries: legalIngestedCorpus.length, canCurate });
   } catch (error) {
     console.error('Error listando ingestas:', error.message);
     if (error.statusCode) {
@@ -3376,7 +3391,7 @@ app.get('/api/legal-ingest', async (req, res) => {
 
 app.patch('/api/legal-ingest/:id/status', async (req, res) => {
   try {
-    assertLegalAdminAccess(req.body?.email);
+    assertLegalCuratorAccess(req.body?.email);
     const ready = await ensureLegalIngestionDatabase();
     if (!ready) return res.status(503).json({ error: 'PostgreSQL no está configurado para ingesta jurídica.' });
 
@@ -3401,7 +3416,9 @@ app.patch('/api/legal-ingest/:id/status', async (req, res) => {
     return res.json({ ok: true, source: sourceResult.rows[0], modules: getLegalKnowledgeCounts() });
   } catch (error) {
     console.error('Error actualizando estado de ingesta:', error.message);
-    return res.status(500).json({ error: 'No se pudo actualizar el estado de la fuente.' });
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'No se pudo actualizar el estado de la fuente.'
+    });
   }
 });
 

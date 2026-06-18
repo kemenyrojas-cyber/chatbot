@@ -243,7 +243,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentView = "dashboard";
     let activeChatSessionId = null;
     let isSending = false;
-    let canManageBrain = false;
+    let canSuggestBrainSources = false;
+    let canCurateBrainSources = false;
 
     function loadList(key) {
         try {
@@ -658,24 +659,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function initializeBrainAccess() {
         setBrainNavigationVisibility(false);
-        canManageBrain = false;
+        canSuggestBrainSources = false;
+        canCurateBrainSources = false;
         if (!currentEmail) return;
         try {
-            const data = await apiJson(`/api/legal-admin/status?email=${encodeURIComponent(currentEmail)}`);
-            canManageBrain = Boolean(data.isAdmin);
-            setBrainNavigationVisibility(canManageBrain);
-            if (canManageBrain && window.location.hash === "#cerebro") {
+            const data = await apiJson(`/api/legal-brain/status?email=${encodeURIComponent(currentEmail)}`);
+            canSuggestBrainSources = Boolean(data.canSuggest);
+            canCurateBrainSources = Boolean(data.canCurate);
+            setBrainNavigationVisibility(canSuggestBrainSources);
+            if (canSuggestBrainSources && window.location.hash === "#cerebro") {
                 showView("brain");
                 return;
             }
-            if (!canManageBrain && window.location.hash === "#cerebro") {
+            if (!canSuggestBrainSources && window.location.hash === "#cerebro") {
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
                 showView("dashboard");
-                addNotification("Acceso restringido", "El Centro de Control del cerebro solo está disponible para administradores.");
+                addNotification("Inicia sesión", "El laboratorio de inteligencia legal requiere una cuenta activa.");
                 renderAppState();
             }
         } catch (error) {
-            canManageBrain = false;
+            canSuggestBrainSources = false;
+            canCurateBrainSources = false;
             setBrainNavigationVisibility(false);
             console.warn("No se pudo verificar acceso al cerebro:", error.message);
         }
@@ -685,7 +689,7 @@ document.addEventListener("DOMContentLoaded", () => {
         currentView = viewName;
         const showChat = viewName === "chat";
         const showBrain = viewName === "brain";
-        if (showBrain && !canManageBrain) {
+        if (showBrain && !canSuggestBrainSources) {
             currentView = "dashboard";
             dashboardView.hidden = false;
             legalChatView.hidden = true;
@@ -727,8 +731,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!sources.length) {
             brainSourceList.innerHTML = `
                 <div class="empty-state compact">
-                    <strong>Sin fuentes cargadas.</strong>
-                    <span>Agrega una URL jurídica para empezar a alimentar el cerebro.</span>
+                    <strong>Sin fuentes propuestas.</strong>
+                    <span>Agrega una URL jurídica para que LEXIA la evalúe.</span>
                 </div>
             `;
             return;
@@ -738,6 +742,18 @@ document.addEventListener("DOMContentLoaded", () => {
             const status = source.reviewStatus || "pending_review";
             const score = Number(source.legalScore || 0);
             const url = source.sourceUrl || source.originalName || "";
+            const actions = canCurateBrainSources ? `
+                    <div class="brain-actions">
+                        <button class="brain-action-button" type="button" data-brain-status="approved" ${status === "approved" ? "disabled" : ""}>
+                            <i class="fa-solid fa-check icon" aria-hidden="true"></i>
+                            Aprobar
+                        </button>
+                        <button class="brain-action-button reject" type="button" data-brain-status="rejected" ${status === "rejected" ? "disabled" : ""}>
+                            <i class="fa-solid fa-xmark icon" aria-hidden="true"></i>
+                            Rechazar
+                        </button>
+                    </div>
+            ` : '';
             return `
                 <article class="brain-source-item" data-source-id="${escapeHtml(source.id)}">
                     <div class="brain-source-head">
@@ -750,16 +766,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         <span>${formatDate(source.createdAt)}</span>
                     </div>
                     ${url ? `<div class="brain-source-url" title="${escapeHtml(url)}">${escapeHtml(url)}</div>` : ""}
-                    <div class="brain-actions">
-                        <button class="brain-action-button" type="button" data-brain-status="approved" ${status === "approved" ? "disabled" : ""}>
-                            <i class="fa-solid fa-check icon" aria-hidden="true"></i>
-                            Aprobar
-                        </button>
-                        <button class="brain-action-button reject" type="button" data-brain-status="rejected" ${status === "rejected" ? "disabled" : ""}>
-                            <i class="fa-solid fa-xmark icon" aria-hidden="true"></i>
-                            Rechazar
-                        </button>
-                    </div>
+                    ${actions}
                 </article>
             `;
         }).join("");
@@ -767,7 +774,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadBrainSources() {
         if (!brainSourceList) return;
-        if (!canManageBrain) return;
+        if (!canSuggestBrainSources) return;
         try {
             setBrainStatus("");
             const data = await apiJson(`/api/legal-ingest?email=${encodeURIComponent(currentEmail || "")}`);
@@ -779,8 +786,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function ingestBrainUrl() {
-        if (!canManageBrain) {
-            setBrainStatus("No tienes permiso para gestionar el cerebro de LEXIA.", "error");
+        if (!canSuggestBrainSources) {
+            setBrainStatus("Debes iniciar sesión para proponer fuentes al cerebro de LEXIA.", "error");
             return;
         }
         const url = brainUrlInput?.value.trim();
@@ -799,7 +806,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 })
             });
             brainUrlForm?.reset();
-            setBrainStatus(`Fuente analizada. Estado: ${formatBrainStatus(data.source?.reviewStatus)}. Puntaje jurídico: ${data.source?.legalScore || 0}.`);
+            setBrainStatus(`Fuente recibida. LEXIA la dejó en ${formatBrainStatus(data.source?.reviewStatus)} con puntaje jurídico ${data.source?.legalScore || 0}.`);
             await loadBrainSources();
         } catch (error) {
             setBrainStatus(error.message || "No se pudo analizar la fuente.", "error");
@@ -809,8 +816,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function updateBrainSourceStatus(sourceId, reviewStatus) {
-        if (!canManageBrain) {
-            setBrainStatus("No tienes permiso para gestionar el cerebro de LEXIA.", "error");
+        if (!canCurateBrainSources) {
+            setBrainStatus("Esta acción requiere curaduría interna de LEXIA.", "error");
             return;
         }
         if (!sourceId || !reviewStatus) return;
