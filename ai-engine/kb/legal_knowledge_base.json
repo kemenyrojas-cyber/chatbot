@@ -203,6 +203,120 @@
       }
     },
     {
+      "id": "constitucion-2025-derechos-fundamentales-001",
+      "titulo": "Constitución Política del Perú: derechos fundamentales de la persona",
+      "materia": "Derecho Constitucional",
+      "fecha": "2025-08",
+      "fuente": "Constitución Política del Perú - Vigésima Edición Oficial 2025",
+      "url": "",
+      "contenido": "La Constitución reconoce como eje la defensa de la persona humana y el respeto de su dignidad. Incluye derechos como vida, identidad, integridad, igualdad, libertad de conciencia, expresión, acceso a información pública, intimidad, secreto bancario y reserva tributaria, entre otros. Estos derechos sirven como base para evaluar afectaciones constitucionales, garantías y límites a la actuación estatal o privada.",
+      "resumen": "Derechos fundamentales y dignidad humana como base de análisis constitucional.",
+      "inteligencia": {
+        "hechos_clave": ["derecho afectado", "acto u omisión que causa la afectación", "autoridad o persona involucrada", "fecha y prueba de la afectación"],
+        "problemas_juridicos": ["identificar derecho constitucional comprometido", "determinar si existe afectación, amenaza o restricción ilegítima", "evaluar garantía constitucional aplicable"],
+        "reglas_practicas": ["no basta invocar un derecho: deben describirse hechos concretos", "la dignidad humana orienta la interpretación de derechos", "la prueba de la afectación es clave para elegir la vía adecuada"],
+        "riesgos": ["confundir desacuerdo con vulneración constitucional", "no identificar autoridad responsable", "presentar una acción sin prueba mínima"],
+        "documentos": ["DNI", "resolución o acto cuestionado", "solicitudes o comunicaciones", "capturas o pruebas", "cronología de hechos"],
+        "pasos": ["identificar derecho afectado", "ordenar hechos y pruebas", "determinar responsable", "evaluar garantía constitucional o vía ordinaria"],
+        "preguntas": ["¿Qué derecho consideras afectado?", "¿Quién realizó el acto u omisión?", "¿Tienes documento, resolución o prueba?", "¿La afectación continúa o ya terminó?"]
+      }
+    },
+    {
+      "id": "constitucion-2025-acceso-informacion-001",
+      "titulo": "Constitución Política del Perú: acceso a información pública",
+      "materia": "Derecho Constitucional / Administrativo",
+      "fecha": "2025-08",
+      "fuente": "Constitución Política del Perú - Vigésima Edición Oficial 2025",
+      "url": "",
+      "contenido": "Toda persona puede solicitar información a entidades públicas sin expresar causa, con las excepciones previstas por intimidad personal, seguridad nacional u otras exclusiones legales. La respuesta debe respetar el plazo legal y el costo aplicable. Esta base constitucional permite analizar denegatorias, silencios, demoras o respuestas incompletas.",
+      "resumen": "Derecho constitucional a solicitar información pública y evaluar negativas o demoras.",
+      "inteligencia": {
+        "hechos_clave": ["entidad requerida", "fecha de solicitud", "información pedida", "respuesta o silencio", "motivo de denegatoria"],
+        "problemas_juridicos": ["determinar si la información es pública", "evaluar plazo y respuesta de la entidad", "definir si corresponde insistencia, reclamo o habeas data"],
+        "reglas_practicas": ["guardar cargo de solicitud", "distinguir información pública de datos protegidos", "el silencio o respuesta incompleta puede requerir acción específica"],
+        "riesgos": ["no acreditar la solicitud", "pedir información demasiado genérica", "ignorar excepciones legales"],
+        "documentos": ["solicitud", "cargo de recepción", "respuesta de entidad", "correos", "capturas del trámite"],
+        "pasos": ["precisar información pedida", "verificar plazo", "guardar constancias", "evaluar habeas data si hay negativa o silencio"],
+        "preguntas": ["¿A qué entidad solicitaste información?", "¿Cuándo presentaste la solicitud?", "¿Qué información pediste?", "¿Te respondieron o guardaron silencio?"]
+      }
+    },
+    {
+      "id": "constitucion-2025-debido-proceso-001",
+      "titulo": "Constitución Política del Perú: debido proceso, defensa y motivación",
+      "materia": "Derecho Constitucional / Procesal",
+      "fecha": "2025-08",
+      "fuente": "Constitución Política del Perú - Vigésima Edición Oficial 2025",
+      "url": "",
+      "contenido": "La Constitución reconoce garantías vinculadas a tutela jurisdiccional, debido proceso, derecho de defensa, motivación de resoluciones y prohibición de desviaciones procesales. Estas reglas son relevantes ante sanciones, procesos judiciales, procedimientos administrativos o decisiones estatales que afecten derechos.",
+      "resumen": "Garantías constitucionales de defensa, motivación y debido proceso.",
+      "inteligencia": {
+        "hechos_clave": ["procedimiento o proceso", "acto cuestionado", "notificación", "posibilidad de defensa", "resolución motivada o no"],
+        "problemas_juridicos": ["determinar vulneración del derecho de defensa", "evaluar falta de motivación", "identificar vía impugnatoria o constitucional"],
+        "reglas_practicas": ["revisar notificación y plazos", "analizar si la decisión explica razones", "verificar si se permitió presentar descargos o pruebas"],
+        "riesgos": ["perder plazo de apelación o impugnación", "confundir error de fondo con vulneración constitucional", "no adjuntar la resolución cuestionada"],
+        "documentos": ["resolución", "cargo de notificación", "escrito de descargos", "pruebas presentadas", "expediente administrativo o judicial"],
+        "pasos": ["identificar acto lesivo", "revisar plazo", "evaluar defensa ejercida", "preparar recurso o acción correspondiente"],
+        "preguntas": ["¿Qué resolución o acto quieres cuestionar?", "¿Cuándo te notificaron?", "¿Pudiste defenderte o presentar pruebas?", "¿La decisión explica sus razones?"]
+      }
+    },
+    {
+      "id": "constitucion-2025-garantias-constitucionales-001",
+      "titulo": "Constitución Política del Perú: garantías constitucionales",
+      "materia": "Derecho Constitucional",
+      "fecha": "2025-08",
+      "fuente": "Constitución Política del Perú - Vigésima Edición Oficial 2025",
+      "url": "",
+      "contenido": "La Constitución regula garantías como hábeas corpus, amparo, hábeas data, acción de inconstitucionalidad, acción popular y acción de cumplimiento. Cada garantía tiene objeto distinto: libertad individual, derechos constitucionales, acceso o protección de datos, control normativo o cumplimiento de normas y actos administrativos.",
+      "resumen": "Mapa práctico de garantías constitucionales y cuándo evaluarlas.",
+      "inteligencia": {
+        "hechos_clave": ["derecho afectado", "tipo de acto lesivo", "autoridad o particular responsable", "urgencia", "existencia de otra vía igualmente satisfactoria"],
+        "problemas_juridicos": ["elegir garantía constitucional correcta", "distinguir libertad personal, datos, amparo o cumplimiento", "evaluar procedencia y urgencia"],
+        "reglas_practicas": ["hábeas corpus protege libertad individual y derechos conexos", "hábeas data se relaciona con información y datos", "amparo protege otros derechos constitucionales cuando corresponde"],
+        "riesgos": ["usar garantía equivocada", "no acreditar amenaza o afectación", "ignorar vías previas o plazos"],
+        "documentos": ["acto lesivo", "resolución", "solicitud previa", "respuesta o silencio", "pruebas de amenaza o afectación"],
+        "pasos": ["identificar derecho", "clasificar acto lesivo", "verificar urgencia", "elegir garantía", "preparar hechos y pruebas"],
+        "preguntas": ["¿Qué derecho está afectado?", "¿Se afecta libertad personal, información/datos u otro derecho?", "¿Quién causa la afectación?", "¿Necesitas medida urgente?"]
+      }
+    },
+    {
+      "id": "constitucion-2025-regimen-excepcion-001",
+      "titulo": "Constitución Política del Perú: estados de excepción y derechos restringibles",
+      "materia": "Derecho Constitucional",
+      "fecha": "2025-08",
+      "fuente": "Constitución Política del Perú - Vigésima Edición Oficial 2025",
+      "url": "",
+      "contenido": "La Constitución contempla regímenes de excepción, como estado de emergencia y estado de sitio, bajo supuestos y límites. En estado de emergencia pueden restringirse determinados derechos vinculados a libertad y seguridad personales, inviolabilidad de domicilio y libertad de reunión o tránsito, según corresponda y dentro del marco constitucional.",
+      "resumen": "Criterios para analizar restricciones de derechos durante estados de excepción.",
+      "inteligencia": {
+        "hechos_clave": ["declaratoria de emergencia", "zona afectada", "derecho restringido", "autoridad interviniente", "acto concreto de restricción"],
+        "problemas_juridicos": ["verificar si la restricción está dentro del estado de excepción", "evaluar proporcionalidad y autoridad competente", "determinar garantía o reclamo aplicable"],
+        "reglas_practicas": ["no toda restricción queda justificada por emergencia", "debe verificarse ámbito territorial y temporal", "la autoridad debe actuar dentro de límites constitucionales"],
+        "riesgos": ["normalizar abusos de autoridad", "no verificar vigencia del decreto", "confundir restricción permitida con afectación arbitraria"],
+        "documentos": ["decreto de estado de emergencia", "acta policial o militar", "videos o pruebas", "documentos de intervención", "ubicación y fecha"],
+        "pasos": ["verificar decreto vigente", "identificar derecho restringido", "comparar acto con límites constitucionales", "evaluar denuncia, queja o garantía"],
+        "preguntas": ["¿Dónde ocurrió la intervención?", "¿Había estado de emergencia vigente?", "¿Qué derecho fue restringido?", "¿Qué autoridad intervino?"]
+      }
+    },
+    {
+      "id": "constitucion-2025-trabajo-001",
+      "titulo": "Constitución Política del Perú: protección constitucional del trabajo",
+      "materia": "Derecho Constitucional / Laboral",
+      "fecha": "2025-08",
+      "fuente": "Constitución Política del Perú - Vigésima Edición Oficial 2025",
+      "url": "",
+      "contenido": "La Constitución reconoce protección del trabajo, derechos laborales, remuneración, jornada, descanso y principios de igualdad y no discriminación en relaciones laborales. Esta base constitucional complementa el análisis de despidos, remuneraciones, condiciones de trabajo y afectaciones de derechos laborales.",
+      "resumen": "Base constitucional para orientar consultas laborales y protección del trabajador.",
+      "inteligencia": {
+        "hechos_clave": ["relación laboral", "remuneración", "jornada", "cese o afectación", "trato discriminatorio o desigual"],
+        "problemas_juridicos": ["identificar derecho laboral afectado", "determinar si hay despido, deuda o trato discriminatorio", "vincular hechos con protección constitucional y laboral"],
+        "reglas_practicas": ["la protección constitucional no reemplaza revisar régimen laboral específico", "las pruebas de vínculo y pagos son centrales", "la igualdad y no discriminación pueden ser relevantes en el trabajo"],
+        "riesgos": ["no probar vínculo laboral", "perder plazo de reclamo", "no distinguir derecho constitucional de pretensión laboral concreta"],
+        "documentos": ["contrato", "boletas", "asistencia", "comunicaciones", "carta de despido", "pruebas de trato desigual"],
+        "pasos": ["ordenar relación laboral", "identificar derecho afectado", "reunir prueba", "evaluar vía laboral o constitucional según caso"],
+        "preguntas": ["¿Cuál era tu régimen o contrato?", "¿Qué derecho laboral se afectó?", "¿Desde cuándo trabajabas?", "¿Qué pruebas tienes?"]
+      }
+    },
+    {
       "id": "lpderecho-normativa-ley-organica-del-registro-nacional-de-identificacion-y-estado-civil-ley-26497-ac",
       "titulo": "Ley Organica del Registro Nacional de Identificacion y Estado Civil, Ley 26497, actualizada",
       "materia": "Derecho Civil",
