@@ -2813,39 +2813,6 @@ function buildLegalGraphContext(graphReasoning) {
   return lines.join('\n');
 }
 
-function buildReasoningSummary(reasoningProfile) {
-  if (!reasoningProfile) return [];
-  const lines = [];
-  lines.push('Análisis inicial');
-  lines.push(`- Problema jurídico: ${reasoningProfile.legalIssue}`);
-  if (reasoningProfile.risks.length) {
-    lines.push(`- Riesgos a revisar: ${reasoningProfile.risks[0]}`);
-  }
-  if (reasoningProfile.nextSteps.length) {
-    lines.push(`- Primer paso útil: ${reasoningProfile.nextSteps[0]}`);
-  }
-  return lines;
-}
-
-function buildKnownFactsSummary(reasoningProfile) {
-  const facts = Array.isArray(reasoningProfile?.facts) ? reasoningProfile.facts : [];
-  const uniqueFacts = [...new Set(facts.map(item => String(item || '').trim()).filter(Boolean))].slice(-4);
-  if (!uniqueFacts.length) return [];
-  return [
-    'Hechos que estoy tomando en cuenta',
-    ...uniqueFacts.map((fact, index) => `${index + 1}. ${fact}`)
-  ];
-}
-
-function buildHypothesisSummary(graphReasoning) {
-  const hypothesis = graphReasoning?.hypotheses?.[0];
-  if (!hypothesis) return [];
-  return [
-    'Hipótesis jurídica más probable',
-    `- ${hypothesis.label}. Probabilidad interna: ${Math.round(Number(hypothesis.probability || 0) * 100)}%.`
-  ];
-}
-
 function buildProgressiveGuidance(intent, reasoningProfile, graphReasoning) {
   const topicId = intent?.topic?.id || '';
   const factsText = normalizeText((reasoningProfile?.facts || []).join(' '));
@@ -2872,8 +2839,6 @@ function buildProgressiveGuidance(intent, reasoningProfile, graphReasoning) {
     return lines;
   }
 
-  const hypothesis = graphReasoning?.hypotheses?.[0]?.label;
-  if (hypothesis) lines.push(`La línea de análisis más probable es: ${hypothesis}.`);
   lines.push(...buildTopicGuidance(intent));
   return lines;
 }
@@ -2893,28 +2858,8 @@ function buildTargetedMissingQuestions(intent, reasoningProfile) {
 }
 
 function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
-  const lines = [
-    `Entiendo. La consulta se está interpretando como ${intent.topic.label} dentro de ${intent.area.label}.`,
-    ''
-  ];
-
-  const factsSummary = buildKnownFactsSummary(reasoningProfile);
-  if (factsSummary.length) {
-    lines.push(...factsSummary);
-    lines.push('');
-  }
-
-  const hypothesisSummary = buildHypothesisSummary(graphReasoning);
-  if (hypothesisSummary.length) {
-    lines.push(...hypothesisSummary);
-    lines.push('');
-  }
-
+  const lines = [];
   lines.push(...buildProgressiveGuidance(intent, reasoningProfile, graphReasoning));
-  if (reasoningProfile) {
-    lines.push('');
-    lines.push(...buildReasoningSummary(reasoningProfile));
-  }
 
   if (intent?.type?.id === 'consulta_normativa') {
     lines.push('');
