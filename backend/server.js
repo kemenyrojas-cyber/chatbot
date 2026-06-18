@@ -1308,6 +1308,7 @@ function normalizeLegalKnowledgeRecord(moduleName, item, index) {
     url: String(item?.url || ''),
     contenido: String(item?.contenido || item?.content || ''),
     resumen: String(item?.resumen || item?.excerpt || ''),
+    inteligencia: item?.inteligencia && typeof item.inteligencia === 'object' ? item.inteligencia : {},
     modulo: moduleName
   };
 }
@@ -1341,7 +1342,8 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
   const normalizedTitle = normalizeText(record.titulo);
   const normalizedSummary = normalizeText(record.resumen);
   const normalizedMatter = normalizeText(record.materia);
-  const normalizedBody = normalizeText(`${record.titulo} ${record.materia} ${record.resumen} ${record.contenido} ${record.fuente}`);
+  const normalizedIntelligence = normalizeText(JSON.stringify(record.inteligencia || {}));
+  const normalizedBody = normalizeText(`${record.titulo} ${record.materia} ${record.resumen} ${record.contenido} ${record.fuente} ${normalizedIntelligence}`);
   let score = 0;
 
   if (normalizedBody.includes(normalizedQuery)) score += 25;
@@ -1353,6 +1355,7 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
     if (normalizedTitle.includes(term)) score += 7;
     if (normalizedMatter.includes(term)) score += 5;
     if (normalizedSummary.includes(term)) score += 4;
+    if (normalizedIntelligence.includes(term)) score += 5;
   }
 
   if (record.modulo === 'normativa') score += 3;
@@ -1377,6 +1380,7 @@ function searchLegalKnowledgeBase(query, limit = 12) {
       url: record.url,
       contenido: record.contenido,
       resumen: record.resumen,
+      inteligencia: record.inteligencia || {},
       modulo: record.modulo,
       relevance: scoreLegalKnowledgeRecord(record, query, terms)
     }))
@@ -1653,12 +1657,15 @@ function extractPotentialFacts(query, memoryMessages = []) {
     .slice(-4);
 }
 
-function buildLegalReasoningProfile(query, intent, memoryMessages = []) {
+function buildLegalReasoningProfile(query, intent, memoryMessages = [], knowledgeResults = []) {
   const normalized = normalizeText(query);
   const facts = extractPotentialFacts(query, memoryMessages);
   const missing = [];
   const risks = [];
   const nextSteps = [];
+  const knowledgeIntelligence = (Array.isArray(knowledgeResults) ? knowledgeResults : [])
+    .map(item => item?.inteligencia)
+    .filter(item => item && typeof item === 'object');
 
   if (!/\b(hoy|ayer|fecha|dia|día|mes|año|202\d|19\d\d)\b/.test(normalized)) {
     missing.push('fecha o momento aproximado de los hechos');
@@ -1687,6 +1694,18 @@ function buildLegalReasoningProfile(query, intent, memoryMessages = []) {
     nextSteps.push('precisar materia, hechos principales, fecha, documentos y objetivo');
   }
 
+  for (const intelligence of knowledgeIntelligence.slice(0, 3)) {
+    if (Array.isArray(intelligence.riesgos)) {
+      risks.push(...intelligence.riesgos.slice(0, 2));
+    }
+    if (Array.isArray(intelligence.pasos)) {
+      nextSteps.push(...intelligence.pasos.slice(0, 2));
+    }
+    if (Array.isArray(intelligence.documentos) && intelligence.documentos.length) {
+      missing.push(`documentos relevantes: ${intelligence.documentos.slice(0, 4).join(', ')}`);
+    }
+  }
+
   return {
     facts,
     legalIssue: intent?.topic?.confidence === 'alta'
@@ -1694,9 +1713,9 @@ function buildLegalReasoningProfile(query, intent, memoryMessages = []) {
       : `Identificar el problema jurídico principal dentro de ${intent?.area?.label || 'la materia aplicable'}.`,
     applicableArea: intent?.area?.label || 'Área no determinada',
     topic: intent?.topic?.label || 'Tema no determinado',
-    risks,
-    nextSteps,
-    missingInfo: missing.slice(0, 4)
+    risks: [...new Set(risks)].slice(0, 5),
+    nextSteps: [...new Set(nextSteps)].slice(0, 5),
+    missingInfo: [...new Set(missing)].slice(0, 5)
   };
 }
 
@@ -1860,6 +1879,32 @@ function truncateForRag(value, maxLength = 900) {
 }
 
 function buildRagContext(query, structuredResults = [], limit = 8) {
+  const buildIntelligenceText = item => {
+    const intelligence = item.inteligencia && typeof item.inteligencia === 'object' ? item.inteligencia : {};
+    const parts = [];
+    if (Array.isArray(intelligence.hechos_clave) && intelligence.hechos_clave.length) {
+      parts.push(`Hechos clave: ${intelligence.hechos_clave.join('; ')}`);
+    }
+    if (Array.isArray(intelligence.problemas_juridicos) && intelligence.problemas_juridicos.length) {
+      parts.push(`Problemas jurídicos: ${intelligence.problemas_juridicos.join('; ')}`);
+    }
+    if (Array.isArray(intelligence.reglas_practicas) && intelligence.reglas_practicas.length) {
+      parts.push(`Reglas prácticas: ${intelligence.reglas_practicas.join('; ')}`);
+    }
+    if (Array.isArray(intelligence.riesgos) && intelligence.riesgos.length) {
+      parts.push(`Riesgos: ${intelligence.riesgos.join('; ')}`);
+    }
+    if (Array.isArray(intelligence.documentos) && intelligence.documentos.length) {
+      parts.push(`Documentos a revisar: ${intelligence.documentos.join('; ')}`);
+    }
+    if (Array.isArray(intelligence.pasos) && intelligence.pasos.length) {
+      parts.push(`Pasos sugeridos: ${intelligence.pasos.join('; ')}`);
+    }
+    if (Array.isArray(intelligence.preguntas) && intelligence.preguntas.length) {
+      parts.push(`Preguntas útiles: ${intelligence.preguntas.join('; ')}`);
+    }
+    return parts.join('\n');
+  };
   const documentResults = searchLegalEngine(query, 8);
   const normalizedStructured = structuredResults.map(item => ({
     id: `kb:${item.modulo || 'base'}:${item.id}`,
@@ -1869,7 +1914,8 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     matter: item.materia || '',
     url: item.url || '',
     excerpt: item.resumen || item.contenido || '',
-    content: item.contenido || item.resumen || '',
+    content: [item.contenido || item.resumen || '', buildIntelligenceText(item)].filter(Boolean).join('\n'),
+    intelligence: item.inteligencia || {},
     relevance: item.relevance || 0
   }));
   const normalizedDocuments = documentResults.map(item => ({
@@ -2271,8 +2317,6 @@ async function runLegalIntelligence(options = {}) {
   const memoryIntent = classifyLegalIntent(memorySearchQuery);
   const intent = mergeConversationIntent(currentIntent, memoryIntent);
   const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
-  const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory);
-  const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
 
   if (isGreetingOnly(userQuery)) {
     return {
@@ -2312,6 +2356,8 @@ async function runLegalIntelligence(options = {}) {
   const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
   logLocalSearchSufficiency('Legal Intelligence Engine', memorySearchQuery, localSearchEvaluation);
   const ragContext = buildRagContext(memorySearchQuery, localResults);
+  const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory, ragContext.results);
+  const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
   const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
   const context = [conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n');
   const intentContext = [

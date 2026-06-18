@@ -51,6 +51,158 @@
       "resumen": "Elementos documentales para revisar posesión, propiedad y posesión precaria."
     },
     {
+      "id": "normativa-laboral-despido-arbitrario-001",
+      "titulo": "Despido arbitrario: evaluación inicial y ruta de acción",
+      "materia": "Derecho Laboral",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Ante un despido debe evaluarse si existió causa objetiva, comunicación formal, procedimiento previo y prueba del vínculo laboral. Si el trabajador no recibió carta o explicación clara, conviene ordenar la cronología, conservar comunicaciones y revisar boletas, contrato, asistencia y cargo de entrega de documentos. La respuesta jurídica depende del régimen laboral, tiempo de servicios, tipo de contrato, forma de cese y documentos emitidos por el empleador.",
+      "resumen": "Guía inteligente para ordenar un caso de despido y detectar datos faltantes.",
+      "inteligencia": {
+        "hechos_clave": ["fecha exacta del cese", "existencia o ausencia de carta de despido", "tipo de contrato", "tiempo de servicios", "pruebas del vínculo laboral"],
+        "problemas_juridicos": ["determinar si el despido tuvo causa válida", "evaluar si corresponde reposición, indemnización u otro reclamo", "identificar plazos y vía de reclamo"],
+        "reglas_practicas": ["sin documentos suficientes no se debe concluir definitivamente", "la carta de despido y la prueba de vínculo son centrales", "los plazos laborales pueden ser cortos y deben revisarse pronto"],
+        "riesgos": ["vencimiento de plazos", "pérdida de pruebas digitales", "confundir renuncia con despido", "falta de acreditación del vínculo laboral"],
+        "documentos": ["contrato", "boletas de pago", "carta de despido", "correos o WhatsApp", "registro de asistencia", "liquidación o constancia de cese"],
+        "pasos": ["ordenar cronología", "guardar pruebas", "identificar régimen laboral", "consultar plazo aplicable", "definir si se busca reposición, indemnización o pago de beneficios"],
+        "preguntas": ["¿Cuándo fue el último día de trabajo?", "¿Te entregaron carta o solo te comunicaron verbalmente?", "¿Qué tipo de contrato tenías?", "¿Cuánto tiempo trabajaste?"]
+      }
+    },
+    {
+      "id": "normativa-laboral-beneficios-sociales-001",
+      "titulo": "Beneficios sociales y liquidación laboral: control documental",
+      "materia": "Derecho Laboral",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Para revisar beneficios sociales se debe identificar remuneración computable, fecha de ingreso, fecha de salida, vacaciones pendientes, gratificaciones, CTS y pagos realizados. La liquidación debe contrastarse con boletas, depósitos, constancias y comunicaciones. Si el trabajador no recibió liquidación o considera que falta pago, conviene calcular por conceptos y periodos.",
+      "resumen": "Ruta de análisis para beneficios sociales, liquidación y pagos pendientes.",
+      "inteligencia": {
+        "hechos_clave": ["fecha de ingreso", "fecha de cese", "remuneración", "pagos recibidos", "vacaciones usadas o pendientes"],
+        "problemas_juridicos": ["determinar conceptos impagos", "verificar cálculo de liquidación", "identificar prueba de pagos"],
+        "reglas_practicas": ["el análisis requiere periodos exactos", "deben separarse conceptos para evitar dobles conteos", "los depósitos y boletas son prueba clave"],
+        "riesgos": ["cálculo incompleto", "aceptar liquidación sin revisar", "no conservar constancias de depósito"],
+        "documentos": ["boletas", "contrato", "depósitos CTS", "liquidación", "constancia de vacaciones", "comunicaciones del empleador"],
+        "pasos": ["listar periodos", "separar conceptos", "comparar pagos recibidos", "identificar diferencias", "preparar reclamo documentado"],
+        "preguntas": ["¿Cuándo ingresaste y cuándo saliste?", "¿Cuál era tu remuneración?", "¿Te pagaron liquidación?", "¿Tienes boletas o depósitos?"]
+      }
+    },
+    {
+      "id": "normativa-familia-alimentos-001",
+      "titulo": "Pensión de alimentos: necesidades, capacidad económica y prueba",
+      "materia": "Derecho de Familia",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "En alimentos se analiza la necesidad de quien solicita la pensión y la capacidad económica de quien debe pagar. Son relevantes gastos de alimentación, educación, salud, vivienda, movilidad y otros gastos ordinarios. También importa identificar ingresos, trabajo, cargas familiares y posibilidades reales del obligado. La orientación debe priorizar el interés del menor cuando corresponda.",
+      "resumen": "Estructura inteligente para preparar una consulta o demanda de alimentos.",
+      "inteligencia": {
+        "hechos_clave": ["edad del alimentista", "gastos mensuales", "ingresos del obligado", "vínculo familiar", "pagos previos o acuerdos"],
+        "problemas_juridicos": ["determinar monto razonable", "probar necesidad", "probar capacidad económica", "definir si corresponde demanda, conciliación o ejecución"],
+        "reglas_practicas": ["los gastos deben documentarse", "la capacidad económica no depende solo de sueldo declarado", "los acuerdos previos deben revisarse"],
+        "riesgos": ["pedir monto sin sustento", "no acreditar gastos", "desconocer otros hijos o cargas familiares", "no ejecutar acuerdos incumplidos"],
+        "documentos": ["partida de nacimiento", "DNI", "boletas o recibos de gastos", "pruebas de ingresos", "acuerdos o actas", "mensajes de incumplimiento"],
+        "pasos": ["ordenar gastos", "identificar ingresos", "reunir documentos", "evaluar conciliación", "preparar demanda o ejecución según el caso"],
+        "preguntas": ["¿Para quién se solicita alimentos?", "¿Qué gastos mensuales existen?", "¿El obligado trabaja o tiene ingresos conocidos?", "¿Hay acuerdo previo?"]
+      }
+    },
+    {
+      "id": "normativa-familia-tenencia-visitas-001",
+      "titulo": "Tenencia y régimen de visitas: interés del menor y organización de pruebas",
+      "materia": "Derecho de Familia",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "En tenencia y visitas debe priorizarse el bienestar del menor, su entorno, cuidado cotidiano, horarios, vínculo con ambos padres y condiciones de seguridad. La evaluación requiere hechos concretos y pruebas de cuidado, comunicación, gastos, convivencia y posibles riesgos.",
+      "resumen": "Guía para analizar tenencia, visitas y cuidado del menor.",
+      "inteligencia": {
+        "hechos_clave": ["edad del menor", "quién ejerce cuidado diario", "horarios y disponibilidad", "comunicación entre padres", "riesgos o conflictos"],
+        "problemas_juridicos": ["definir régimen de cuidado", "ordenar visitas", "evaluar riesgos para el menor", "probar cuidado efectivo"],
+        "reglas_practicas": ["el eje es el interés del menor", "los hechos cotidianos pesan más que afirmaciones generales", "si hay riesgo debe priorizarse protección"],
+        "riesgos": ["usar el proceso como conflicto entre adultos", "no probar cuidado efectivo", "ignorar violencia o riesgos", "afectar estabilidad del menor"],
+        "documentos": ["partida de nacimiento", "constancias escolares", "gastos", "mensajes", "informes médicos o psicológicos", "denuncias si existieran"],
+        "pasos": ["describir rutina del menor", "identificar riesgos", "reunir pruebas", "proponer régimen concreto", "evaluar conciliación o demanda"],
+        "preguntas": ["¿Con quién vive actualmente el menor?", "¿Existe acuerdo de visitas?", "¿Hay riesgos o violencia?", "¿Qué rutina escolar y de cuidado tiene?"]
+      }
+    },
+    {
+      "id": "normativa-penal-denuncia-001",
+      "titulo": "Denuncia penal: hechos, prueba y autoridad competente",
+      "materia": "Derecho Penal",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Para orientar una denuncia penal se debe ordenar qué ocurrió, cuándo, dónde, quién participó, qué prueba existe y si hay riesgo actual. La denuncia debe narrar hechos verificables, no solo conclusiones. Según el caso puede corresponder acudir a la Policía Nacional, Ministerio Público u otra entidad competente.",
+      "resumen": "Estructura para preparar o evaluar una denuncia penal.",
+      "inteligencia": {
+        "hechos_clave": ["fecha y lugar", "personas involucradas", "conducta concreta", "daño o amenaza", "prueba disponible"],
+        "problemas_juridicos": ["identificar posible delito", "determinar autoridad competente", "preservar prueba", "evaluar medidas de protección"],
+        "reglas_practicas": ["narrar hechos verificables", "no borrar mensajes o audios", "si hay peligro actual priorizar seguridad", "no inventar calificaciones penales"],
+        "riesgos": ["pérdida de prueba digital", "denuncia sin hechos claros", "riesgo para la víctima", "confundir conflicto civil con delito"],
+        "documentos": ["DNI", "capturas", "audios", "videos", "testigos", "certificados médicos", "denuncias previas"],
+        "pasos": ["ordenar cronología", "guardar pruebas", "identificar testigos", "acudir a autoridad competente", "pedir medidas de protección si hay riesgo"],
+        "preguntas": ["¿Qué ocurrió exactamente?", "¿Cuándo y dónde pasó?", "¿Quiénes participaron?", "¿Qué pruebas tienes?", "¿Hay riesgo actual?"]
+      }
+    },
+    {
+      "id": "normativa-penal-extorsion-001",
+      "titulo": "Extorsión y amenazas: preservación de prueba y respuesta urgente",
+      "materia": "Derecho Penal",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "En amenazas o extorsión se debe priorizar la seguridad, preservar mensajes, audios, números telefónicos, cuentas bancarias, perfiles y cualquier dato de contacto. No conviene negociar ni borrar evidencia sin orientación. Si existe amenaza inmediata, debe buscarse ayuda urgente de la autoridad competente.",
+      "resumen": "Ruta inicial para casos de extorsión, amenaza o cobro intimidatorio.",
+      "inteligencia": {
+        "hechos_clave": ["tipo de amenaza", "medio usado", "monto o exigencia", "identificación del agresor", "riesgo inmediato"],
+        "problemas_juridicos": ["proteger a la víctima", "preservar evidencia", "activar denuncia", "evitar incremento del riesgo"],
+        "reglas_practicas": ["no borrar conversaciones", "guardar números y cuentas", "evitar pagos sin asesoría", "priorizar seguridad"],
+        "riesgos": ["amenaza contra vida o familia", "pérdida de evidencia", "exposición pública", "aumento de exigencias"],
+        "documentos": ["capturas", "audios", "números telefónicos", "cuentas bancarias", "perfiles", "testigos"],
+        "pasos": ["guardar evidencia", "evitar contacto innecesario", "buscar apoyo policial o fiscal", "informar a personas de confianza", "evaluar medidas de seguridad"],
+        "preguntas": ["¿Qué te están exigiendo?", "¿Por qué medio te contactaron?", "¿Hay amenaza inmediata?", "¿Tienes capturas o audios?"]
+      }
+    },
+    {
+      "id": "normativa-civil-contrato-incumplimiento-001",
+      "titulo": "Incumplimiento contractual: obligaciones, prueba y remedios",
+      "materia": "Derecho Civil",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Ante un incumplimiento contractual se debe identificar qué obligación se pactó, cómo debía cumplirse, qué prueba existe del acuerdo, qué incumplimiento ocurrió y qué consecuencia se busca. Pueden evaluarse requerimientos, negociación, resolución, cumplimiento, indemnización u otras medidas según el caso.",
+      "resumen": "Análisis inteligente de contratos incumplidos y opciones de respuesta.",
+      "inteligencia": {
+        "hechos_clave": ["existencia del contrato", "obligación incumplida", "fecha de cumplimiento", "prueba del acuerdo", "daño causado"],
+        "problemas_juridicos": ["determinar incumplimiento", "identificar remedio aplicable", "probar daño", "evaluar requerimiento previo"],
+        "reglas_practicas": ["leer contrato antes de concluir", "separar obligación principal de obligaciones accesorias", "documentar requerimientos"],
+        "riesgos": ["no tener contrato escrito", "plazos vencidos", "daño no acreditado", "comunicaciones ambiguas"],
+        "documentos": ["contrato", "adendas", "correos", "mensajes", "comprobantes de pago", "cartas notariales", "evidencia del daño"],
+        "pasos": ["identificar cláusula incumplida", "ordenar pruebas", "enviar requerimiento si corresponde", "evaluar negociación o demanda", "cuantificar daño"],
+        "preguntas": ["¿El contrato está por escrito?", "¿Qué obligación se incumplió?", "¿Cuándo debía cumplirse?", "¿Qué daño produjo?"]
+      }
+    },
+    {
+      "id": "normativa-procesal-demanda-001",
+      "titulo": "Preparación de demanda: hechos, pretensión, prueba y anexos",
+      "materia": "Derecho Procesal",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Para preparar una demanda se debe distinguir hechos, pretensión, fundamentos, prueba, anexos y autoridad competente. Una demanda débil suele fallar por hechos desordenados, pretensión imprecisa, falta de prueba o anexos incompletos. Antes de redactar conviene construir una cronología y un mapa de pruebas.",
+      "resumen": "Estructura inteligente para preparar una demanda o evaluar si falta información.",
+      "inteligencia": {
+        "hechos_clave": ["cronología", "partes", "pretensión", "pruebas", "autoridad competente"],
+        "problemas_juridicos": ["definir pretensión", "ordenar hechos", "conectar prueba con cada hecho", "identificar competencia"],
+        "reglas_practicas": ["cada hecho importante debe tener prueba", "la pretensión debe ser concreta", "los anexos deben respaldar lo afirmado"],
+        "riesgos": ["inadmisibilidad", "pretensión confusa", "falta de anexos", "competencia equivocada", "plazos vencidos"],
+        "documentos": ["DNI", "contratos", "comprobantes", "cartas", "mensajes", "actas", "certificados", "poder si corresponde"],
+        "pasos": ["hacer cronología", "definir pretensión", "listar pruebas por hecho", "verificar competencia", "preparar anexos"],
+        "preguntas": ["¿Qué quieres pedir exactamente?", "¿Contra quién sería la demanda?", "¿Qué pruebas tienes?", "¿Hubo conciliación o requerimiento previo?"]
+      }
+    },
+    {
       "id": "lpderecho-normativa-ley-organica-del-registro-nacional-de-identificacion-y-estado-civil-ley-26497-ac",
       "titulo": "Ley Organica del Registro Nacional de Identificacion y Estado Civil, Ley 26497, actualizada",
       "materia": "Derecho Civil",
