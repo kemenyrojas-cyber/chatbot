@@ -2458,7 +2458,8 @@ function buildTopicGuidance(intent) {
 function extractPotentialFacts(query, memoryMessages = []) {
   const userMessages = normalizeMemoryMessages(memoryMessages)
     .filter(message => message.role === 'user')
-    .map(message => message.content);
+    .map(message => message.content)
+    .filter(content => !isGreetingOnly(content));
   return [...userMessages.slice(-3), query]
     .map(item => String(item || '').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
@@ -2466,8 +2467,8 @@ function extractPotentialFacts(query, memoryMessages = []) {
 }
 
 function buildLegalReasoningProfile(query, intent, memoryMessages = [], knowledgeResults = []) {
-  const normalized = normalizeText(query);
   const facts = extractPotentialFacts(query, memoryMessages);
+  const normalized = normalizeText(facts.join(' '));
   const missing = [];
   const risks = [];
   const nextSteps = [];
@@ -2481,7 +2482,10 @@ function buildLegalReasoningProfile(query, intent, memoryMessages = [], knowledg
   if (!/\b(documento|contrato|carta|correo|mensaje|denuncia|resolucion|resolución|boleta|prueba|audio|video|captura)\b/.test(normalized)) {
     missing.push('documentos o pruebas disponibles');
   }
-  if (!/\b(quiero|busco|necesito|denunciar|demandar|responder|negociar|calcular|redactar|orientar)\b/.test(normalized)) {
+  if (
+    intent?.objective?.confidence === 'baja'
+    && !/\b(quiero|busco|necesito|denunciar|demandar|responder|negociar|calcular|redactar|orientar)\b/.test(normalized)
+  ) {
     missing.push('objetivo concreto del usuario');
   }
 
@@ -2777,13 +2781,90 @@ function buildReasoningSummary(reasoningProfile) {
   return lines;
 }
 
-function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null) {
+function buildKnownFactsSummary(reasoningProfile) {
+  const facts = Array.isArray(reasoningProfile?.facts) ? reasoningProfile.facts : [];
+  const uniqueFacts = [...new Set(facts.map(item => String(item || '').trim()).filter(Boolean))].slice(-4);
+  if (!uniqueFacts.length) return [];
+  return [
+    'Hechos que estoy tomando en cuenta',
+    ...uniqueFacts.map((fact, index) => `${index + 1}. ${fact}`)
+  ];
+}
+
+function buildHypothesisSummary(graphReasoning) {
+  const hypothesis = graphReasoning?.hypotheses?.[0];
+  if (!hypothesis) return [];
+  return [
+    'Hipótesis jurídica más probable',
+    `- ${hypothesis.label}. Probabilidad interna: ${Math.round(Number(hypothesis.probability || 0) * 100)}%.`
+  ];
+}
+
+function buildProgressiveGuidance(intent, reasoningProfile, graphReasoning) {
+  const topicId = intent?.topic?.id || '';
+  const factsText = normalizeText((reasoningProfile?.facts || []).join(' '));
+  const lines = [];
+
+  if (topicId === 'despido') {
+    lines.push('Con lo que ya contaste, el punto principal no es solo que hubo un despido, sino cómo se comunicó y si existía una causa válida.');
+    if (factsText.includes('llamaron') || factsText.includes('oficina') || factsText.includes('no podian seguir')) {
+      lines.push('Si te llamaron a la oficina y te dijeron que no podían seguir contratándote, eso puede ser indicio de cese verbal o comunicación informal. Conviene dejar constancia escrita cuanto antes.');
+    }
+    lines.push('La ruta práctica es ordenar fecha de cese, forma de comunicación, tipo de contrato y pruebas del vínculo laboral.');
+    lines.push('No borres mensajes ni firmes documentos sin leerlos, porque podrían cambiar la lectura del caso.');
+    return lines;
+  }
+
+  if (topicId === 'propiedad_inmueble' || topicId === 'posesion') {
+    lines.push('Con los hechos descritos, la hipótesis principal es un conflicto civil sobre propiedad, posesión o linderos.');
+    lines.push('La diferencia clave será si tienes título inscrito, posesión acreditada, plano o algún documento que ubique el límite del terreno.');
+    return lines;
+  }
+
+  if (intent?.type?.id === 'consulta_normativa') {
+    lines.push('La consulta se debe tratar como búsqueda normativa: ubicar el texto, verificar vigencia y explicar alcance.');
+    return lines;
+  }
+
+  const hypothesis = graphReasoning?.hypotheses?.[0]?.label;
+  if (hypothesis) lines.push(`La línea de análisis más probable es: ${hypothesis}.`);
+  lines.push(...buildTopicGuidance(intent));
+  return lines;
+}
+
+function buildTargetedMissingQuestions(intent, reasoningProfile) {
+  const missing = Array.isArray(reasoningProfile?.missingInfo) && reasoningProfile.missingInfo.length
+    ? reasoningProfile.missingInfo
+    : Array.isArray(intent?.missingInfo) ? intent.missingInfo : [];
+  const unique = [...new Set(missing)]
+    .filter(item => !String(item).startsWith('documentos relevantes:'))
+    .slice(0, 3);
+  if (!unique.length) return [];
+  return [
+    'Para afinar la respuesta, falta confirmar:',
+    ...unique.map((item, index) => `${index + 1}. ${item.charAt(0).toUpperCase()}${item.slice(1)}.`)
+  ];
+}
+
+function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
   const lines = [
-    `Entiendo. Por lo que me cuentas, esto parece relacionarse con ${intent.topic.label} dentro de ${intent.area.label}.`,
+    `Entiendo. La consulta se está interpretando como ${intent.topic.label} dentro de ${intent.area.label}.`,
     ''
   ];
 
-  lines.push(...buildTopicGuidance(intent));
+  const factsSummary = buildKnownFactsSummary(reasoningProfile);
+  if (factsSummary.length) {
+    lines.push(...factsSummary);
+    lines.push('');
+  }
+
+  const hypothesisSummary = buildHypothesisSummary(graphReasoning);
+  if (hypothesisSummary.length) {
+    lines.push(...hypothesisSummary);
+    lines.push('');
+  }
+
+  lines.push(...buildProgressiveGuidance(intent, reasoningProfile, graphReasoning));
   if (reasoningProfile) {
     lines.push('');
     lines.push(...buildReasoningSummary(reasoningProfile));
@@ -2798,15 +2879,12 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     }
   } else {
     lines.push('');
-    lines.push('Para ayudarte mejor, respóndeme solo lo que tengas a la mano:');
-    const missing = Array.isArray(intent?.missingInfo) && intent.missingInfo.length
-      ? intent.missingInfo.slice(0, 3)
-      : ['qué pasó y cuándo ocurrió', 'documentos o pruebas disponibles', 'resultado que buscas'];
-    missing.forEach((item, index) => {
-      lines.push(`${index + 1}. ${item.charAt(0).toUpperCase()}${item.slice(1)}.`);
-    });
-    lines.push('');
-    lines.push('Con esos datos puedo darte una orientación más precisa, próximos pasos y los documentos que conviene reunir.');
+    const targetedQuestions = buildTargetedMissingQuestions(intent, reasoningProfile);
+    if (targetedQuestions.length) {
+      lines.push(...targetedQuestions);
+      lines.push('');
+    }
+    lines.push('Con esa información puedo pasar de orientación inicial a próximos pasos más concretos.');
   }
   lines.push('');
   lines.push('Nota: esto es orientación general. Si hay riesgo actual, amenazas concretas o plazos próximos, conviene buscar apoyo inmediato de la autoridad competente y asesoría legal directa.');
@@ -3435,7 +3513,7 @@ async function runLegalIntelligence(options = {}) {
   const providerResult = await generateWithConfiguredProvider(messages, { temperature });
   if (!providerResult.answer) {
     return {
-      answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile),
+      answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile, legalGraphReasoning),
       intent,
       results: ragContext.results,
       ragSources: ragContext.sources,
@@ -3951,10 +4029,12 @@ app.post('/api/chat', async (req, res) => {
     console.error('❌ Error interno:', error);
     const query = extractUserQuery(req.body?.prompt);
     const localResults = query ? searchLegalKnowledgeBase(query) : [];
-    const intent = query ? classifyLegalIntent(query) : null;
+    const intent = query ? interpretLegalQuery(query, Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []) : null;
+    const fallbackReasoningProfile = query && intent ? buildLegalReasoningProfile(query, intent, [], localResults) : null;
+    const fallbackGraphReasoning = query && intent ? buildLegalGraphReasoning(intent, localResults) : null;
     res.json({
       answer: query
-        ? buildConversationalLegalAnswer(query, intent, localResults)
+        ? buildConversationalLegalAnswer(query, intent, localResults, fallbackReasoningProfile, fallbackGraphReasoning)
         : 'LEXIA no pudo procesar la consulta, pero la base jurídica local está disponible en /api/legal-search.',
       intent,
       results: localResults,
