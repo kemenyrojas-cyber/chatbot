@@ -1472,7 +1472,7 @@ function evaluateLocalSearchSufficiency(query, localResults = []) {
 
   if (results.length < 3) weakReasons.push('menos de 3 resultados');
   if (topRelevance < 18) weakReasons.push('relevancia maxima baja');
-  if (genericRatio >= 0.6) weakReasons.push('resultados demasiado genericos');
+  if (genericRatio >= 0.6 && topRelevance < 50) weakReasons.push('resultados demasiado genericos');
   if (asksFreshOrOfficial) weakReasons.push('consulta pide fuente oficial o informacion actualizada');
 
   return {
