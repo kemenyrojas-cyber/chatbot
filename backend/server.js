@@ -1416,6 +1416,16 @@ function assertLoggedBrainContributor(email) {
 
 const legalIntentTypes = [
   {
+    id: 'consulta_normativa',
+    label: 'Consulta normativa',
+    patterns: [
+      'articulo', 'artículo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución',
+      'art culo', 'constituci',
+      'decreto', 'norma', 'reglamento', 'dame el articulo', 'dame el artículo',
+      'busca el articulo', 'busca el artículo', 'que dice el articulo', 'qué dice el artículo'
+    ]
+  },
+  {
     id: 'consulta_informativa',
     label: 'Consulta informativa',
     patterns: [
@@ -1448,10 +1458,35 @@ const legalIntentTypes = [
       'jurisprudencia', 'casacion', 'casación', 'sentencia', 'precedente',
       'criterio del tribunal', 'criterio de la corte'
     ]
+  },
+  {
+    id: 'orientacion_legal',
+    label: 'Orientación legal',
+    patterns: [
+      'que hago', 'qué hago', 'que puedo hacer', 'qué puedo hacer', 'me paso', 'me pasó',
+      'mi empleador', 'mi vecino', 'mi trabajador', 'me quieren', 'me notificaron',
+      'ayer', 'hoy', 'plazo tengo', 'plazo para'
+    ]
   }
 ];
 
 const legalAreas = [
+  {
+    id: 'derecho_constitucional',
+    label: 'Derecho Constitucional',
+    keywords: [
+      'constitucion', 'constitución', 'constitucional', 'derechos fundamentales', 'amparo',
+      'constituci',
+      'habeas corpus', 'habeas data', 'accion de cumplimiento', 'acción de cumplimiento',
+      'tribunal constitucional', 'tc', 'articulo constitucional', 'artículo constitucional'
+    ],
+    topics: [
+      { id: 'constitucion', label: 'Constitución', keywords: ['constitucion', 'constitución', 'constituci', 'articulo', 'artículo', 'art culo', 'derechos fundamentales'] },
+      { id: 'habeas_data', label: 'Hábeas data', keywords: ['habeas data', 'datos personales', 'acceso a informacion', 'acceso a información'] },
+      { id: 'amparo', label: 'Amparo', keywords: ['amparo', 'derechos constitucionales'] },
+      { id: 'habeas_corpus', label: 'Hábeas corpus', keywords: ['habeas corpus', 'libertad individual'] }
+    ]
+  },
   {
     id: 'derecho_penal',
     label: 'Derecho Penal',
@@ -1472,20 +1507,21 @@ const legalAreas = [
   {
     id: 'derecho_laboral',
     label: 'Derecho Laboral',
-    keywords: ['laboral', 'trabajo', 'trabajador', 'empleado', 'empleador', 'despido', 'despidieron', 'despedido', 'carta de despido', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'],
+    keywords: ['laboral', 'trabajo', 'trabajador', 'empleado', 'empleador', 'despido', 'despidi', 'despidio', 'despidió', 'despidieron', 'despedido', 'carta de despido', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'],
     topics: [
-      { id: 'despido', label: 'Despido', keywords: ['despido', 'despidieron', 'despedido'] },
+      { id: 'despido', label: 'Despido', keywords: ['despido', 'despidi', 'despidio', 'despidió', 'despidieron', 'despedido'] },
       { id: 'beneficios_sociales', label: 'Beneficios sociales', keywords: ['cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'] }
     ]
   },
   {
     id: 'derecho_civil',
     label: 'Derecho Civil',
-    keywords: ['civil', 'contrato', 'compraventa', 'propiedad', 'posesion', 'posesión', 'inmueble', 'herencia', 'sucesion', 'sucesión'],
+    keywords: ['civil', 'contrato', 'compraventa', 'propiedad', 'posesion', 'posesión', 'inmueble', 'terreno', 'predio', 'vecino', 'lindero', 'linderos', 'construyo', 'construyó', 'edifico', 'edificó', 'herencia', 'sucesion', 'sucesión'],
     topics: [
       { id: 'contrato', label: 'Contrato', keywords: ['contrato', 'clausula', 'cláusula'] },
       { id: 'compraventa', label: 'Compraventa', keywords: ['compraventa', 'compra venta'] },
       { id: 'posesion', label: 'Posesión', keywords: ['posesion', 'posesión', 'posesion precaria', 'posesión precaria'] },
+      { id: 'propiedad_inmueble', label: 'Propiedad inmueble', keywords: ['propiedad', 'terreno', 'predio', 'inmueble', 'lindero', 'linderos', 'construyo', 'construyó'] },
       { id: 'herencia', label: 'Herencia', keywords: ['herencia', 'sucesion', 'sucesión', 'testamento'] }
     ]
   },
@@ -1523,33 +1559,137 @@ function includesAny(normalizedText, patterns) {
   return patterns.some(pattern => normalizedText.includes(normalizeText(pattern)));
 }
 
-function classifyLegalIntent(query) {
-  const normalized = normalizeText(query);
+function countPatternScore(normalizedText, patterns, weight = 1) {
+  return patterns.reduce((score, pattern) => (
+    normalizedText.includes(normalizeText(pattern)) ? score + weight : score
+  ), 0);
+}
+
+function confidenceFromScore(score, high = 10, medium = 4) {
+  if (score >= high) return 'alta';
+  if (score >= medium) return 'media';
+  return 'baja';
+}
+
+function inferLegalObjective(normalizedText) {
+  const objectives = [
+    { id: 'ubicar_norma', label: 'Ubicar norma o artículo', patterns: ['dame', 'busca', 'articulo', 'artículo', 'art culo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución', 'constituci', 'que dice', 'qué dice'] },
+    { id: 'orientacion', label: 'Orientación legal', patterns: ['que hago', 'qué hago', 'que puedo hacer', 'qué puedo hacer', 'me paso', 'me pasó', 'ayer', 'hoy', 'tengo un problema', 'mi vecino', 'mi empleador'] },
+    { id: 'calcular_plazo', label: 'Identificar plazo o vencimiento', patterns: ['plazo', 'cuanto tiempo', 'cuánto tiempo', 'dias', 'días', 'vence', 'vencimiento', 'caducidad', 'prescripcion', 'prescripción'] },
+    { id: 'preparar_documento', label: 'Preparar o revisar documento', patterns: ['redacta', 'prepara', 'modelo', 'plantilla', 'carta', 'demanda', 'contrato', 'escrito'] },
+    { id: 'buscar_criterio', label: 'Buscar criterio jurisprudencial', patterns: ['jurisprudencia', 'casacion', 'casación', 'sentencia', 'precedente', 'criterio'] }
+  ];
+  const ranked = objectives
+    .map(item => ({ ...item, score: countPatternScore(normalizedText, item.patterns, 3) }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  return {
+    id: best?.score > 0 ? best.id : 'entender_situacion',
+    label: best?.score > 0 ? best.label : 'Entender situación jurídica',
+    confidence: confidenceFromScore(best?.score || 0, 6, 3)
+  };
+}
+
+function inferComplexity(normalizedText, query, areaConfidence, topicConfidence) {
   const terms = getQueryTerms(query);
-  const matchedType = legalIntentTypes.find(type => includesAny(normalized, type.patterns));
-  const matchedArea = legalAreas.find(area => includesAny(normalized, area.keywords));
-  const matchedTopic = matchedArea?.topics.find(topic => includesAny(normalized, topic.keywords));
+  const hasProcedure = /\b(demanda|denuncia|apelacion|apelación|casacion|casación|medida cautelar|expediente|audiencia|sentencia|recurso)\b/.test(normalizedText);
+  const hasMultipleFacts = /[,;]|\by\b|\bademas\b|\bademás\b|\bpero\b/.test(normalizedText) && String(query || '').length > 90;
+  if (hasProcedure || hasMultipleFacts || terms.length >= 12) return 'alta';
+  if (areaConfidence === 'alta' && topicConfidence !== 'baja') return 'media';
+  return 'baja';
+}
+
+function buildMissingInfoForInterpretation(normalizedText, typeId, areaId, topicId) {
+  if (typeId === 'consulta_normativa') {
+    const missing = [];
+    if (!/\b(articulo|art culo|artículo|ley|codigo|código|constitucion|constituci|constitución|decreto|norma)\b/.test(normalizedText)) {
+      missing.push('norma o artículo específico');
+    }
+    return missing;
+  }
+
+  const missing = [];
+  if (!/\b(hoy|ayer|fecha|dia|día|mes|año|202\d|19\d\d)\b/.test(normalizedText)) missing.push('fecha aproximada');
+  if (!/\b(documento|contrato|carta|correo|mensaje|denuncia|resolucion|resolución|boleta|prueba|audio|video|captura|partida|titulo|título)\b/.test(normalizedText)) missing.push('documentos o pruebas');
+  if (areaId === 'derecho_laboral' && topicId === 'despido' && !/\b(carta|contrato|boleta|planilla|liquidacion|liquidación)\b/.test(normalizedText)) {
+    missing.push('carta, contrato o boletas');
+  }
+  if (areaId === 'derecho_civil' && ['propiedad_inmueble', 'posesion'].includes(topicId) && !/\b(partida|titulo|título|plano|lindero|contrato|constancia)\b/.test(normalizedText)) {
+    missing.push('título, partida, plano o prueba de posesión');
+  }
+  return [...new Set(missing)].slice(0, 5);
+}
+
+function interpretLegalQuery(query, memoryMessages = []) {
+  const memoryText = normalizeMemoryMessages(memoryMessages)
+    .filter(message => message.role === 'user')
+    .slice(-4)
+    .map(message => message.content)
+    .join(' ');
+  const fullText = [memoryText, query].filter(Boolean).join(' ');
+  const normalized = normalizeText(fullText);
+  const terms = getQueryTerms(query);
+  const typeScores = legalIntentTypes
+    .map(type => ({ ...type, score: countPatternScore(normalized, type.patterns, 4) }))
+    .sort((a, b) => b.score - a.score);
+  const areaScores = legalAreas
+    .map(area => ({ ...area, score: countPatternScore(normalized, area.keywords, 3) }))
+    .sort((a, b) => b.score - a.score);
+  const matchedType = typeScores[0]?.score > 0 ? typeScores[0] : null;
+  const matchedArea = areaScores[0]?.score > 0 ? areaScores[0] : null;
+  const topicScores = (matchedArea?.topics || [])
+    .map(topic => ({ ...topic, score: countPatternScore(normalized, topic.keywords, 5) }))
+    .sort((a, b) => b.score - a.score);
+  const matchedTopic = topicScores[0]?.score > 0 ? topicScores[0] : null;
   const fallbackTopic = terms.length ? terms.join(' ') : '';
+  const areaConfidence = confidenceFromScore(matchedArea?.score || 0, 6, 3);
+  const topicConfidence = confidenceFromScore(matchedTopic?.score || 0, 5, 3);
+  const typeConfidence = confidenceFromScore(matchedType?.score || 0, 6, 3);
+  const objective = inferLegalObjective(normalized);
+  const concepts = [
+    ...(matchedArea?.keywords || []),
+    ...(matchedTopic?.keywords || []),
+    ...terms
+  ].map(item => normalizeText(item)).filter(Boolean);
+  const uniqueConcepts = [...new Set(concepts)].slice(0, 12);
+  const typeId = matchedType?.id || (objective.id === 'ubicar_norma' ? 'consulta_normativa' : 'consulta_general');
+  const typeLabel = matchedType?.label || (objective.id === 'ubicar_norma' ? 'Consulta normativa' : 'Consulta general');
+  const areaId = matchedArea?.id || 'area_no_determinada';
+  const topicId = matchedTopic?.id || (fallbackTopic ? fallbackTopic.replace(/\s+/g, '_') : 'tema_no_determinado');
 
   return {
     type: {
-      id: matchedType?.id || 'consulta_general',
-      label: matchedType?.label || 'Consulta general',
-      confidence: matchedType ? 'alta' : 'baja'
+      id: typeId,
+      label: typeLabel,
+      confidence: matchedType ? typeConfidence : (objective.id === 'ubicar_norma' ? 'media' : 'baja')
     },
     area: {
-      id: matchedArea?.id || 'area_no_determinada',
+      id: areaId,
       label: matchedArea?.label || 'Área no determinada',
-      confidence: matchedArea ? 'alta' : 'baja'
+      confidence: matchedArea ? areaConfidence : 'baja'
     },
     topic: {
-      id: matchedTopic?.id || (fallbackTopic ? fallbackTopic.replace(/\s+/g, '_') : 'tema_no_determinado'),
+      id: topicId,
       label: matchedTopic?.label || fallbackTopic || 'Tema no determinado',
-      confidence: matchedTopic ? 'alta' : (fallbackTopic ? 'media' : 'baja')
+      confidence: matchedTopic ? topicConfidence : (fallbackTopic ? 'media' : 'baja')
+    },
+    objective,
+    concepts: uniqueConcepts,
+    complexity: inferComplexity(normalized, query, areaConfidence, topicConfidence),
+    missingInfo: buildMissingInfoForInterpretation(normalized, typeId, areaId, topicId),
+    interpretation: {
+      areaScore: matchedArea?.score || 0,
+      topicScore: matchedTopic?.score || 0,
+      typeScore: matchedType?.score || 0,
+      usedMemory: Boolean(memoryText)
     },
     originalQuery: String(query || '').trim(),
-    needsMoreFacts: !matchedArea || !matchedTopic
+    needsMoreFacts: typeId !== 'consulta_normativa' && (!matchedArea || !matchedTopic)
   };
+}
+
+function classifyLegalIntent(query) {
+  return interpretLegalQuery(query, []);
 }
 
 function mergeConversationIntent(currentIntent, memoryIntent) {
@@ -1562,9 +1702,30 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
     type: currentIntent?.type?.confidence === 'alta' ? currentIntent.type : (memoryIntent?.type || currentIntent.type),
     area,
     topic,
+    objective: currentIntent?.objective?.confidence === 'alta' ? currentIntent.objective : (memoryIntent?.objective || currentIntent.objective),
+    concepts: [...new Set([...(currentIntent?.concepts || []), ...(memoryIntent?.concepts || [])])].slice(0, 12),
+    complexity: currentIntent?.complexity === 'alta' || memoryIntent?.complexity === 'alta' ? 'alta' : (currentIntent?.complexity || memoryIntent?.complexity || 'baja'),
+    missingInfo: [...new Set([...(currentIntent?.missingInfo || []), ...(memoryIntent?.missingInfo || [])])].slice(0, 5),
+    interpretation: {
+      ...(memoryIntent?.interpretation || {}),
+      ...(currentIntent?.interpretation || {}),
+      mergedWithMemory: useMemoryArea || useMemoryTopic
+    },
     originalQuery: currentIntent?.originalQuery || '',
-    needsMoreFacts: area?.confidence !== 'alta' || topic?.confidence !== 'alta'
+    needsMoreFacts: currentIntent?.type?.id !== 'consulta_normativa' && (area?.confidence !== 'alta' || topic?.confidence !== 'alta')
   };
+}
+
+function buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery) {
+  const enriched = [
+    userQuery,
+    intent?.area?.label,
+    intent?.topic?.label,
+    intent?.objective?.label,
+    ...(intent?.concepts || []).slice(0, 8),
+    memorySearchQuery && memorySearchQuery !== userQuery ? memorySearchQuery : ''
+  ].filter(Boolean).join(' ');
+  return truncateForRag(enriched, 1200);
 }
 
 function isGreetingOnly(text) {
@@ -2219,6 +2380,15 @@ function buildSourceSummary(results, intent, limit = 3) {
 function buildTopicGuidance(intent) {
   const topicId = intent?.topic?.id || '';
   const areaId = intent?.area?.id || '';
+  const typeId = intent?.type?.id || '';
+
+  if (typeId === 'consulta_normativa') {
+    return [
+      'Esto es una consulta normativa. Lo central es ubicar la norma, artículo, inciso o disposición aplicable y verificar si el texto está vigente.',
+      '',
+      'Si me das el nombre exacto de la norma o el artículo, puedo ayudarte a ordenar la lectura, explicar su alcance y vincularlo con el caso concreto.'
+    ];
+  }
 
   if (topicId === 'extorsion') {
     return [
@@ -2251,6 +2421,14 @@ function buildTopicGuidance(intent) {
       'En un despido, lo primero es revisar si hubo una causa legal válida y si el empleador siguió el procedimiento correcto.',
       '',
       'Guarda contrato, boletas, carta de despido, correos, mensajes, asistencia y cualquier prueba de la relación laboral.'
+    ];
+  }
+
+  if (topicId === 'propiedad_inmueble' || topicId === 'posesion') {
+    return [
+      'En un conflicto sobre terreno, propiedad, posesión o linderos, lo primero es diferenciar quién tiene título, quién posee realmente y qué acto generó el conflicto.',
+      '',
+      'Conviene revisar partida registral, título, planos, contrato, constancias de posesión, fotos, comunicaciones y cualquier prueba de la construcción o invasión.'
     ];
   }
 
@@ -2389,13 +2567,26 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     lines.push('');
     lines.push(...buildReasoningSummary(reasoningProfile));
   }
-  lines.push('');
-  lines.push('Para ayudarte mejor, respóndeme solo lo que tengas a la mano:');
-  lines.push('1. ¿Qué pasó y cuándo ocurrió?');
-  lines.push('2. ¿Tienes documentos, mensajes, contrato, denuncia, carta, resolución o alguna prueba?');
-  lines.push('3. ¿Qué resultado buscas: orientarte, responder, denunciar, demandar, negociar o preparar un documento?');
-  lines.push('');
-  lines.push('Con esos datos puedo darte una orientación más precisa, próximos pasos y los documentos que conviene reunir.');
+
+  if (intent?.type?.id === 'consulta_normativa') {
+    lines.push('');
+    if (results.length) {
+      lines.push('Encontré referencias en la base local que pueden servir para ubicar y explicar la norma.');
+    } else {
+      lines.push('No encontré una coincidencia exacta en la base local. Conviene verificar el texto oficial de la norma antes de citarla.');
+    }
+  } else {
+    lines.push('');
+    lines.push('Para ayudarte mejor, respóndeme solo lo que tengas a la mano:');
+    const missing = Array.isArray(intent?.missingInfo) && intent.missingInfo.length
+      ? intent.missingInfo.slice(0, 3)
+      : ['qué pasó y cuándo ocurrió', 'documentos o pruebas disponibles', 'resultado que buscas'];
+    missing.forEach((item, index) => {
+      lines.push(`${index + 1}. ${item.charAt(0).toUpperCase()}${item.slice(1)}.`);
+    });
+    lines.push('');
+    lines.push('Con esos datos puedo darte una orientación más precisa, próximos pasos y los documentos que conviene reunir.');
+  }
   lines.push('');
   lines.push('Nota: esto es orientación general. Si hay riesgo actual, amenazas concretas o plazos próximos, conviene buscar apoyo inmediato de la autoridad competente y asesoría legal directa.');
   lines.push('');
@@ -2943,8 +3134,8 @@ async function runLegalIntelligence(options = {}) {
   const prompt = String(options.prompt || `Consulta del usuario:\n${userQuery}`);
   const conversationMemory = normalizeMemoryMessages(options.conversationMemory || []);
   const memorySearchQuery = buildMemorySearchQuery(userQuery, conversationMemory);
-  const currentIntent = classifyLegalIntent(userQuery);
-  const memoryIntent = classifyLegalIntent(memorySearchQuery);
+  const currentIntent = interpretLegalQuery(userQuery, conversationMemory);
+  const memoryIntent = interpretLegalQuery(memorySearchQuery, conversationMemory);
   const intent = mergeConversationIntent(currentIntent, memoryIntent);
   const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
 
@@ -2983,10 +3174,11 @@ async function runLegalIntelligence(options = {}) {
   }
 
   await ensureLegalKnowledgeAvailable();
-  const localResults = searchLegalKnowledgeBase(memorySearchQuery);
-  const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
-  logLocalSearchSufficiency('Legal Intelligence Engine', memorySearchQuery, localSearchEvaluation);
-  const ragContext = buildRagContext(memorySearchQuery, localResults);
+  const interpretationSearchQuery = buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery);
+  const localResults = searchLegalKnowledgeBase(interpretationSearchQuery);
+  const localSearchEvaluation = evaluateLocalSearchSufficiency(interpretationSearchQuery, localResults);
+  logLocalSearchSufficiency('Legal Intelligence Engine', interpretationSearchQuery, localSearchEvaluation);
+  const ragContext = buildRagContext(interpretationSearchQuery, localResults);
   const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory, ragContext.results);
   const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
   const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
@@ -2996,6 +3188,10 @@ async function runLegalIntelligence(options = {}) {
     `Tipo: ${intent.type.label}`,
     `Área: ${intent.area.label}`,
     `Tema: ${intent.topic.label}`,
+    `Objetivo: ${intent.objective?.label || 'No determinado'}`,
+    `Complejidad: ${intent.complexity || 'baja'}`,
+    `Conceptos relacionados: ${(intent.concepts || []).join(', ') || 'no identificados'}`,
+    `Datos faltantes: ${(intent.missingInfo || []).join(', ') || 'sin faltantes críticos'}`,
     `Confianza: tipo=${intent.type.confidence}, área=${intent.area.confidence}, tema=${intent.topic.confidence}`
   ].join('\n');
   const messages = [
@@ -3038,7 +3234,8 @@ async function runLegalIntelligence(options = {}) {
         providerErrors: providerResult.providerErrors,
         memoryMessages: conversationMemory.length,
         localSearchEvaluation,
-        legalReasoningProfile
+        legalReasoningProfile,
+        legalInterpretation: intent
       }
     };
   }
@@ -3064,6 +3261,7 @@ async function runLegalIntelligence(options = {}) {
       memoryMessages: conversationMemory.length,
       localSearchEvaluation,
       legalReasoningProfile,
+      legalInterpretation: intent,
       providerErrors: providerResult.providerErrors
     }
   };
@@ -3082,6 +3280,7 @@ function isLegalQuery(text) {
     'robo','hurto','violencia','acoso','difamación','injuria','calumnia','agresión','asalto','homicidio',
     'aborto','adopción','patria potestad','guarda','visita','pensión','renta','cuota','arancel','honorario',
     'empresa','sociedad','quiebra','insolvencia','liquidación','ley','código','articulado','inciso'
+    ,'constitución','constitucion','terreno','predio','lindero','linderos','vecino','empleador','trabajador'
   ];
   return keywords.some(k => text.toLowerCase().includes(k));
 }
@@ -3091,10 +3290,11 @@ app.post('/api/legal-intent', (req, res) => {
   if (!query) {
     return res.status(400).json({ error: 'La consulta es obligatoria.' });
   }
+  const memoryMessages = Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : [];
 
   return res.json({
     query,
-    intent: classifyLegalIntent(extractUserQuery(query))
+    intent: interpretLegalQuery(extractUserQuery(query), memoryMessages)
   });
 });
 
