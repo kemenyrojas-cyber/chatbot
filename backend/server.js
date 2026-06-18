@@ -1643,13 +1643,103 @@ function buildTopicGuidance(intent) {
   ];
 }
 
-function buildConversationalLegalAnswer(query, intent, results) {
+function extractPotentialFacts(query, memoryMessages = []) {
+  const userMessages = normalizeMemoryMessages(memoryMessages)
+    .filter(message => message.role === 'user')
+    .map(message => message.content);
+  return [...userMessages.slice(-3), query]
+    .map(item => String(item || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-4);
+}
+
+function buildLegalReasoningProfile(query, intent, memoryMessages = []) {
+  const normalized = normalizeText(query);
+  const facts = extractPotentialFacts(query, memoryMessages);
+  const missing = [];
+  const risks = [];
+  const nextSteps = [];
+
+  if (!/\b(hoy|ayer|fecha|dia|día|mes|año|202\d|19\d\d)\b/.test(normalized)) {
+    missing.push('fecha o momento aproximado de los hechos');
+  }
+  if (!/\b(documento|contrato|carta|correo|mensaje|denuncia|resolucion|resolución|boleta|prueba|audio|video|captura)\b/.test(normalized)) {
+    missing.push('documentos o pruebas disponibles');
+  }
+  if (!/\b(quiero|busco|necesito|denunciar|demandar|responder|negociar|calcular|redactar|orientar)\b/.test(normalized)) {
+    missing.push('objetivo concreto del usuario');
+  }
+
+  if (intent?.area?.id === 'derecho_penal') {
+    risks.push('posibles plazos, denuncia, conservación de pruebas y seguridad de la víctima o investigado');
+    nextSteps.push('ordenar hechos, identificar prueba, verificar si existe denuncia y definir si corresponde acudir a PNP o Ministerio Público');
+  } else if (intent?.area?.id === 'derecho_laboral') {
+    risks.push('caducidad o pérdida de oportunidad para reclamar, prueba de vínculo laboral y comunicaciones del empleador');
+    nextSteps.push('reunir contrato, boletas, comunicaciones, asistencia y fecha exacta de cese o incumplimiento');
+  } else if (intent?.area?.id === 'derecho_familia') {
+    risks.push('interés superior del menor, capacidad económica, necesidades acreditadas y medidas urgentes');
+    nextSteps.push('ordenar partidas, gastos, ingresos, acuerdos previos y datos del menor o familiares involucrados');
+  } else if (intent?.area?.id === 'derecho_civil') {
+    risks.push('validez documental, titularidad, plazos, incumplimiento y prueba escrita');
+    nextSteps.push('revisar contratos, partidas, comunicaciones, pagos y cronología de hechos');
+  } else {
+    risks.push('datos incompletos pueden cambiar el análisis jurídico y la autoridad competente');
+    nextSteps.push('precisar materia, hechos principales, fecha, documentos y objetivo');
+  }
+
+  return {
+    facts,
+    legalIssue: intent?.topic?.confidence === 'alta'
+      ? `Determinar consecuencias, opciones y próximos pasos sobre ${intent.topic.label}.`
+      : `Identificar el problema jurídico principal dentro de ${intent?.area?.label || 'la materia aplicable'}.`,
+    applicableArea: intent?.area?.label || 'Área no determinada',
+    topic: intent?.topic?.label || 'Tema no determinado',
+    risks,
+    nextSteps,
+    missingInfo: missing.slice(0, 4)
+  };
+}
+
+function buildLegalReasoningContext(reasoningProfile) {
+  if (!reasoningProfile) return '';
+  return [
+    'LEGAL REASONING ENGINE:',
+    `Hechos detectados: ${reasoningProfile.facts.length ? reasoningProfile.facts.join(' | ') : 'no hay hechos suficientes'}`,
+    `Problema jurídico: ${reasoningProfile.legalIssue}`,
+    `Área: ${reasoningProfile.applicableArea}`,
+    `Tema: ${reasoningProfile.topic}`,
+    `Riesgos a evaluar: ${reasoningProfile.risks.join(' | ')}`,
+    `Próximos pasos sugeridos: ${reasoningProfile.nextSteps.join(' | ')}`,
+    `Datos faltantes: ${reasoningProfile.missingInfo.length ? reasoningProfile.missingInfo.join(' | ') : 'sin datos faltantes críticos detectados'}`,
+    'Usa este análisis como estructura interna. No muestres esta sección literalmente.'
+  ].join('\n');
+}
+
+function buildReasoningSummary(reasoningProfile) {
+  if (!reasoningProfile) return [];
+  const lines = [];
+  lines.push('Análisis inicial');
+  lines.push(`- Problema jurídico: ${reasoningProfile.legalIssue}`);
+  if (reasoningProfile.risks.length) {
+    lines.push(`- Riesgos a revisar: ${reasoningProfile.risks[0]}`);
+  }
+  if (reasoningProfile.nextSteps.length) {
+    lines.push(`- Primer paso útil: ${reasoningProfile.nextSteps[0]}`);
+  }
+  return lines;
+}
+
+function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null) {
   const lines = [
     `Entiendo. Por lo que me cuentas, esto parece relacionarse con ${intent.topic.label} dentro de ${intent.area.label}.`,
     ''
   ];
 
   lines.push(...buildTopicGuidance(intent));
+  if (reasoningProfile) {
+    lines.push('');
+    lines.push(...buildReasoningSummary(reasoningProfile));
+  }
   lines.push('');
   lines.push('Para ayudarte mejor, respóndeme solo lo que tengas a la mano:');
   lines.push('1. ¿Qué pasó y cuándo ocurrió?');
@@ -2236,6 +2326,8 @@ app.post('/api/chat', async (req, res) => {
     const memoryIntent = classifyLegalIntent(memorySearchQuery);
     const intent = mergeConversationIntent(currentIntent, memoryIntent);
     const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
+    const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory);
+    const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
     const persistAnswer = async (answer, metadata = {}) => {
       if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
       return persistChatExchange(chatEmail, chatSession, userMessage, {
@@ -2329,7 +2421,7 @@ REGLAS:
 - No hagas valoraciones morales; limita la respuesta al análisis legal.
 - No afirmes tener información en tiempo real si no está disponible en el contexto.`;
 
-    const context = [conversationMemoryContext, ragContext.context].filter(Boolean).join('\n\n');
+    const context = [conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n');
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,
@@ -2354,14 +2446,15 @@ REGLAS:
 
     const providerResult = await generateWithConfiguredProvider(openAiMessages, { temperature });
     if (!providerResult.answer) {
-      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
+      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile);
       const persisted = await persistAnswer(answer, {
         model: 'local-rag-engine',
         source: 'LEXIA RAG Local',
         ragSources: ragContext.sources,
         providerErrors: providerResult.providerErrors,
         memoryMessages: conversationMemory.length,
-        localSearchEvaluation
+        localSearchEvaluation,
+        legalReasoningProfile
       });
       return res.json({
         answer,
@@ -2384,6 +2477,7 @@ REGLAS:
       ragSources: ragContext.sources,
       memoryMessages: conversationMemory.length,
       localSearchEvaluation,
+      legalReasoningProfile,
       providerErrors: providerResult.providerErrors
     });
     
