@@ -1064,7 +1064,7 @@ const legalAreas = [
   {
     id: 'derecho_laboral',
     label: 'Derecho Laboral',
-    keywords: ['laboral', 'trabajo', 'despido', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'empleador'],
+    keywords: ['laboral', 'trabajo', 'trabajador', 'empleado', 'empleador', 'despido', 'despidieron', 'despedido', 'carta de despido', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'],
     topics: [
       { id: 'despido', label: 'Despido', keywords: ['despido', 'despidieron', 'despedido'] },
       { id: 'beneficios_sociales', label: 'Beneficios sociales', keywords: ['cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'] }
