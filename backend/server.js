@@ -1627,18 +1627,34 @@ function interpretLegalQuery(query, memoryMessages = []) {
     .map(message => message.content)
     .join(' ');
   const fullText = [memoryText, query].filter(Boolean).join(' ');
+  const currentNormalized = normalizeText(query);
   const normalized = normalizeText(fullText);
   const terms = getQueryTerms(query);
   const typeScores = legalIntentTypes
     .map(type => ({ ...type, score: countPatternScore(normalized, type.patterns, 4) }))
     .sort((a, b) => b.score - a.score);
-  const areaScores = legalAreas
-    .map(area => ({ ...area, score: countPatternScore(normalized, area.keywords, 3) }))
+  const currentAreaScores = legalAreas
+    .map(area => {
+      const areaScore = countPatternScore(currentNormalized, area.keywords, 3);
+      const topicScore = Math.max(0, ...(area.topics || []).map(topic => countPatternScore(currentNormalized, topic.keywords, 5)));
+      return { ...area, score: areaScore + topicScore };
+    })
+    .sort((a, b) => b.score - a.score);
+  const memoryAreaScores = legalAreas
+    .map(area => {
+      const areaScore = countPatternScore(normalized, area.keywords, 3);
+      const topicScore = Math.max(0, ...(area.topics || []).map(topic => countPatternScore(normalized, topic.keywords, 5)));
+      return { ...area, score: areaScore + topicScore };
+    })
     .sort((a, b) => b.score - a.score);
   const matchedType = typeScores[0]?.score > 0 ? typeScores[0] : null;
-  const matchedArea = areaScores[0]?.score > 0 ? areaScores[0] : null;
+  const matchedArea = currentAreaScores[0]?.score > 0 ? currentAreaScores[0] : (memoryAreaScores[0]?.score > 0 ? memoryAreaScores[0] : null);
   const topicScores = (matchedArea?.topics || [])
-    .map(topic => ({ ...topic, score: countPatternScore(normalized, topic.keywords, 5) }))
+    .map(topic => {
+      const currentScore = countPatternScore(currentNormalized, topic.keywords, 5);
+      const memoryScore = countPatternScore(normalized, topic.keywords, 3);
+      return { ...topic, score: currentScore > 0 ? currentScore + memoryScore : memoryScore };
+    })
     .sort((a, b) => b.score - a.score);
   const matchedTopic = topicScores[0]?.score > 0 ? topicScores[0] : null;
   const fallbackTopic = terms.length ? terms.join(' ') : '';
@@ -1681,7 +1697,10 @@ function interpretLegalQuery(query, memoryMessages = []) {
       areaScore: matchedArea?.score || 0,
       topicScore: matchedTopic?.score || 0,
       typeScore: matchedType?.score || 0,
-      usedMemory: Boolean(memoryText)
+      usedMemory: Boolean(memoryText),
+      currentAreaScore: currentAreaScores[0]?.score || 0,
+      currentAreaId: currentAreaScores[0]?.score > 0 ? currentAreaScores[0].id : '',
+      currentTopicScore: topicScores[0]?.score || 0
     },
     originalQuery: String(query || '').trim(),
     needsMoreFacts: typeId !== 'consulta_normativa' && (!matchedArea || !matchedTopic)
@@ -1693,23 +1712,42 @@ function classifyLegalIntent(query) {
 }
 
 function mergeConversationIntent(currentIntent, memoryIntent) {
-  const useMemoryArea = currentIntent?.area?.confidence !== 'alta' && memoryIntent?.area?.confidence === 'alta';
-  const useMemoryTopic = currentIntent?.topic?.confidence !== 'alta' && memoryIntent?.topic?.confidence === 'alta';
+  const currentHasLegalSignal = (currentIntent?.interpretation?.currentAreaScore || 0) > 0
+    || currentIntent?.topic?.confidence === 'media'
+    || currentIntent?.topic?.confidence === 'alta';
+  const areaConflict = currentIntent?.area?.id
+    && memoryIntent?.area?.id
+    && currentIntent.area.id !== 'area_no_determinada'
+    && memoryIntent.area.id !== 'area_no_determinada'
+    && currentIntent.area.id !== memoryIntent.area.id;
+  const topicConflict = currentIntent?.topic?.id
+    && memoryIntent?.topic?.id
+    && currentIntent.topic.id !== 'tema_no_determinado'
+    && memoryIntent.topic.id !== 'tema_no_determinado'
+    && currentIntent.topic.id !== memoryIntent.topic.id;
+  const topicShift = Boolean(currentHasLegalSignal && (areaConflict || topicConflict));
+  const useMemoryArea = !topicShift && currentIntent?.area?.confidence !== 'alta' && memoryIntent?.area?.confidence === 'alta';
+  const useMemoryTopic = !topicShift && currentIntent?.topic?.confidence !== 'alta' && memoryIntent?.topic?.confidence === 'alta';
   const area = useMemoryArea ? memoryIntent.area : currentIntent.area;
   const topic = useMemoryTopic ? memoryIntent.topic : currentIntent.topic;
 
   return {
-    type: currentIntent?.type?.confidence === 'alta' ? currentIntent.type : (memoryIntent?.type || currentIntent.type),
+    type: topicShift || currentIntent?.type?.confidence === 'alta' ? currentIntent.type : (memoryIntent?.type || currentIntent.type),
     area,
     topic,
-    objective: currentIntent?.objective?.confidence === 'alta' ? currentIntent.objective : (memoryIntent?.objective || currentIntent.objective),
-    concepts: [...new Set([...(currentIntent?.concepts || []), ...(memoryIntent?.concepts || [])])].slice(0, 12),
-    complexity: currentIntent?.complexity === 'alta' || memoryIntent?.complexity === 'alta' ? 'alta' : (currentIntent?.complexity || memoryIntent?.complexity || 'baja'),
-    missingInfo: [...new Set([...(currentIntent?.missingInfo || []), ...(memoryIntent?.missingInfo || [])])].slice(0, 5),
+    objective: topicShift || currentIntent?.objective?.confidence === 'alta' ? currentIntent.objective : (memoryIntent?.objective || currentIntent.objective),
+    concepts: topicShift
+      ? [...new Set([...(currentIntent?.concepts || [])])].slice(0, 12)
+      : [...new Set([...(currentIntent?.concepts || []), ...(memoryIntent?.concepts || [])])].slice(0, 12),
+    complexity: topicShift ? currentIntent?.complexity : (currentIntent?.complexity === 'alta' || memoryIntent?.complexity === 'alta' ? 'alta' : (currentIntent?.complexity || memoryIntent?.complexity || 'baja')),
+    missingInfo: topicShift
+      ? [...new Set([...(currentIntent?.missingInfo || [])])].slice(0, 5)
+      : [...new Set([...(currentIntent?.missingInfo || []), ...(memoryIntent?.missingInfo || [])])].slice(0, 5),
     interpretation: {
       ...(memoryIntent?.interpretation || {}),
       ...(currentIntent?.interpretation || {}),
-      mergedWithMemory: useMemoryArea || useMemoryTopic
+      mergedWithMemory: useMemoryArea || useMemoryTopic,
+      topicShift
     },
     originalQuery: currentIntent?.originalQuery || '',
     needsMoreFacts: currentIntent?.type?.id !== 'consulta_normativa' && (area?.confidence !== 'alta' || topic?.confidence !== 'alta')
@@ -2424,6 +2462,14 @@ function buildTopicGuidance(intent) {
     ];
   }
 
+  if (topicId === 'alimentos') {
+    return [
+      'En alimentos, primero hay que distinguir si hablas de una demanda de pensión, una denuncia por incumplimiento, una liquidación de deuda o una ejecución de acta/sentencia.',
+      '',
+      'Los datos clave son: quién pide alimentos, para quién, si ya existe sentencia o conciliación, cuánto se debe y desde cuándo no se paga.'
+    ];
+  }
+
   if (topicId === 'propiedad_inmueble' || topicId === 'posesion') {
     return [
       'En un conflicto sobre terreno, propiedad, posesión o linderos, lo primero es diferenciar quién tiene título, quién posee realmente y qué acto generó el conflicto.',
@@ -2695,7 +2741,7 @@ function scoreLegalGraphHypothesis(hypothesis, graph, intent, results = []) {
     + (intent?.topic?.confidence === 'alta' ? 0.14 : intent?.topic?.confidence === 'media' ? 0.08 : 0.03);
   const complexityPenalty = intent?.complexity === 'alta' ? 0.04 : 0;
   const hasMissingInfo = Array.isArray(intent?.missingInfo) && intent.missingInfo.length > 0;
-  const cap = hasMissingInfo ? 0.94 : 0.98;
+  const cap = intent?.type?.id === 'consulta_normativa' && !hasMissingInfo ? 0.98 : 0.94;
   return Number(Math.max(0.05, Math.min(cap, hypothesis.base + evidenceScore + retrievalScore + intentScore - complexityPenalty)).toFixed(3));
 }
 
@@ -3436,7 +3482,8 @@ async function runLegalIntelligence(options = {}) {
   const currentIntent = interpretLegalQuery(userQuery, conversationMemory);
   const memoryIntent = interpretLegalQuery(memorySearchQuery, conversationMemory);
   const intent = mergeConversationIntent(currentIntent, memoryIntent);
-  const conversationMemoryContext = buildConversationMemoryContext(conversationMemory, intent);
+  const effectiveConversationMemory = intent?.interpretation?.topicShift ? [] : conversationMemory;
+  const conversationMemoryContext = buildConversationMemoryContext(effectiveConversationMemory, intent);
 
   if (isGreetingOnly(userQuery)) {
     return {
@@ -3473,12 +3520,13 @@ async function runLegalIntelligence(options = {}) {
   }
 
   await ensureLegalKnowledgeAvailable();
-  const interpretationSearchQuery = buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery);
+  const searchMemoryBase = intent?.interpretation?.topicShift ? userQuery : memorySearchQuery;
+  const interpretationSearchQuery = buildInterpretationSearchQuery(userQuery, intent, searchMemoryBase);
   const localResults = searchLegalKnowledgeBase(interpretationSearchQuery);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(interpretationSearchQuery, localResults);
   logLocalSearchSufficiency('Legal Intelligence Engine', interpretationSearchQuery, localSearchEvaluation);
   const ragContext = buildRagContext(interpretationSearchQuery, localResults);
-  const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, conversationMemory, ragContext.results);
+  const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, effectiveConversationMemory, ragContext.results);
   const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
   const legalGraphReasoning = buildLegalGraphReasoning(intent, ragContext.results);
   const legalGraphContext = buildLegalGraphContext(legalGraphReasoning);
@@ -3500,7 +3548,7 @@ async function runLegalIntelligence(options = {}) {
       role: 'system',
       content: buildLexiaSystemPrompt() + '\n\n' + intentContext + (context ? '\n\n' + context : '')
     },
-    ...conversationMemory.map(message => ({
+    ...effectiveConversationMemory.map(message => ({
       role: message.role,
       content: message.content
     })),
@@ -3526,14 +3574,14 @@ async function runLegalIntelligence(options = {}) {
       retrieval: {
         mode: 'rag',
         results: ragContext.results.length,
-        memoryMessages: conversationMemory.length
+        memoryMessages: effectiveConversationMemory.length
       },
       metadata: {
         model: 'local-rag-engine',
         source: 'LEXIA RAG Local',
         ragSources: ragContext.sources,
         providerErrors: providerResult.providerErrors,
-        memoryMessages: conversationMemory.length,
+        memoryMessages: effectiveConversationMemory.length,
         localSearchEvaluation,
         legalReasoningProfile,
         legalGraphReasoning,
@@ -3554,13 +3602,13 @@ async function runLegalIntelligence(options = {}) {
     retrieval: {
       mode: 'rag',
       results: ragContext.results.length,
-      memoryMessages: conversationMemory.length
+      memoryMessages: effectiveConversationMemory.length
     },
     metadata: {
       model: providerResult.model,
       source: providerResult.source,
       ragSources: ragContext.sources,
-      memoryMessages: conversationMemory.length,
+      memoryMessages: effectiveConversationMemory.length,
       localSearchEvaluation,
       legalReasoningProfile,
       legalGraphReasoning,
