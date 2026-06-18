@@ -6,6 +6,7 @@ const fetch = global.fetch || require('node-fetch');
 const cors = require('cors');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const cheerio = require('cheerio');
 const { Pool } = require('pg');
 
 const projectRoot = path.join(__dirname, '..');
@@ -1179,6 +1180,210 @@ function getCombinedLegalKnowledgeCorpus() {
   });
 }
 
+function getAllowedLegalSourceHosts() {
+  const configured = String(process.env.LEGAL_ALLOWED_SOURCE_HOSTS || '')
+    .split(',')
+    .map(item => item.trim().toLowerCase())
+    .filter(Boolean);
+  return configured.length ? configured : [
+    'elperuano.pe',
+    'www.elperuano.pe',
+    'tc.gob.pe',
+    'www.tc.gob.pe',
+    'pj.gob.pe',
+    'www.pj.gob.pe',
+    'gob.pe',
+    'www.gob.pe',
+    'sunarp.gob.pe',
+    'www.sunarp.gob.pe',
+    'lpderecho.pe',
+    'www.lpderecho.pe'
+  ];
+}
+
+function parseTrustedLegalUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl || '').trim());
+  } catch {
+    throw new Error('URL inválida.');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Solo se permiten URLs http o https.');
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const allowedHosts = getAllowedLegalSourceHosts();
+  const allowed = allowedHosts.some(domain => host === domain || host.endsWith(`.${domain}`));
+  if (!allowed) {
+    throw new Error(`Fuente no permitida para alimentar LEXIA: ${host}`);
+  }
+
+  return parsed;
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const timeoutMs = Number(options.timeoutMs || process.env.LEGAL_WEB_FETCH_TIMEOUT_MS || 12000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'user-agent': 'LEXIA-Legal-Intelligence/1.0 (+https://chatbot-563e.onrender.com)',
+        accept: 'text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.5',
+        ...(options.headers || {})
+      }
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function robotsAllowsPath(robotsText, targetPath) {
+  const lines = String(robotsText || '').split(/\r?\n/);
+  let applies = false;
+  const disallows = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.split('#')[0].trim();
+    if (!line) continue;
+    const [fieldRaw, ...valueParts] = line.split(':');
+    const field = String(fieldRaw || '').trim().toLowerCase();
+    const value = valueParts.join(':').trim();
+    if (field === 'user-agent') {
+      const agent = value.toLowerCase();
+      applies = agent === '*' || agent.includes('lexia');
+      continue;
+    }
+    if (applies && field === 'disallow' && value) disallows.push(value);
+  }
+
+  return !disallows.some(rule => {
+    if (rule === '/') return true;
+    return targetPath.startsWith(rule);
+  });
+}
+
+async function verifyRobotsPermission(parsedUrl) {
+  if (process.env.LEGAL_WEB_SKIP_ROBOTS === 'true') return true;
+  const robotsUrl = `${parsedUrl.origin}/robots.txt`;
+  try {
+    const response = await fetchWithTimeout(robotsUrl, { timeoutMs: 6000 });
+    if (!response.ok) return true;
+    const robotsText = await response.text();
+    return robotsAllowsPath(robotsText, parsedUrl.pathname || '/');
+  } catch (error) {
+    console.warn(`[LEXIA Web Ingest] No se pudo verificar robots.txt en ${parsedUrl.hostname}: ${error.message}`);
+    return true;
+  }
+}
+
+function extractReadableHtml(html, url) {
+  const $ = cheerio.load(String(html || ''));
+  $('script, style, nav, footer, header, aside, form, noscript, svg, iframe').remove();
+  const title = $('meta[property="og:title"]').attr('content')
+    || $('title').first().text()
+    || $('h1').first().text()
+    || url;
+  const date = $('meta[property="article:published_time"]').attr('content')
+    || $('meta[name="date"]').attr('content')
+    || $('time').first().attr('datetime')
+    || $('time').first().text()
+    || '';
+  const candidates = [
+    $('article').text(),
+    $('main').text(),
+    $('[role="main"]').text(),
+    $('.article, .post, .content, .entry-content, .nota, .news').text(),
+    $('body').text()
+  ].map(item => String(item || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const text = candidates.sort((a, b) => b.length - a.length)[0] || '';
+  return {
+    title: String(title || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+    date: String(date || '').replace(/\s+/g, ' ').trim().slice(0, 40),
+    text
+  };
+}
+
+async function fetchLegalWebSource(rawUrl) {
+  const parsedUrl = parseTrustedLegalUrl(rawUrl);
+  const robotsAllowed = await verifyRobotsPermission(parsedUrl);
+  if (!robotsAllowed) throw new Error('La fuente bloquea esta ruta en robots.txt.');
+
+  const response = await fetchWithTimeout(parsedUrl.toString());
+  if (!response.ok) throw new Error(`La fuente respondió ${response.status}.`);
+
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const maxBytes = Number(process.env.LEGAL_WEB_MAX_BYTES || 6 * 1024 * 1024);
+  if (buffer.length > maxBytes) throw new Error('La página supera el tamaño máximo permitido.');
+
+  if (contentType.includes('pdf') || parsedUrl.pathname.toLowerCase().endsWith('.pdf')) {
+    const parsed = await pdfParse(buffer);
+    return {
+      title: path.basename(parsedUrl.pathname) || parsedUrl.hostname,
+      text: String(parsed.text || ''),
+      date: '',
+      mimeType: 'application/pdf',
+      sourceLabel: parsedUrl.hostname
+    };
+  }
+
+  if (contentType.includes('html') || contentType.includes('text') || !contentType) {
+    const html = buffer.toString('utf8');
+    const extracted = extractReadableHtml(html, parsedUrl.toString());
+    return {
+      title: extracted.title || parsedUrl.hostname,
+      text: extracted.text,
+      date: extracted.date,
+      mimeType: contentType || 'text/html',
+      sourceLabel: parsedUrl.hostname
+    };
+  }
+
+  throw new Error(`Tipo de contenido no soportado desde web: ${contentType}`);
+}
+
+function evaluateLegalContent(text, title = '', url = '') {
+  const normalized = normalizeText(`${title} ${url} ${text.slice(0, 30000)}`);
+  const legalTerms = [
+    'ley', 'decreto', 'norma', 'reglamento', 'resolucion', 'sentencia', 'casacion',
+    'jurisprudencia', 'tribunal constitucional', 'poder judicial', 'demanda', 'proceso',
+    'codigo', 'constitucion', 'articulo', 'derecho', 'laboral', 'penal', 'civil',
+    'familia', 'administrativo', 'sunarp', 'ministerio', 'publicado', 'vigente'
+  ];
+  const updateTerms = [
+    'actualizado', 'actualizada', 'modifican', 'modifica', 'aprueban', 'aprueba',
+    'publican', 'publica', 'vigente', 'entra en vigencia', 'decreto supremo',
+    'decreto legislativo', 'ley n', 'resolucion', 'norma legal'
+  ];
+  const score = legalTerms.reduce((total, term) => total + (normalized.includes(normalizeText(term)) ? 8 : 0), 0)
+    + updateTerms.reduce((total, term) => total + (normalized.includes(normalizeText(term)) ? 6 : 0), 0)
+    + Math.min(Math.floor(String(text || '').length / 800), 20);
+
+  const isLegal = score >= 24 && String(text || '').trim().length >= 350;
+  return {
+    isLegal,
+    score,
+    reason: isLegal
+      ? 'contenido jurídico detectado'
+      : 'contenido insuficiente o no claramente jurídico',
+    signals: {
+      legalTerms: legalTerms.filter(term => normalized.includes(normalizeText(term))).slice(0, 12),
+      updateTerms: updateTerms.filter(term => normalized.includes(normalizeText(term))).slice(0, 8)
+    }
+  };
+}
+
+function normalizeReviewStatus(value, fallback = 'pending_review') {
+  const status = normalizeText(value).replace(/\s+/g, '_');
+  return ['approved', 'pending_review', 'rejected'].includes(status) ? status : fallback;
+}
+
 const legalIntentTypes = [
   {
     id: 'consulta_informativa',
@@ -1702,6 +1907,10 @@ async function ensureLegalIngestionDatabase() {
           title TEXT NOT NULL,
           source_label TEXT NOT NULL,
           source_url TEXT,
+          source_type TEXT NOT NULL DEFAULT 'file',
+          review_status TEXT NOT NULL DEFAULT 'approved',
+          legal_score INTEGER NOT NULL DEFAULT 0,
+          legal_evaluation JSONB NOT NULL DEFAULT '{}'::jsonb,
           content_hash TEXT UNIQUE NOT NULL,
           extracted_text TEXT NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1721,11 +1930,19 @@ async function ensureLegalIngestionDatabase() {
           contenido TEXT NOT NULL,
           resumen TEXT,
           inteligencia JSONB NOT NULL DEFAULT '{}'::jsonb,
+          review_status TEXT NOT NULL DEFAULT 'approved',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+      await accountsPool.query("ALTER TABLE legal_ingested_sources ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'file'");
+      await accountsPool.query("ALTER TABLE legal_ingested_sources ADD COLUMN IF NOT EXISTS review_status TEXT NOT NULL DEFAULT 'approved'");
+      await accountsPool.query("ALTER TABLE legal_ingested_sources ADD COLUMN IF NOT EXISTS legal_score INTEGER NOT NULL DEFAULT 0");
+      await accountsPool.query("ALTER TABLE legal_ingested_sources ADD COLUMN IF NOT EXISTS legal_evaluation JSONB NOT NULL DEFAULT '{}'::jsonb");
+      await accountsPool.query("ALTER TABLE legal_ingested_entries ADD COLUMN IF NOT EXISTS review_status TEXT NOT NULL DEFAULT 'approved'");
       await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_legal_ingested_entries_modulo ON legal_ingested_entries (modulo)');
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_legal_ingested_entries_review_status ON legal_ingested_entries (review_status)');
       await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_legal_ingested_sources_hash ON legal_ingested_sources (content_hash)');
+      await accountsPool.query('CREATE INDEX IF NOT EXISTS idx_legal_ingested_sources_review_status ON legal_ingested_sources (review_status)');
     })();
   }
   try {
@@ -1746,6 +1963,7 @@ async function loadLegalIngestedKnowledgeFromDb(force = false) {
   const result = await accountsPool.query(`
     SELECT id, modulo, titulo, materia, fecha, fuente, url, contenido, resumen, inteligencia
     FROM legal_ingested_entries
+    WHERE review_status = 'approved'
     ORDER BY created_at DESC
     LIMIT 800
   `);
@@ -1769,13 +1987,18 @@ async function persistIngestedLegalKnowledgeToDb({ source, entries }) {
   await accountsPool.query(
     `INSERT INTO legal_ingested_sources (
        id, account_email, original_name, mime_type, size_bytes, title,
-       source_label, source_url, content_hash, extracted_text
+       source_label, source_url, source_type, review_status, legal_score,
+       legal_evaluation, content_hash, extracted_text
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
      ON CONFLICT (content_hash) DO UPDATE
      SET title = EXCLUDED.title,
          source_label = EXCLUDED.source_label,
          source_url = EXCLUDED.source_url,
+         source_type = EXCLUDED.source_type,
+         review_status = EXCLUDED.review_status,
+         legal_score = EXCLUDED.legal_score,
+         legal_evaluation = EXCLUDED.legal_evaluation,
          extracted_text = EXCLUDED.extracted_text`,
     [
       source.id,
@@ -1786,6 +2009,10 @@ async function persistIngestedLegalKnowledgeToDb({ source, entries }) {
       source.title,
       source.sourceLabel,
       source.url || null,
+      source.sourceType || 'file',
+      normalizeReviewStatus(source.reviewStatus, 'approved'),
+      Number(source.legalScore || 0),
+      JSON.stringify(source.legalEvaluation || {}),
       source.contentHash,
       source.text
     ]
@@ -1795,9 +2022,9 @@ async function persistIngestedLegalKnowledgeToDb({ source, entries }) {
     await accountsPool.query(
       `INSERT INTO legal_ingested_entries (
          id, source_id, account_email, modulo, titulo, materia, fecha, fuente,
-         url, contenido, resumen, inteligencia
+         url, contenido, resumen, inteligencia, review_status
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
        ON CONFLICT (id) DO UPDATE
        SET titulo = EXCLUDED.titulo,
            materia = EXCLUDED.materia,
@@ -1806,7 +2033,8 @@ async function persistIngestedLegalKnowledgeToDb({ source, entries }) {
            url = EXCLUDED.url,
            contenido = EXCLUDED.contenido,
            resumen = EXCLUDED.resumen,
-           inteligencia = EXCLUDED.inteligencia`,
+           inteligencia = EXCLUDED.inteligencia,
+           review_status = EXCLUDED.review_status`,
       [
         entry.id,
         source.id,
@@ -1819,7 +2047,8 @@ async function persistIngestedLegalKnowledgeToDb({ source, entries }) {
         entry.url,
         entry.contenido,
         entry.resumen,
-        JSON.stringify(entry.inteligencia || {})
+        JSON.stringify(entry.inteligencia || {}),
+        normalizeReviewStatus(source.reviewStatus, 'approved')
       ]
     );
   }
@@ -2887,6 +3116,10 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
       title: String(body.title || path.parse(originalName).name.replace(/[_-]/g, ' ')).trim().slice(0, 180),
       sourceLabel: String(body.source || body.fuente || path.parse(originalName).name.replace(/[_-]/g, ' ')).trim().slice(0, 180),
       url: String(body.url || '').trim(),
+      sourceType: 'file',
+      reviewStatus: normalizeReviewStatus(body.reviewStatus || body.status, 'approved'),
+      legalScore: 100,
+      legalEvaluation: { isLegal: true, score: 100, reason: 'archivo cargado por administrador' },
       contentHash,
       text
     };
@@ -2918,12 +3151,14 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
     }
 
     let localBackup = null;
-    if (!dbPersisted || process.env.LEGAL_INGEST_WRITE_LOCAL === 'true') {
+    if (source.reviewStatus === 'approved' && (!dbPersisted || process.env.LEGAL_INGEST_WRITE_LOCAL === 'true')) {
       localBackup = persistIngestedLegalKnowledgeLocally({ source, entries });
     }
 
-    mergeRuntimeLegalKnowledge(entries);
-    if (dbPersisted) legalIngestedCorpusLoaded = true;
+    if (source.reviewStatus === 'approved') {
+      mergeRuntimeLegalKnowledge(entries);
+      if (dbPersisted) legalIngestedCorpusLoaded = true;
+    }
     console.log(`[LEXIA Ingest] source=${source.id}; storage=${storage}; entries=${entries.length}; file="${originalName}"`);
 
     return res.json({
@@ -2933,7 +3168,8 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
         title: source.title,
         originalName: source.originalName,
         hash: source.contentHash,
-        storage
+        storage,
+        reviewStatus: source.reviewStatus
       },
       entries: entries.map(entry => ({
         id: entry.id,
@@ -2953,6 +3189,124 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
   }
 });
 
+app.post('/api/legal-ingest-url', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const rawUrl = String(body.url || '').trim();
+    if (!rawUrl) return res.status(400).json({ error: 'La URL es obligatoria.' });
+
+    const parsedUrl = parseTrustedLegalUrl(rawUrl);
+    const fetched = await fetchLegalWebSource(parsedUrl.toString());
+    const text = String(fetched.text || '').replace(/\u0000/g, '').trim();
+
+    if (text.length < 350) {
+      return res.status(400).json({ error: 'La página no tiene texto suficiente para alimentar el motor.' });
+    }
+
+    const legalEvaluation = evaluateLegalContent(text, fetched.title, parsedUrl.toString());
+    if (!legalEvaluation.isLegal) {
+      return res.status(422).json({
+        error: 'La página no parece contener información jurídica suficiente.',
+        evaluation: legalEvaluation
+      });
+    }
+
+    const reviewStatus = normalizeReviewStatus(
+      body.reviewStatus || body.status || (body.autoApprove === true || body.autoApprove === 'true' ? 'approved' : 'pending_review'),
+      'pending_review'
+    );
+    const contentHash = hashContent(`${parsedUrl.toString()}\n${text}`);
+    const source = {
+      id: `source-${contentHash.slice(0, 16)}`,
+      email: normalizeEmail(body.email),
+      originalName: parsedUrl.toString(),
+      mimeType: fetched.mimeType || 'text/html',
+      sizeBytes: Buffer.byteLength(text, 'utf8'),
+      title: String(body.title || fetched.title || parsedUrl.hostname).trim().slice(0, 180),
+      sourceLabel: String(body.source || body.fuente || fetched.sourceLabel || parsedUrl.hostname).trim().slice(0, 180),
+      url: parsedUrl.toString(),
+      sourceType: 'web',
+      reviewStatus,
+      legalScore: legalEvaluation.score,
+      legalEvaluation,
+      contentHash,
+      text
+    };
+    const entries = buildIngestedLegalEntries({
+      sourceId: source.id,
+      fileName: parsedUrl.hostname,
+      title: source.title,
+      text,
+      materia: String(body.materia || '').trim(),
+      fecha: String(body.fecha || fetched.date || '').trim(),
+      fuente: source.sourceLabel,
+      url: source.url,
+      modulo: String(body.modulo || '').trim()
+    });
+
+    if (!entries.length) {
+      return res.status(400).json({ error: 'No se pudieron crear entradas jurídicas desde la URL.' });
+    }
+
+    let storage = 'local';
+    let dbPersisted = false;
+    if (accountsPool) {
+      try {
+        dbPersisted = await persistIngestedLegalKnowledgeToDb({ source, entries });
+        storage = dbPersisted ? 'postgres' : 'local';
+      } catch (error) {
+        console.warn('⚠️ No se pudo persistir URL en PostgreSQL, usando fallback local:', error.message);
+      }
+    }
+
+    let localBackup = null;
+    if (reviewStatus === 'approved' && (!dbPersisted || process.env.LEGAL_INGEST_WRITE_LOCAL === 'true')) {
+      localBackup = persistIngestedLegalKnowledgeLocally({ source, entries });
+    }
+
+    if (reviewStatus === 'approved') {
+      mergeRuntimeLegalKnowledge(entries);
+      if (dbPersisted) legalIngestedCorpusLoaded = true;
+    }
+
+    console.log(`[LEXIA Web Ingest] source=${source.id}; status=${reviewStatus}; score=${legalEvaluation.score}; storage=${storage}; url="${parsedUrl.toString()}"`);
+
+    return res.json({
+      ok: true,
+      source: {
+        id: source.id,
+        title: source.title,
+        url: source.url,
+        sourceType: source.sourceType,
+        reviewStatus,
+        legalScore: source.legalScore,
+        storage
+      },
+      evaluation: legalEvaluation,
+      entries: entries.map(entry => ({
+        id: entry.id,
+        titulo: entry.titulo,
+        materia: entry.materia,
+        modulo: entry.modulo,
+        resumen: entry.resumen
+      })),
+      usableInChat: reviewStatus === 'approved',
+      localBackup,
+      modules: getLegalKnowledgeCounts()
+    });
+  } catch (error) {
+    console.error('❌ Error en legal-ingest-url:', error);
+    const message = error.message || 'No se pudo procesar la URL.';
+    const status = message.includes('URL inválida')
+      || message.includes('Fuente no permitida')
+      || message.includes('robots.txt')
+      || message.includes('no soportado')
+      ? 400
+      : 500;
+    return res.status(status).json({ error: message });
+  }
+});
+
 app.get('/api/legal-ingest', async (req, res) => {
   try {
     const ready = await ensureLegalIngestionDatabase();
@@ -2962,7 +3316,8 @@ app.get('/api/legal-ingest', async (req, res) => {
 
     const result = await accountsPool.query(`
       SELECT id, original_name AS "originalName", title, source_label AS "sourceLabel",
-             source_url AS "sourceUrl", size_bytes AS "sizeBytes", created_at AS "createdAt"
+             source_url AS "sourceUrl", source_type AS "sourceType", review_status AS "reviewStatus",
+             legal_score AS "legalScore", size_bytes AS "sizeBytes", created_at AS "createdAt"
       FROM legal_ingested_sources
       ORDER BY created_at DESC
       LIMIT 50
@@ -2971,6 +3326,36 @@ app.get('/api/legal-ingest', async (req, res) => {
   } catch (error) {
     console.error('Error listando ingestas:', error.message);
     return res.status(500).json({ error: 'No se pudo listar el conocimiento ingerido.' });
+  }
+});
+
+app.patch('/api/legal-ingest/:id/status', async (req, res) => {
+  try {
+    const ready = await ensureLegalIngestionDatabase();
+    if (!ready) return res.status(503).json({ error: 'PostgreSQL no está configurado para ingesta jurídica.' });
+
+    const sourceId = String(req.params.id || '').trim();
+    const reviewStatus = normalizeReviewStatus(req.body?.reviewStatus || req.body?.status, '');
+    if (!sourceId || !reviewStatus) {
+      return res.status(400).json({ error: 'ID y estado son obligatorios.' });
+    }
+
+    const sourceResult = await accountsPool.query(
+      'UPDATE legal_ingested_sources SET review_status = $1 WHERE id = $2 RETURNING id, title, source_url AS "sourceUrl", review_status AS "reviewStatus"',
+      [reviewStatus, sourceId]
+    );
+    if (!sourceResult.rows.length) return res.status(404).json({ error: 'Fuente no encontrada.' });
+
+    await accountsPool.query(
+      'UPDATE legal_ingested_entries SET review_status = $1 WHERE source_id = $2',
+      [reviewStatus, sourceId]
+    );
+    await loadLegalIngestedKnowledgeFromDb(true);
+
+    return res.json({ ok: true, source: sourceResult.rows[0], modules: getLegalKnowledgeCounts() });
+  } catch (error) {
+    console.error('Error actualizando estado de ingesta:', error.message);
+    return res.status(500).json({ error: 'No se pudo actualizar el estado de la fuente.' });
   }
 });
 
