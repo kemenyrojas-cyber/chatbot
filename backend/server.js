@@ -18,6 +18,11 @@ const app = express();
 const port = process.env.PORT || 3000;
 const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
 const openAiKey = process.env.OPENAI_API_KEY;
+const ollamaBaseUrl = String(process.env.OLLAMA_BASE_URL || '').trim().replace(/\/+$/, '');
+const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
+const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
+const preferOllama = process.env.AI_PROVIDER === 'ollama' || process.env.OLLAMA_PREFER === 'true';
+const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
 const legacyDataDir = path.join(projectRoot, 'data');
 const databaseUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || '';
 const databaseProvider = process.env.SUPABASE_DATABASE_URL ? 'supabase' : 'postgres';
@@ -39,6 +44,10 @@ let notificationsDbReady = null;
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
   console.warn('Crea un archivo .env con: OPENAI_API_KEY=tu_clave_api\n');
+}
+
+if (ollamaEnabled) {
+  console.log(`🧠 Ollama configurado: ${ollamaBaseUrl} | Modelo: ${ollamaModel}`);
 }
 
 app.use(express.json());
@@ -1924,6 +1933,195 @@ function mapOpenAiError(status, errorPayload) {
   };
 }
 
+function createProviderTimeout() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(providerTimeoutMs, 5000));
+  return { controller, timeout };
+}
+
+async function callOpenAiChat(messages, options = {}) {
+  if (!openAiKey) {
+    throw {
+      provider: 'openai',
+      code: 'not_configured',
+      error: 'OpenAI no está configurado.'
+    };
+  }
+
+  const model = options.model || process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.OPENAI_TEMPERATURE || 0.35);
+  const { controller, timeout } = createProviderTimeout();
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: 2000,
+        temperature
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let parsedError = null;
+      try {
+        parsedError = JSON.parse(errorBody);
+      } catch {
+        parsedError = null;
+      }
+      console.error('❌ Error OpenAI:', errorBody);
+      const mapped = mapOpenAiError(response.status, parsedError);
+      throw {
+        provider: 'openai',
+        code: parsedError?.error?.code || null,
+        error: mapped.error,
+        status: mapped.status
+      };
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content?.trim();
+    if (!answer) {
+      throw {
+        provider: 'openai',
+        code: 'empty_response',
+        error: 'OpenAI no devolvió una respuesta válida.'
+      };
+    }
+
+    return {
+      answer,
+      model,
+      provider: 'openai',
+      source: 'LEXIA (lpderecho.pe + OpenAI)'
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw {
+        provider: 'openai',
+        code: 'timeout',
+        error: 'OpenAI no respondió dentro del tiempo límite.'
+      };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callOllamaChat(messages, options = {}) {
+  if (!ollamaEnabled) {
+    throw {
+      provider: 'ollama',
+      code: 'not_configured',
+      error: 'Ollama no está configurado.'
+    };
+  }
+
+  const model = options.model || ollamaModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.OLLAMA_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35);
+  const { controller, timeout } = createProviderTimeout();
+  const headers = { 'Content-Type': 'application/json' };
+  if (process.env.OLLAMA_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.OLLAMA_API_KEY}`;
+  }
+
+  try {
+    const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        keep_alive: process.env.OLLAMA_KEEP_ALIVE || '5m',
+        options: {
+          temperature
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let parsedError = null;
+      try {
+        parsedError = JSON.parse(errorBody);
+      } catch {
+        parsedError = null;
+      }
+      console.error('❌ Error Ollama:', errorBody);
+      throw {
+        provider: 'ollama',
+        code: parsedError?.error ? 'ollama_error' : null,
+        error: parsedError?.error || `Ollama respondió con estado ${response.status}.`,
+        status: response.status
+      };
+    }
+
+    const data = await response.json();
+    const answer = data.message?.content?.trim();
+    if (!answer) {
+      throw {
+        provider: 'ollama',
+        code: 'empty_response',
+        error: 'Ollama no devolvió una respuesta válida.'
+      };
+    }
+
+    return {
+      answer,
+      model,
+      provider: 'ollama',
+      source: 'LEXIA (RAG local + Ollama)'
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw {
+        provider: 'ollama',
+        code: 'timeout',
+        error: 'Ollama no respondió dentro del tiempo límite.'
+      };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateWithConfiguredProvider(messages, options = {}) {
+  const providers = preferOllama ? ['ollama', 'openai'] : ['openai', 'ollama'];
+  const errors = [];
+
+  for (const provider of providers) {
+    try {
+      if (provider === 'openai' && openAiKey) {
+        return { ...(await callOpenAiChat(messages, options)), providerErrors: errors };
+      }
+      if (provider === 'ollama' && ollamaEnabled) {
+        return { ...(await callOllamaChat(messages, options)), providerErrors: errors };
+      }
+    } catch (error) {
+      const providerError = {
+        provider: error.provider || provider,
+        code: error.code || null,
+        error: error.error || error.message || 'Error del proveedor generativo.'
+      };
+      errors.push(providerError);
+      console.warn(`LEXIA proveedor ${providerError.provider} no disponible: ${providerError.error}`);
+    }
+  }
+
+  return { answer: '', provider: 'local', model: 'local-rag-engine', source: 'LEXIA RAG Local', providerErrors: errors };
+}
+
 // Detector robusto de consultas jurídicas
 function isLegalQuery(text) {
   if (!text) return false;
@@ -2078,30 +2276,8 @@ app.post('/api/chat', async (req, res) => {
     const localSearchEvaluation = evaluateLocalSearchSufficiency(memorySearchQuery, localResults);
     logLocalSearchSufficiency('/api/chat', memorySearchQuery, localSearchEvaluation);
     const ragContext = buildRagContext(memorySearchQuery, localResults);
-    if (!openAiKey) {
-      const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
-      const persisted = await persistAnswer(answer, {
-        model: 'local-rag-engine',
-        source: 'LEXIA RAG Local',
-        ragSources: ragContext.sources,
-        memoryMessages: conversationMemory.length,
-        localSearchEvaluation
-      });
-      return res.json({
-        answer,
-        intent,
-        results: ragContext.results,
-        ragSources: ragContext.sources,
-        source: 'LEXIA RAG Local',
-        fallback: true,
-        model: 'local-rag-engine',
-        persisted
-      });
-    }
 
     // CONFIG
-    const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
-    const embModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
     const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
 
     // SISTEMA EXPERTO EN DERECHO PERUANO
@@ -2176,37 +2352,14 @@ REGLAS:
       }
     ];
 
-    // LLAMADA A OPENAI
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${openAiKey}` 
-      },
-      body: JSON.stringify({
-        model,
-        messages: openAiMessages,
-        max_tokens: 2000,
-        temperature
-      })
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      let parsedError = null;
-      try {
-        parsedError = JSON.parse(errorBody);
-      } catch {
-        parsedError = null;
-      }
-      console.error('❌ Error OpenAI:', errorBody);
-      const mapped = mapOpenAiError(response.status, parsedError);
+    const providerResult = await generateWithConfiguredProvider(openAiMessages, { temperature });
+    if (!providerResult.answer) {
       const answer = buildConversationalLegalAnswer(userQuery, intent, ragContext.results);
       const persisted = await persistAnswer(answer, {
         model: 'local-rag-engine',
         source: 'LEXIA RAG Local',
         ragSources: ragContext.sources,
-        providerError: mapped.error,
+        providerErrors: providerResult.providerErrors,
         memoryMessages: conversationMemory.length,
         localSearchEvaluation
       });
@@ -2217,29 +2370,30 @@ REGLAS:
         ragSources: ragContext.sources,
         source: 'LEXIA RAG Local',
         fallback: true,
-        providerError: mapped.error,
-        providerCode: parsedError?.error?.code || null,
+        providerError: providerResult.providerErrors?.[0]?.error || null,
+        providerCode: providerResult.providerErrors?.[0]?.code || null,
         model: 'local-rag-engine',
         persisted
       });
     }
 
-    const data = await response.json();
-    const answer = data.choices?.[0]?.message?.content?.trim() || 'No se pudo generar respuesta';
+    const answer = providerResult.answer;
     const persisted = await persistAnswer(answer, {
-      model,
-      source: 'LEXIA (lpderecho.pe + OpenAI)',
+      model: providerResult.model,
+      source: providerResult.source,
       ragSources: ragContext.sources,
       memoryMessages: conversationMemory.length,
-      localSearchEvaluation
+      localSearchEvaluation,
+      providerErrors: providerResult.providerErrors
     });
     
     res.json({ 
       answer,
       intent,
       ragSources: ragContext.sources,
-      source: 'LEXIA (lpderecho.pe + OpenAI)',
-      model,
+      source: providerResult.source,
+      model: providerResult.model,
+      provider: providerResult.provider,
       retrieval: {
         mode: 'rag',
         results: ragContext.results.length,
@@ -2284,6 +2438,9 @@ app.listen(port, async () => {
   }
   console.log(`📚 Base de conocimiento: ${totalKB} KB`);
   console.log(`🔑 OpenAI: ${openAiKey ? '✅ Conectado' : '❌ No configurado'}`);
-  console.log(`💱 Modelo: ${process.env.OPENAI_MODEL || 'gpt-3.5-turbo'}`);
+  console.log(`💱 Modelo OpenAI: ${process.env.OPENAI_MODEL || 'gpt-3.5-turbo'}`);
+  console.log(`🧠 Ollama: ${ollamaEnabled ? `✅ ${ollamaBaseUrl}` : '❌ No configurado'}`);
+  console.log(`🧩 Modelo Ollama: ${ollamaModel}`);
+  console.log(`🎛️ Proveedor preferido: ${preferOllama ? 'ollama' : 'openai'}`);
   console.log('\n' + '='.repeat(60) + '\n');
 });
