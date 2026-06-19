@@ -22,11 +22,16 @@ const app = express();
 const port = process.env.PORT || 3000;
 const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
 const openAiKey = process.env.OPENAI_API_KEY;
+const xAiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY || process.env.GROCK_API_KEY || '';
+const xAiBaseUrl = String(process.env.XAI_BASE_URL || process.env.GROK_BASE_URL || 'https://api.x.ai/v1').trim().replace(/\/+$/, '');
+const grokModel = process.env.XAI_MODEL || process.env.GROK_MODEL || 'grok-4.3';
 const ollamaBaseUrl = String(process.env.OLLAMA_BASE_URL || '').trim().replace(/\/+$/, '');
 const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
-const forceLocalProvider = process.env.AI_PROVIDER === 'local';
-const preferOllama = !forceLocalProvider && (process.env.AI_PROVIDER === 'ollama' || process.env.OLLAMA_PREFER === 'true');
+const configuredAiProvider = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
+const forceLocalProvider = configuredAiProvider === 'local';
+const preferGrok = !forceLocalProvider && (['grok', 'grock', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
+const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
 const legacyDataDir = path.join(projectRoot, 'data');
 const databaseUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -3586,6 +3591,82 @@ async function callOpenAiChat(messages, options = {}) {
   }
 }
 
+async function callGrokChat(messages, options = {}) {
+  if (!xAiKey) {
+    throw {
+      provider: 'grok',
+      code: 'not_configured',
+      error: 'Grok/xAI no está configurado.'
+    };
+  }
+
+  const model = options.model || grokModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.GROK_TEMPERATURE || process.env.XAI_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35);
+  const { controller, timeout } = createProviderTimeout();
+
+  try {
+    const response = await fetch(`${xAiBaseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${xAiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: Number(process.env.GROK_MAX_TOKENS || process.env.XAI_MAX_TOKENS || 2000),
+        temperature
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let parsedError = null;
+      try {
+        parsedError = JSON.parse(errorBody);
+      } catch {
+        parsedError = null;
+      }
+      console.error('❌ Error Grok/xAI:', errorBody);
+      throw {
+        provider: 'grok',
+        code: parsedError?.error?.code || null,
+        error: parsedError?.error?.message || parsedError?.error || `Grok/xAI respondió con estado ${response.status}.`,
+        status: response.status
+      };
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content?.trim();
+    if (!answer) {
+      throw {
+        provider: 'grok',
+        code: 'empty_response',
+        error: 'Grok/xAI no devolvió una respuesta válida.'
+      };
+    }
+
+    return {
+      answer,
+      model: data.model || model,
+      provider: 'grok',
+      source: 'LEXIA (RAG local + Grok/xAI)'
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw {
+        provider: 'grok',
+        code: 'timeout',
+        error: 'Grok/xAI no respondió dentro del tiempo límite.'
+      };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callOllamaChat(messages, options = {}) {
   if (!ollamaEnabled) {
     throw {
@@ -3677,11 +3758,16 @@ async function generateWithConfiguredProvider(messages, options = {}) {
     };
   }
 
-  const providers = preferOllama ? ['ollama', 'openai'] : ['openai', 'ollama'];
+  const providers = preferGrok
+    ? ['grok', 'openai', 'ollama']
+    : (preferOllama ? ['ollama', 'grok', 'openai'] : ['openai', 'grok', 'ollama']);
   const errors = [];
 
   for (const provider of providers) {
     try {
+      if (provider === 'grok' && xAiKey) {
+        return { ...(await callGrokChat(messages, options)), providerErrors: errors };
+      }
       if (provider === 'openai' && openAiKey) {
         return { ...(await callOpenAiChat(messages, options)), providerErrors: errors };
       }
@@ -4491,8 +4577,10 @@ app.listen(port, async () => {
   console.log(`📚 Base de conocimiento: ${totalKB} KB`);
   console.log(`🔑 OpenAI: ${openAiKey ? '✅ Conectado' : '❌ No configurado'}`);
   console.log(`💱 Modelo OpenAI: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}`);
+  console.log(`⚡ Grok/xAI: ${xAiKey ? '✅ Conectado' : '❌ No configurado'}`);
+  console.log(`🧠 Modelo Grok: ${grokModel}`);
   console.log(`🧠 Ollama: ${ollamaEnabled ? `✅ ${ollamaBaseUrl}` : '❌ No configurado'}`);
   console.log(`🧩 Modelo Ollama: ${ollamaModel}`);
-  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferOllama ? 'ollama' : 'openai')}`);
+  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferGrok ? 'grok' : (preferOllama ? 'ollama' : 'openai'))}`);
   console.log('\n' + '='.repeat(60) + '\n');
 });
