@@ -1981,15 +1981,9 @@ function buildGreetingAnswer() {
 
 function buildFollowUpClarificationAnswer() {
   return [
-    'Claro. Te lo explico con gusto, pero necesito saber sobre qué tema o caso quieres que lo haga.',
+    'Claro, pero necesito ubicar el caso para no responderte en abstracto.',
     '',
-    'Puedes escribirme una frase corta, por ejemplo:',
-    '- "Explícame el despido arbitrario"',
-    '- "Explícame qué hacer si me deben alimentos"',
-    '- "Explícame cómo responder una carta notarial"',
-    '- "Explícame este contrato"',
-    '',
-    'Si estabas respondiendo a una explicación anterior, copia una parte o dime el tema y lo pongo en palabras más simples.'
+    '¿De qué problema jurídico estamos hablando: despido, deuda, alimentos, contrato, denuncia u otro tema?'
   ].join('\n');
 }
 
@@ -2498,7 +2492,7 @@ function containsNormalizedTerm(text, term) {
 }
 
 function buildSourceSummary(results, intent, limit = 3) {
-  const relevantSources = filterSourcesForIntent(results, intent)
+  const rankedSources = filterSourcesForIntent(results, intent)
     .filter(item => Number(item.relevance || 0) >= 10)
     .sort((a, b) => {
       const aHasUrl = itemHasExternalUrl(a) ? 1 : 0;
@@ -2507,6 +2501,8 @@ function buildSourceSummary(results, intent, limit = 3) {
       const bGeneric = isGenericSourceResult(b) ? 1 : 0;
       return (bHasUrl - aHasUrl) || (aGeneric - bGeneric) || Number(b.relevance || 0) - Number(a.relevance || 0);
     });
+  const specificSources = rankedSources.filter(item => !isGenericSourceResult(item));
+  const relevantSources = specificSources.length ? specificSources : rankedSources;
 
   if (!relevantSources.length) {
     return [
@@ -2540,10 +2536,10 @@ function isGenericSourceResult(item) {
     item?.excerpt
   ].join(' '));
   return text.includes('constitucion politica')
-    || text.includes('base juridica interna lexia')
-    || text.includes('base juridica local lexia')
     || text.includes('resumen los derechos laborales')
-    || text.includes('derechos laborales basicos');
+    || text.includes('derechos laborales basicos')
+    || text.includes('legal faqs')
+    || text.includes('referencias fuente labor rights');
 }
 
 function buildTopicGuidance(intent) {
@@ -2593,6 +2589,14 @@ function buildTopicGuidance(intent) {
     ];
   }
 
+  if (topicId === 'beneficios_sociales') {
+    return [
+      'Si tu empleador no te paga beneficios sociales, el caso se ordena por conceptos: CTS, gratificaciones, vacaciones, remuneraciones pendientes y liquidación.',
+      '',
+      'No conviene reclamar todo junto sin cálculo; primero hay que separar periodos, montos y pagos que sí recibiste.'
+    ];
+  }
+
   if (topicId === 'alimentos') {
     return [
       'En alimentos, primero hay que distinguir si hablas de una demanda de pensión, una denuncia por incumplimiento, una liquidación de deuda o una ejecución de acta/sentencia.',
@@ -2626,9 +2630,9 @@ function buildTopicGuidance(intent) {
   }
 
   return [
-    `Entiendo que quieres orientación sobre ${intent?.topic?.label || 'este tema'}. Con la información actual puedo darte una guía general, pero para afinarla necesito algunos datos del caso.`,
+    `Con lo que me dices, esto se debe mirar desde ${intent?.area?.label || 'el área legal aplicable'}, pero falta aterrizar el hecho central.`,
     '',
-    'Lo más útil es saber qué ocurrió, cuándo ocurrió, qué documentos o pruebas existen y qué resultado buscas.'
+    'Para darte una respuesta útil, necesito ubicar qué pasó, cuándo pasó y qué documento o prueba existe.'
   ];
 }
 
@@ -2988,6 +2992,25 @@ function buildTargetedMissingQuestions(intent, reasoningProfile) {
   ];
 }
 
+function buildSingleLegalQuestion(intent, reasoningProfile) {
+  const topicId = intent?.topic?.id || '';
+  const missing = Array.isArray(reasoningProfile?.missingInfo) ? reasoningProfile.missingInfo : [];
+
+  if (topicId === 'despido') return '¿Te entregaron una carta de despido o solo te lo dijeron verbalmente?';
+  if (topicId === 'beneficios_sociales') return '¿Sigues trabajando ahí o ya terminó la relación laboral?';
+  if (topicId === 'alimentos') return '¿Ya existe una sentencia o acta de conciliación sobre alimentos?';
+  if (topicId === 'propiedad_inmueble' || topicId === 'posesion') return '¿Tienes título, contrato o partida registral del inmueble?';
+  if (intent?.area?.id === 'derecho_penal') return '¿Ya hiciste denuncia o todavía estás evaluando si corresponde denunciar?';
+  if (missing.some(item => normalizeText(item).includes('fecha'))) return '¿Cuándo ocurrió el hecho principal?';
+  if (missing.some(item => normalizeText(item).includes('document'))) return '¿Qué documento o prueba tienes ahora mismo?';
+  return '¿Qué resultado buscas: reclamar, denunciar, negociar, responder un documento o solo entender tus derechos?';
+}
+
+function isShortUserInput(query) {
+  const terms = getQueryTerms(query);
+  return terms.length <= 3 || String(query || '').trim().length <= 45;
+}
+
 function collectIntelligenceItems(results, key, limit = 5) {
   const items = [];
   for (const result of Array.isArray(results) ? results : []) {
@@ -3059,33 +3082,65 @@ function buildLocalLegalAnalysisSections(intent, results, reasoningProfile) {
 
 function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
   const lines = [];
-  lines.push(...buildProgressiveGuidance(intent, reasoningProfile, graphReasoning));
+  const shortInput = isShortUserInput(query);
+  const normalizedQuery = normalizeText(query);
+  const forcedBenefitsGuidance = normalizedQuery.includes('beneficios sociales')
+    ? [
+        'Si tu empleador no te paga beneficios sociales, el punto no es solo reclamar: primero hay que identificar qué concepto falta y desde cuándo.',
+        'En laboral, CTS, gratificaciones, vacaciones, remuneraciones pendientes y liquidación se revisan por separado para no mezclar montos.'
+      ]
+    : null;
+  const guidance = forcedBenefitsGuidance || buildProgressiveGuidance(intent, reasoningProfile, graphReasoning);
+  const localAnalysis = buildLocalLegalAnalysisSections(intent, results, reasoningProfile);
+  const rules = collectIntelligenceItems(results, 'reglas_practicas', 2);
+  const risks = collectIntelligenceItems(results, 'riesgos', 2);
+  const steps = collectIntelligenceItems(results, 'pasos', 3);
+  const documents = collectIntelligenceItems(results, 'documentos', 4);
 
   if (intent?.type?.id === 'consulta_normativa') {
-    lines.push('');
+    lines.push(guidance[0] || 'Primero hay que ubicar la norma exacta y confirmar si está vigente.');
     if (results.length) {
-      lines.push('Encontré referencias en la base local que pueden servir para ubicar y explicar la norma.');
+      lines.push('Con las referencias disponibles puedo ayudarte a entender el alcance, pero no conviene citar una norma sin verificar el texto oficial.');
     } else {
-      lines.push('No encontré una coincidencia exacta en la base local. Conviene verificar el texto oficial de la norma antes de citarla.');
+      lines.push('No tengo una coincidencia exacta en la base local; lo correcto es verificarla en una fuente oficial antes de usarla.');
     }
   } else {
+    if (guidance.length) {
+      lines.push(guidance.slice(0, shortInput ? 1 : 2).join(' '));
+    } else {
+      lines.push(`Veo que esto cae en ${intent?.area?.label || 'un tema jurídico'}, pero necesito un dato más para aterrizarlo bien.`);
+    }
+
+    if (!shortInput && rules.length) {
+      lines.push('');
+      lines.push(`La clave jurídica aquí es esta: ${rules[0]}.`);
+    }
+
+    if (!shortInput && risks.length) {
+      lines.push(`El riesgo práctico es ${risks[0]}, así que conviene actuar con documentos y fechas claras.`);
+    }
+
+    if (!shortInput && steps.length) {
+      lines.push('');
+      lines.push(`Yo empezaría por ${steps.slice(0, 3).join(', ')}.`);
+    }
+
+    if (!shortInput && documents.length) {
+      lines.push('');
+      lines.push(`Ten cerca ${documents.slice(0, 4).join(', ')}; con eso se puede evaluar mejor la ruta legal.`);
+    }
+
     lines.push('');
-    const localAnalysis = buildLocalLegalAnalysisSections(intent, results, reasoningProfile);
-    if (localAnalysis.length) {
-      lines.push(...localAnalysis);
-      lines.push('');
-    }
-    const targetedQuestions = localAnalysis.length ? [] : buildTargetedMissingQuestions(intent, reasoningProfile);
-    if (targetedQuestions.length) {
-      lines.push(...targetedQuestions);
-      lines.push('');
-    }
-    lines.push('Con esa información puedo pasar de orientación inicial a próximos pasos más concretos.');
+    lines.push(normalizedQuery.includes('beneficios sociales')
+      ? '¿Sigues trabajando ahí o ya terminó la relación laboral?'
+      : buildSingleLegalQuestion(intent, reasoningProfile));
   }
-  lines.push('');
-  lines.push('Nota: esto es orientación general. Si hay riesgo actual, amenazas concretas o plazos próximos, conviene buscar apoyo inmediato de la autoridad competente y asesoría legal directa.');
-  lines.push('');
-  lines.push(buildSourceSummary(results, intent));
+
+  const sourceSummary = buildSourceSummary(results, intent);
+  if (!shortInput && results.length && !sourceSummary.includes('No encontré una fuente específica')) {
+    lines.push('');
+    lines.push(sourceSummary);
+  }
 
   return lines.join('\n');
 }
@@ -3108,12 +3163,7 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     ? previousFacts[previousFacts.length - 1]
     : (reasoningProfile?.facts || []).find(fact => !isConversationalFollowUp(fact)) || query;
 
-  lines.push('Siguiendo el mismo caso, no voy a repetir toda la guía inicial.');
-  lines.push('');
-  lines.push(`Lo que tengo del hilo es: ${truncateForRag(lastUserFact, 220)}`);
-  if (recentAssistant) {
-    lines.push(`Ya veníamos revisando: ${truncateForRag(recentAssistant.content, 260)}`);
-  }
+  lines.push(`En tu caso, lo importante sigue siendo esto: ${truncateForRag(lastUserFact, 220)}`);
 
   const intelligence = (results || [])
     .map(item => item.intelligence || item.inteligencia)
@@ -3122,39 +3172,32 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   const documents = Array.isArray(intelligence?.documentos) ? intelligence.documentos : [];
   const risks = Array.isArray(intelligence?.riesgos) ? intelligence.riesgos : reasoningProfile?.risks || [];
 
-  lines.push('');
-  lines.push('Para avanzar desde aquí:');
   const nextSteps = steps.length ? steps : [
     'ordenar los hechos en una línea de tiempo',
     'separar documentos, pagos y comunicaciones',
     'definir si buscas reclamar, denunciar, negociar o calcular un monto'
   ];
-  nextSteps.slice(0, 4).forEach((step, index) => {
-    lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
-  });
+  lines.push('');
+  lines.push(`Lo aterrizo así: primero ${nextSteps.slice(0, 3).join(', ')}.`);
 
   if (documents.length) {
     lines.push('');
-    lines.push(`Ten a la mano: ${documents.slice(0, 6).join(', ')}.`);
+    lines.push(`Para sostenerlo legalmente, sirven especialmente: ${documents.slice(0, 5).join(', ')}.`);
   }
 
   if (risks.length) {
     lines.push('');
-    lines.push(`Cuidado con: ${risks.slice(0, 3).join('; ')}.`);
-  }
-
-  const questions = buildTargetedMissingQuestions(intent, reasoningProfile)
-    .filter(line => !/^Para (orientarte|afinar)/.test(line));
-  if (questions.length) {
-    lines.push('');
-    lines.push('Respóndeme estos datos y sigo el análisis sin empezar de cero:');
-    questions.slice(0, 3).forEach((question, index) => {
-      lines.push(`${index + 1}. ${question.replace(/^\d+\.\s*/, '')}`);
-    });
+    lines.push(`El cuidado principal es ${risks[0]}.`);
   }
 
   lines.push('');
-  lines.push(buildSourceSummary(results, intent, 2));
+  lines.push(buildSingleLegalQuestion(intent, reasoningProfile));
+
+  const sourceSummary = buildSourceSummary(results, intent, 2);
+  if (results.length && !sourceSummary.includes('No encontré una fuente específica')) {
+    lines.push('');
+    lines.push(sourceSummary);
+  }
   return lines.join('\n');
 }
 
@@ -3664,13 +3707,18 @@ function buildLexiaSystemPrompt() {
 
 PERSONALIDAD Y ESTILO:
 - Mantén una conversación amable, humana y profesional. No respondas como un buscador ni como un formulario.
-- Empieza reconociendo brevemente la preocupación del usuario cuando corresponda: "Entiendo", "Veamos el caso", "Con esos datos, lo importante es...".
+- Habla como una abogada cercana: directa, clara y con criterio. No suenes como manual, catálogo, plantilla ni soporte técnico.
+- Responde primero a la intención real del usuario. Si pregunta "qué hago", da una ruta; si pregunta "cómo así", explica lo anterior; si da un dato nuevo, incorpóralo.
+- Si ya hay historial, continúa el hilo sin saludar, sin resumir todo de nuevo y sin repetir la misma estructura.
+- Si el usuario escribe poco o ambiguo, haz una sola pregunta concreta y jurídica. No hagas listas de preguntas salvo que el usuario pida preparar el caso.
+- Si no entiendes algo, pregunta al usuario en vez de inventar hechos.
+- Empieza reconociendo brevemente la preocupación solo cuando ayude: "Con esos datos...", "En tu caso...", "Lo relevante aquí es...".
 - Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
-- Si faltan datos, no te limites a decir que falta información: responde lo posible con supuestos claros y formula 2 a 4 preguntas concretas para continuar la conversación.
+- Si faltan datos, responde lo posible con supuestos claros y formula una pregunta concreta para continuar.
 - Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
 - Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
-- Haz que la persona se sienta acompañada: resume su problema en una frase, valida la preocupación sin exagerar y continúa con una guía práctica.
 - No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
+- Mantente dentro del mundo jurídico. No respondas como consejero general, psicólogo, vendedor ni bot administrativo.
 
 CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Razonamiento jurídico: antes de responder, analiza internamente hechos, problema jurídico, regla aplicable, riesgos, prueba disponible, datos faltantes y conclusión probable. No muestres cadena de pensamiento; muestra solo un resumen claro del criterio y las razones principales.
@@ -3693,12 +3741,12 @@ ESPECIALIDAD EN DERECHO PERUANO:
 - Constitucional: derechos fundamentales y garantías.
 
 FORMATO DE RESPUESTA:
-No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación clara con estas partes cuando aporten valor:
+No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación jurídica clara solo con las partes que aporten valor:
 1. Primero, una respuesta directa y entendible.
 2. Luego, la explicación legal en lenguaje sencillo.
 3. Si corresponde, base legal, criterios o jurisprudencia relevante.
 4. Después, pasos prácticos y documentos que conviene reunir.
-5. Cierra con preguntas de seguimiento útiles o con "Fuentes y verificación" cuando hayas usado normas o referencias.
+5. Cierra con una pregunta concreta si falta información, o con "Fuentes y verificación" solo cuando hayas usado normas o referencias específicas.
 
 REGLAS:
 - Siempre responde en español, con tono profesional, cercano y claro.
