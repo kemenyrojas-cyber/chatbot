@@ -1183,7 +1183,7 @@ function getCombinedLegalKnowledgeCorpus() {
 
 function getAllowedLegalSourceHosts() {
   const configured = String(process.env.LEGAL_ALLOWED_SOURCE_HOSTS || '')
-    .split(',')
+    .split(/[;,]/)
     .map(item => item.trim().toLowerCase())
     .filter(Boolean);
   return configured.length ? configured : [
@@ -1197,6 +1197,8 @@ function getAllowedLegalSourceHosts() {
     'www.gob.pe',
     'sunarp.gob.pe',
     'www.sunarp.gob.pe',
+    'sunafil.gob.pe',
+    'www.sunafil.gob.pe',
     'lpderecho.pe',
     'www.lpderecho.pe'
   ];
@@ -1347,6 +1349,98 @@ async function fetchLegalWebSource(rawUrl) {
   }
 
   throw new Error(`Tipo de contenido no soportado desde web: ${contentType}`);
+}
+
+function getLegalDiscoverySeedUrls() {
+  return String(process.env.LEGAL_DISCOVERY_SEED_URLS || '')
+    .split(/[;,]/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeAbsoluteUrl(href, baseUrl) {
+  try {
+    const parsed = new URL(String(href || '').trim(), baseUrl);
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function extractCandidateLinksFromHtml(html, baseUrl, query = '') {
+  const $ = cheerio.load(String(html || ''));
+  const queryTerms = getQueryTerms(query);
+  const candidates = [];
+  const seen = new Set();
+
+  $('a[href]').each((_, element) => {
+    const href = $(element).attr('href');
+    const url = normalizeAbsoluteUrl(href, baseUrl);
+    if (!url || seen.has(url)) return;
+
+    let parsed = null;
+    try {
+      parsed = parseTrustedLegalUrl(url);
+    } catch {
+      return;
+    }
+
+    const label = $(element).text().replace(/\s+/g, ' ').trim().slice(0, 220);
+    const haystack = normalizeText(`${label} ${parsed.pathname}`);
+    const relevance = queryTerms.length
+      ? queryTerms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0)
+      : 1;
+
+    if (queryTerms.length && relevance === 0) return;
+    seen.add(url);
+    candidates.push({
+      url: parsed.toString(),
+      title: label || parsed.pathname.split('/').filter(Boolean).pop() || parsed.hostname,
+      host: parsed.hostname,
+      relevance
+    });
+  });
+
+  return candidates
+    .sort((a, b) => b.relevance - a.relevance || a.url.localeCompare(b.url))
+    .slice(0, 50);
+}
+
+async function discoverLegalSourceCandidates({ query = '', seedUrls = [], limit = 12 } = {}) {
+  const seeds = [...new Set((seedUrls.length ? seedUrls : getLegalDiscoverySeedUrls()).map(item => item.trim()).filter(Boolean))];
+  const maxLimit = Math.max(1, Math.min(Number(limit) || 12, 25));
+  const candidates = [];
+  const errors = [];
+  const seen = new Set();
+
+  for (const seedUrl of seeds.slice(0, 8)) {
+    try {
+      const parsedSeed = parseTrustedLegalUrl(seedUrl);
+      const response = await fetchWithTimeout(parsedSeed.toString(), {
+        headers: { accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5' }
+      });
+      if (!response.ok) throw new Error(`La semilla respondió ${response.status}.`);
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('html') && !contentType.includes('text') && contentType) {
+        throw new Error(`La semilla no es HTML/texto: ${contentType}.`);
+      }
+
+      const html = await response.text();
+      for (const candidate of extractCandidateLinksFromHtml(html, parsedSeed.toString(), query)) {
+        if (seen.has(candidate.url)) continue;
+        seen.add(candidate.url);
+        candidates.push({ ...candidate, seedUrl: parsedSeed.toString() });
+        if (candidates.length >= maxLimit) break;
+      }
+    } catch (error) {
+      errors.push({ seedUrl, error: error.message });
+    }
+    if (candidates.length >= maxLimit) break;
+  }
+
+  return { candidates: candidates.slice(0, maxLimit), errors };
 }
 
 function evaluateLegalContent(text, title = '', url = '') {
@@ -3830,6 +3924,114 @@ app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res)
   }
 });
 
+async function ingestLegalWebSourceFromUrl(rawUrl, body = {}) {
+  const parsedUrl = parseTrustedLegalUrl(rawUrl);
+  const fetched = await fetchLegalWebSource(parsedUrl.toString());
+  const text = String(fetched.text || '').replace(/\u0000/g, '').trim();
+
+  if (text.length < 350) {
+    const error = new Error('La página no tiene texto suficiente para alimentar el motor.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const legalEvaluation = evaluateLegalContent(text, fetched.title, parsedUrl.toString());
+  if (!legalEvaluation.isLegal) {
+    const error = new Error('La página no parece contener información jurídica suficiente.');
+    error.statusCode = 422;
+    error.evaluation = legalEvaluation;
+    throw error;
+  }
+
+  const reviewStatus = normalizeReviewStatus(
+    isLegalCuratorEmail(body.email)
+      ? body.reviewStatus || body.status || (body.autoApprove === true || body.autoApprove === 'true' ? 'approved' : 'pending_review')
+      : 'pending_review',
+    'pending_review'
+  );
+  const contentHash = hashContent(`${parsedUrl.toString()}\n${text}`);
+  const source = {
+    id: `source-${contentHash.slice(0, 16)}`,
+    email: normalizeEmail(body.email),
+    originalName: parsedUrl.toString(),
+    mimeType: fetched.mimeType || 'text/html',
+    sizeBytes: Buffer.byteLength(text, 'utf8'),
+    title: String(body.title || fetched.title || parsedUrl.hostname).trim().slice(0, 180),
+    sourceLabel: String(body.source || body.fuente || fetched.sourceLabel || parsedUrl.hostname).trim().slice(0, 180),
+    url: parsedUrl.toString(),
+    sourceType: 'web',
+    reviewStatus,
+    legalScore: legalEvaluation.score,
+    legalEvaluation,
+    contentHash,
+    text
+  };
+  const entries = buildIngestedLegalEntries({
+    sourceId: source.id,
+    fileName: parsedUrl.hostname,
+    title: source.title,
+    text,
+    materia: String(body.materia || '').trim(),
+    fecha: String(body.fecha || fetched.date || '').trim(),
+    fuente: source.sourceLabel,
+    url: source.url,
+    modulo: String(body.modulo || '').trim()
+  });
+
+  if (!entries.length) {
+    const error = new Error('No se pudieron crear entradas jurídicas desde la URL.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let storage = 'local';
+  let dbPersisted = false;
+  if (accountsPool) {
+    try {
+      dbPersisted = await persistIngestedLegalKnowledgeToDb({ source, entries });
+      storage = dbPersisted ? 'postgres' : 'local';
+    } catch (error) {
+      console.warn('⚠️ No se pudo persistir URL en PostgreSQL, usando fallback local:', error.message);
+    }
+  }
+
+  let localBackup = null;
+  if (reviewStatus === 'approved' && (!dbPersisted || process.env.LEGAL_INGEST_WRITE_LOCAL === 'true')) {
+    localBackup = persistIngestedLegalKnowledgeLocally({ source, entries });
+  }
+
+  if (reviewStatus === 'approved') {
+    mergeRuntimeLegalKnowledge(entries);
+    if (dbPersisted) legalIngestedCorpusLoaded = true;
+  }
+
+  console.log(`[LEXIA Web Ingest] source=${source.id}; status=${reviewStatus}; score=${legalEvaluation.score}; storage=${storage}; url="${parsedUrl.toString()}"`);
+
+  return {
+    ok: true,
+    source: {
+      id: source.id,
+      title: source.title,
+      url: source.url,
+      sourceType: source.sourceType,
+      reviewStatus,
+      legalScore: source.legalScore,
+      storage
+    },
+    evaluation: legalEvaluation,
+    entries: entries.map(entry => ({
+      id: entry.id,
+      titulo: entry.titulo,
+      materia: entry.materia,
+      modulo: entry.modulo,
+      resumen: entry.resumen
+    })),
+    usableInChat: reviewStatus === 'approved',
+    localBackup,
+    modules: getLegalKnowledgeCounts()
+  };
+}
+
 app.post('/api/legal-ingest-url', async (req, res) => {
   try {
     const body = req.body || {};
@@ -3837,107 +4039,7 @@ app.post('/api/legal-ingest-url', async (req, res) => {
     const rawUrl = String(body.url || '').trim();
     if (!rawUrl) return res.status(400).json({ error: 'La URL es obligatoria.' });
 
-    const parsedUrl = parseTrustedLegalUrl(rawUrl);
-    const fetched = await fetchLegalWebSource(parsedUrl.toString());
-    const text = String(fetched.text || '').replace(/\u0000/g, '').trim();
-
-    if (text.length < 350) {
-      return res.status(400).json({ error: 'La página no tiene texto suficiente para alimentar el motor.' });
-    }
-
-    const legalEvaluation = evaluateLegalContent(text, fetched.title, parsedUrl.toString());
-    if (!legalEvaluation.isLegal) {
-      return res.status(422).json({
-        error: 'La página no parece contener información jurídica suficiente.',
-        evaluation: legalEvaluation
-      });
-    }
-
-    const reviewStatus = normalizeReviewStatus(
-      isLegalCuratorEmail(body.email)
-        ? body.reviewStatus || body.status || (body.autoApprove === true || body.autoApprove === 'true' ? 'approved' : 'pending_review')
-        : 'pending_review',
-      'pending_review'
-    );
-    const contentHash = hashContent(`${parsedUrl.toString()}\n${text}`);
-    const source = {
-      id: `source-${contentHash.slice(0, 16)}`,
-      email: normalizeEmail(body.email),
-      originalName: parsedUrl.toString(),
-      mimeType: fetched.mimeType || 'text/html',
-      sizeBytes: Buffer.byteLength(text, 'utf8'),
-      title: String(body.title || fetched.title || parsedUrl.hostname).trim().slice(0, 180),
-      sourceLabel: String(body.source || body.fuente || fetched.sourceLabel || parsedUrl.hostname).trim().slice(0, 180),
-      url: parsedUrl.toString(),
-      sourceType: 'web',
-      reviewStatus,
-      legalScore: legalEvaluation.score,
-      legalEvaluation,
-      contentHash,
-      text
-    };
-    const entries = buildIngestedLegalEntries({
-      sourceId: source.id,
-      fileName: parsedUrl.hostname,
-      title: source.title,
-      text,
-      materia: String(body.materia || '').trim(),
-      fecha: String(body.fecha || fetched.date || '').trim(),
-      fuente: source.sourceLabel,
-      url: source.url,
-      modulo: String(body.modulo || '').trim()
-    });
-
-    if (!entries.length) {
-      return res.status(400).json({ error: 'No se pudieron crear entradas jurídicas desde la URL.' });
-    }
-
-    let storage = 'local';
-    let dbPersisted = false;
-    if (accountsPool) {
-      try {
-        dbPersisted = await persistIngestedLegalKnowledgeToDb({ source, entries });
-        storage = dbPersisted ? 'postgres' : 'local';
-      } catch (error) {
-        console.warn('⚠️ No se pudo persistir URL en PostgreSQL, usando fallback local:', error.message);
-      }
-    }
-
-    let localBackup = null;
-    if (reviewStatus === 'approved' && (!dbPersisted || process.env.LEGAL_INGEST_WRITE_LOCAL === 'true')) {
-      localBackup = persistIngestedLegalKnowledgeLocally({ source, entries });
-    }
-
-    if (reviewStatus === 'approved') {
-      mergeRuntimeLegalKnowledge(entries);
-      if (dbPersisted) legalIngestedCorpusLoaded = true;
-    }
-
-    console.log(`[LEXIA Web Ingest] source=${source.id}; status=${reviewStatus}; score=${legalEvaluation.score}; storage=${storage}; url="${parsedUrl.toString()}"`);
-
-    return res.json({
-      ok: true,
-      source: {
-        id: source.id,
-        title: source.title,
-        url: source.url,
-        sourceType: source.sourceType,
-        reviewStatus,
-        legalScore: source.legalScore,
-        storage
-      },
-      evaluation: legalEvaluation,
-      entries: entries.map(entry => ({
-        id: entry.id,
-        titulo: entry.titulo,
-        materia: entry.materia,
-        modulo: entry.modulo,
-        resumen: entry.resumen
-      })),
-      usableInChat: reviewStatus === 'approved',
-      localBackup,
-      modules: getLegalKnowledgeCounts()
-    });
+    return res.json(await ingestLegalWebSourceFromUrl(rawUrl, body));
   } catch (error) {
     console.error('❌ Error en legal-ingest-url:', error);
     const message = error.message || 'No se pudo procesar la URL.';
@@ -3948,6 +4050,89 @@ app.post('/api/legal-ingest-url', async (req, res) => {
       ? 400
       : error.statusCode || 500;
     return res.status(status).json({ error: message });
+  }
+});
+
+app.post('/api/legal-engine/discover', async (req, res) => {
+  try {
+    const body = req.body || {};
+    assertLegalCuratorAccess(body.email);
+    const query = String(body.query || '').trim();
+    const seedUrls = Array.isArray(body.seedUrls) ? body.seedUrls.map(String) : [];
+    const limit = Number(body.limit || 12);
+
+    const discovery = await discoverLegalSourceCandidates({ query, seedUrls, limit });
+    return res.json({
+      ok: true,
+      query,
+      candidates: discovery.candidates,
+      errors: discovery.errors,
+      configuredSeeds: getLegalDiscoverySeedUrls().length
+    });
+  } catch (error) {
+    console.error('❌ Error en legal-engine/discover:', error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'No se pudieron descubrir fuentes jurídicas.'
+    });
+  }
+});
+
+app.post('/api/legal-engine/feed', async (req, res) => {
+  try {
+    const body = req.body || {};
+    assertLegalCuratorAccess(body.email);
+    const query = String(body.query || '').trim();
+    const explicitUrls = Array.isArray(body.urls) ? body.urls.map(String).filter(Boolean) : [];
+    const seedUrls = Array.isArray(body.seedUrls) ? body.seedUrls.map(String) : [];
+    const limit = Math.max(1, Math.min(Number(body.limit || 5), 10));
+    const urls = explicitUrls.length
+      ? explicitUrls.slice(0, limit)
+      : (await discoverLegalSourceCandidates({ query, seedUrls, limit })).candidates.map(item => item.url);
+
+    if (!urls.length) {
+      return res.status(400).json({
+        error: 'No se encontraron fuentes para alimentar LEXIA. Configura LEGAL_DISCOVERY_SEED_URLS o envía seedUrls/urls.'
+      });
+    }
+
+    const ingested = [];
+    const failed = [];
+    for (const url of urls) {
+      try {
+        const result = await ingestLegalWebSourceFromUrl(url, {
+          ...body,
+          autoApprove: body.autoApprove !== false,
+          reviewStatus: body.reviewStatus || 'approved',
+          source: body.source || 'Lexia Engine Web Discovery'
+        });
+        ingested.push({
+          url,
+          source: result.source,
+          entries: result.entries.length,
+          usableInChat: result.usableInChat
+        });
+      } catch (error) {
+        failed.push({
+          url,
+          error: error.message,
+          evaluation: error.evaluation
+        });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      query,
+      requested: urls.length,
+      ingested,
+      failed,
+      modules: getLegalKnowledgeCounts()
+    });
+  } catch (error) {
+    console.error('❌ Error en legal-engine/feed:', error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'No se pudo alimentar el cerebro de LEXIA.'
+    });
   }
 });
 
