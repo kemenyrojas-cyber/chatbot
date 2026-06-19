@@ -25,7 +25,8 @@ const openAiKey = process.env.OPENAI_API_KEY;
 const ollamaBaseUrl = String(process.env.OLLAMA_BASE_URL || '').trim().replace(/\/+$/, '');
 const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
-const preferOllama = process.env.AI_PROVIDER === 'ollama' || process.env.OLLAMA_PREFER === 'true';
+const forceLocalProvider = process.env.AI_PROVIDER === 'local';
+const preferOllama = !forceLocalProvider && (process.env.AI_PROVIDER === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
 const legacyDataDir = path.join(projectRoot, 'data');
 const databaseUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -1507,9 +1508,9 @@ const legalAreas = [
   {
     id: 'derecho_laboral',
     label: 'Derecho Laboral',
-    keywords: ['laboral', 'trabajo', 'trabajador', 'empleado', 'empleador', 'despido', 'despidi', 'despidio', 'despidió', 'despidieron', 'despedido', 'carta de despido', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'],
+    keywords: ['laboral', 'trabajo', 'trabajador', 'trabajadora', 'empleado', 'empleada', 'empleador', 'despido', 'despidi', 'despide', 'despiden', 'despidio', 'despidió', 'despidieron', 'despedido', 'despedida', 'carta de despido', 'sin carta', 'sueldo', 'salario', 'cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'],
     topics: [
-      { id: 'despido', label: 'Despido', keywords: ['despido', 'despidi', 'despidio', 'despidió', 'despidieron', 'despedido'] },
+      { id: 'despido', label: 'Despido', keywords: ['despido', 'despidi', 'despide', 'despiden', 'despidio', 'despidió', 'despidieron', 'despedido', 'despedida', 'sin carta'] },
       { id: 'beneficios_sociales', label: 'Beneficios sociales', keywords: ['cts', 'gratificacion', 'gratificación', 'vacaciones', 'liquidacion', 'liquidación'] }
     ]
   },
@@ -2857,6 +2858,75 @@ function buildTargetedMissingQuestions(intent, reasoningProfile) {
   ];
 }
 
+function collectIntelligenceItems(results, key, limit = 5) {
+  const items = [];
+  for (const result of Array.isArray(results) ? results : []) {
+    const intelligence = result?.inteligencia || result?.intelligence || {};
+    const values = intelligence?.[key];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) {
+      const clean = String(value || '').replace(/\s+/g, ' ').trim();
+      if (clean && !items.some(item => normalizeText(item) === normalizeText(clean))) {
+        items.push(clean);
+      }
+      if (items.length >= limit) return items;
+    }
+  }
+  return items;
+}
+
+function buildLocalLegalAnalysisSections(intent, results, reasoningProfile) {
+  const topResult = Array.isArray(results)
+    ? results.find(item => {
+        const intelligence = item?.inteligencia || item?.intelligence || {};
+        return Object.keys(intelligence).length;
+      })
+    : null;
+  const rules = collectIntelligenceItems(results, 'reglas_practicas', 3);
+  const legalProblems = collectIntelligenceItems(results, 'problemas_juridicos', 3);
+  const risks = collectIntelligenceItems(results, 'riesgos', 4);
+  const documents = collectIntelligenceItems(results, 'documentos', 5);
+  const steps = collectIntelligenceItems(results, 'pasos', 5);
+  const usefulQuestions = collectIntelligenceItems(results, 'preguntas', 3);
+  const lines = [];
+
+  if (!topResult && !rules.length && !steps.length) return lines;
+
+  lines.push('Análisis inicial:');
+  if (legalProblems.length) {
+    lines.push(`El problema jurídico principal es ${legalProblems[0]}.`);
+  } else if (reasoningProfile?.legalIssue) {
+    lines.push(reasoningProfile.legalIssue);
+  }
+  if (rules.length) {
+    lines.push(`Criterio práctico: ${rules[0]}.`);
+  }
+  if (risks.length) {
+    lines.push(`Riesgo a cuidar: ${risks[0]}.`);
+  }
+
+  if (steps.length) {
+    lines.push('', 'Qué hacer ahora:');
+    steps.slice(0, 4).forEach((step, index) => {
+      lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
+    });
+  }
+
+  if (documents.length) {
+    lines.push('', 'Documentos o pruebas útiles:');
+    lines.push(documents.slice(0, 5).join(', ') + '.');
+  }
+
+  if (usefulQuestions.length) {
+    lines.push('', 'Para darte una ruta más exacta, responde:');
+    usefulQuestions.slice(0, 3).forEach((question, index) => {
+      lines.push(`${index + 1}. ${question}`);
+    });
+  }
+
+  return lines;
+}
+
 function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
   const lines = [];
   lines.push(...buildProgressiveGuidance(intent, reasoningProfile, graphReasoning));
@@ -2870,7 +2940,12 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     }
   } else {
     lines.push('');
-    const targetedQuestions = buildTargetedMissingQuestions(intent, reasoningProfile);
+    const localAnalysis = buildLocalLegalAnalysisSections(intent, results, reasoningProfile);
+    if (localAnalysis.length) {
+      lines.push(...localAnalysis);
+      lines.push('');
+    }
+    const targetedQuestions = localAnalysis.length ? [] : buildTargetedMissingQuestions(intent, reasoningProfile);
     if (targetedQuestions.length) {
       lines.push(...targetedQuestions);
       lines.push('');
@@ -3016,7 +3091,7 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     }
     return parts.join('\n');
   };
-  const documentResults = searchLegalEngine(query, 8);
+  const documentResults = searchLegalEngine(query, limit);
   const normalizedStructured = structuredResults.map(item => ({
     id: `kb:${item.modulo || 'base'}:${item.id}`,
     title: item.titulo || 'Referencia jurídica',
@@ -3195,7 +3270,7 @@ async function callOpenAiChat(messages, options = {}) {
     };
   }
 
-  const model = options.model || process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+  const model = options.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.OPENAI_TEMPERATURE || 0.35);
   const { controller, timeout } = createProviderTimeout();
 
@@ -3344,6 +3419,16 @@ async function callOllamaChat(messages, options = {}) {
 }
 
 async function generateWithConfiguredProvider(messages, options = {}) {
+  if (forceLocalProvider) {
+    return {
+      answer: '',
+      provider: 'local',
+      model: 'local-rag-engine',
+      source: 'LEXIA RAG Local',
+      providerErrors: []
+    };
+  }
+
   const providers = preferOllama ? ['ollama', 'openai'] : ['openai', 'ollama'];
   const errors = [];
 
@@ -3383,6 +3468,7 @@ PERSONALIDAD Y ESTILO:
 - No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
 
 CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
+- Razonamiento jurídico: antes de responder, analiza internamente hechos, problema jurídico, regla aplicable, riesgos, prueba disponible, datos faltantes y conclusión probable. No muestres cadena de pensamiento; muestra solo un resumen claro del criterio y las razones principales.
 - Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
 - Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
 - Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
@@ -3526,6 +3612,7 @@ async function runLegalIntelligence(options = {}) {
         source: 'LEXIA RAG Local',
         ragSources: ragContext.sources,
         providerErrors: providerResult.providerErrors,
+        reasoning: providerResult.reasoning,
         memoryMessages: effectiveConversationMemory.length,
         localSearchEvaluation,
         legalReasoningProfile,
@@ -3558,7 +3645,8 @@ async function runLegalIntelligence(options = {}) {
       legalReasoningProfile,
       legalGraphReasoning,
       legalInterpretation: intent,
-      providerErrors: providerResult.providerErrors
+      providerErrors: providerResult.providerErrors,
+      reasoning: providerResult.reasoning
     }
   };
 }
@@ -3567,7 +3655,7 @@ async function runLegalIntelligence(options = {}) {
 function isLegalQuery(text) {
   if (!text) return false;
   const keywords = [
-    'contrato','compraventa','derecho','juzgado','demanda','abogado','inmueble','despido','salario','laboral',
+    'contrato','compraventa','derecho','juzgado','demanda','abogado','inmueble','despido','despide','despiden','despedido','salario','laboral',
     'tribut','penal','delito','fiscal','familia','alimentos','divorcio','custodia','herencia','testamento',
     'arrendamiento','propiedad','posesión','acción','proceso','litigación','juicio','sentencia','recurso',
     'apelación','casación','habeas corpus','amparo','tutela','mandato','poder','procuración','notario',
@@ -4057,9 +4145,9 @@ app.listen(port, async () => {
   }
   console.log(`📚 Base de conocimiento: ${totalKB} KB`);
   console.log(`🔑 OpenAI: ${openAiKey ? '✅ Conectado' : '❌ No configurado'}`);
-  console.log(`💱 Modelo OpenAI: ${process.env.OPENAI_MODEL || 'gpt-3.5-turbo'}`);
+  console.log(`💱 Modelo OpenAI: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}`);
   console.log(`🧠 Ollama: ${ollamaEnabled ? `✅ ${ollamaBaseUrl}` : '❌ No configurado'}`);
   console.log(`🧩 Modelo Ollama: ${ollamaModel}`);
-  console.log(`🎛️ Proveedor preferido: ${preferOllama ? 'ollama' : 'openai'}`);
+  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferOllama ? 'ollama' : 'openai')}`);
   console.log('\n' + '='.repeat(60) + '\n');
 });
