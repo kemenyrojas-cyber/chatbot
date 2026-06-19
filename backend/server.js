@@ -35,6 +35,7 @@ const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
 const configuredAiProvider = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
 const forceLocalProvider = configuredAiProvider === 'local';
+const externalProviderRequested = Boolean(configuredAiProvider && configuredAiProvider !== 'local');
 const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
 const preferGroq = !forceLocalProvider && (['groq', 'grock'].includes(configuredAiProvider) || (configuredAiProvider === 'grok' && Boolean(groqKey) && !xAiKey) || process.env.GROQ_PREFER === 'true' || process.env.GROCK_PREFER === 'true');
 const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
@@ -3883,7 +3884,11 @@ PERSONALIDAD Y ESTILO:
 - Habla como una abogada cercana: directa, clara y con criterio. No suenes como manual, catálogo, plantilla ni soporte técnico.
 - Responde primero a la intención real del usuario. Si pregunta "qué hago", da una ruta; si pregunta "cómo así", explica lo anterior; si da un dato nuevo, incorpóralo.
 - Si ya hay historial, continúa el hilo sin saludar, sin resumir todo de nuevo y sin repetir la misma estructura.
+- El último mensaje del usuario manda. Si corrige algo ("no me denunciaron", "yo soy el denunciado", "era verbal", "ya pagué"), actualiza la hipótesis jurídica y responde sobre esa corrección, no repitas la pregunta anterior.
+- Distingue el rol procesal del usuario: víctima, denunciado/investigado, demandante, demandado, trabajador, empleador, acreedor o deudor. Si el rol no está claro, pregunta por ese rol en una sola pregunta.
+- No concluyas que no existe investigación, proceso, deuda, despido o responsabilidad solo porque el usuario no fue notificado o no conoce una denuncia. Formula la conclusión con cuidado: "si no has sido notificado", "hasta donde sabes", "habría que verificar".
 - Si el usuario escribe poco o ambiguo, haz una sola pregunta concreta y jurídica. No hagas listas de preguntas salvo que el usuario pida preparar el caso.
+- Nunca cierres con dos o más preguntas. Si necesitas continuar, elige la pregunta jurídica más importante y haz solo esa.
 - Si no entiendes algo, pregunta al usuario en vez de inventar hechos.
 - Empieza reconociendo brevemente la preocupación solo cuando ayude: "Con esos datos...", "En tu caso...", "Lo relevante aquí es...".
 - Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
@@ -4017,6 +4022,45 @@ async function runLegalIntelligence(options = {}) {
 
   const providerResult = await generateWithConfiguredProvider(messages, { temperature });
   if (!providerResult.answer) {
+    if (externalProviderRequested) {
+      const firstError = providerResult.providerErrors?.[0] || {};
+      return {
+        answer: [
+          'No voy a fingir una respuesta inteligente con una plantilla local.',
+          '',
+          `LEXIA intentó consultar el proveedor configurado (${configuredAiProvider}), pero no recibió respuesta útil.`,
+          firstError.error ? `Error técnico: ${firstError.error}` : '',
+          '',
+          'Revisa la API key, el modelo y las variables de entorno del servidor. Cuando el proveedor esté activo, responderé usando el hilo completo y el contexto jurídico del cerebro de LEXIA.'
+        ].filter(Boolean).join('\n'),
+        intent,
+        results: ragContext.results,
+        ragSources: ragContext.sources,
+        source: 'LEXIA Provider Guard',
+        fallback: true,
+        model: 'provider-unavailable',
+        provider: configuredAiProvider,
+        providerError: firstError.error || 'Proveedor generativo no disponible.',
+        providerCode: firstError.code || null,
+        retrieval: {
+          mode: 'rag',
+          results: ragContext.results.length,
+          memoryMessages: effectiveConversationMemory.length
+        },
+        metadata: {
+          model: 'provider-unavailable',
+          source: 'LEXIA Provider Guard',
+          ragSources: ragContext.sources,
+          providerErrors: providerResult.providerErrors,
+          memoryMessages: effectiveConversationMemory.length,
+          localSearchEvaluation,
+          legalReasoningProfile,
+          legalGraphReasoning,
+          legalInterpretation: intent
+        }
+      };
+    }
+
     return {
       answer: buildMemoryAwareLocalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile, legalGraphReasoning, effectiveConversationMemory),
       intent,
