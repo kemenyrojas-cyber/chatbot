@@ -1014,7 +1014,8 @@ function getQueryTerms(query) {
     'para', 'como', 'cuando', 'donde', 'cual', 'cuales', 'sobre', 'esta', 'este', 'estos',
     'estas', 'tengo', 'quiero', 'saber', 'consulta', 'legal', 'derecho', 'del', 'las', 'los',
     'una', 'uno', 'con', 'por', 'que', 'hay', 'son', 'sus', 'hola', 'buenas', 'buenos',
-    'dias', 'tardes', 'noches', 'gracias', 'lexia'
+    'dias', 'tardes', 'noches', 'gracias', 'lexia', 'alexia', 'puedo', 'hacer', 'hago',
+    'dime', 'decir', 'explica', 'explícame', 'entiendo'
   ]);
   return normalizeText(query)
     .split(' ')
@@ -1807,9 +1808,10 @@ function classifyLegalIntent(query) {
 }
 
 function mergeConversationIntent(currentIntent, memoryIntent) {
-  const currentHasLegalSignal = (currentIntent?.interpretation?.currentAreaScore || 0) > 0
+  const currentIsFollowUp = isConversationalFollowUp(currentIntent?.originalQuery || '');
+  const currentHasLegalSignal = !currentIsFollowUp && ((currentIntent?.interpretation?.currentAreaScore || 0) > 0
     || currentIntent?.topic?.confidence === 'media'
-    || currentIntent?.topic?.confidence === 'alta';
+    || currentIntent?.topic?.confidence === 'alta');
   const areaConflict = currentIntent?.area?.id
     && memoryIntent?.area?.id
     && currentIntent.area.id !== 'area_no_determinada'
@@ -1821,8 +1823,8 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
     && memoryIntent.topic.id !== 'tema_no_determinado'
     && currentIntent.topic.id !== memoryIntent.topic.id;
   const topicShift = Boolean(currentHasLegalSignal && (areaConflict || topicConflict));
-  const useMemoryArea = !topicShift && currentIntent?.area?.confidence !== 'alta' && memoryIntent?.area?.confidence === 'alta';
-  const useMemoryTopic = !topicShift && currentIntent?.topic?.confidence !== 'alta' && memoryIntent?.topic?.confidence === 'alta';
+  const useMemoryArea = !topicShift && (currentIsFollowUp || currentIntent?.area?.confidence !== 'alta') && memoryIntent?.area?.confidence === 'alta';
+  const useMemoryTopic = !topicShift && (currentIsFollowUp || currentIntent?.topic?.confidence !== 'alta') && memoryIntent?.topic?.confidence === 'alta';
   const area = useMemoryArea ? memoryIntent.area : currentIntent.area;
   const topic = useMemoryTopic ? memoryIntent.topic : currentIntent.topic;
 
@@ -1877,7 +1879,7 @@ function isConversationalFollowUp(text) {
     'vale', 'perfecto', 'gracias', 'no', 'si', 'sí', 'eso', 'esa', 'este'
   ]);
   const meaningfulTerms = legalTerms.filter(term => !fillerWords.has(term));
-  const followUpPattern = /^(asi|así|explica|explicame|explícame|explicamelo|explícamelo|hazlo|dilo|ponlo|resumelo|resúmelo|resume|continua|continúa|sigue|no entendi|no entendí|no entiendo|mas claro|más claro|en simple|en sencillo|ok|vale|gracias)(\s.*)?$/;
+  const followUpPattern = /^(asi|así|como asi|cómo así|explica|explicame|explícame|explicamelo|explícamelo|hazlo|dilo|ponlo|resumelo|resúmelo|resume|continua|continúa|sigue|no entendi|no entendí|no entiendo|mas claro|más claro|en simple|en sencillo|ok|vale|gracias)(\s.*)?$/;
   return followUpPattern.test(normalized) && meaningfulTerms.length < 2 && !isLegalQuery(text);
 }
 
@@ -2468,7 +2470,8 @@ function filterSourcesForIntent(results, intent) {
   const topic = normalizeText(intent?.topic?.label || '');
   const topicId = normalizeText(intent?.topic?.id || '');
   const area = normalizeText(intent?.area?.label || '');
-  const hasSpecificTopic = topic && !['tema no determinado', ''].includes(topic);
+  const topicTerms = getQueryTerms(`${topic} ${topicId}`).filter(term => term.length >= 4);
+  const hasSpecificTopic = topicTerms.length > 0 && !['tema no determinado', ''].includes(topic);
 
   return results.filter(item => {
     const sourceText = normalizeText([
@@ -2483,14 +2486,27 @@ function filterSourcesForIntent(results, intent) {
       item.content
     ].join(' '));
 
-    if (hasSpecificTopic && (sourceText.includes(topic) || sourceText.includes(topicId))) return true;
+    if (hasSpecificTopic && topicTerms.some(term => containsNormalizedTerm(sourceText, term))) return true;
     if (!hasSpecificTopic && area && sourceText.includes(area)) return true;
     return false;
   });
 }
 
+function containsNormalizedTerm(text, term) {
+  const escaped = String(term || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(String(text || ''));
+}
+
 function buildSourceSummary(results, intent, limit = 3) {
-  const relevantSources = filterSourcesForIntent(results, intent);
+  const relevantSources = filterSourcesForIntent(results, intent)
+    .filter(item => Number(item.relevance || 0) >= 10)
+    .sort((a, b) => {
+      const aHasUrl = itemHasExternalUrl(a) ? 1 : 0;
+      const bHasUrl = itemHasExternalUrl(b) ? 1 : 0;
+      const aGeneric = isGenericSourceResult(a) ? 1 : 0;
+      const bGeneric = isGenericSourceResult(b) ? 1 : 0;
+      return (bHasUrl - aHasUrl) || (aGeneric - bGeneric) || Number(b.relevance || 0) - Number(a.relevance || 0);
+    });
 
   if (!relevantSources.length) {
     return [
@@ -2508,6 +2524,26 @@ function buildSourceSummary(results, intent, limit = 3) {
     lines.push(`${index + 1}. ${title} | Fuente: ${source}${matter}${url}`);
   });
   return lines.join('\n');
+}
+
+function itemHasExternalUrl(item) {
+  return /^https?:\/\//i.test(String(item?.url || ''));
+}
+
+function isGenericSourceResult(item) {
+  const text = normalizeText([
+    item?.titulo,
+    item?.title,
+    item?.fuente,
+    item?.source,
+    item?.resumen,
+    item?.excerpt
+  ].join(' '));
+  return text.includes('constitucion politica')
+    || text.includes('base juridica interna lexia')
+    || text.includes('base juridica local lexia')
+    || text.includes('resumen los derechos laborales')
+    || text.includes('derechos laborales basicos');
 }
 
 function buildTopicGuidance(intent) {
@@ -3054,6 +3090,74 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
   return lines.join('\n');
 }
 
+function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, graphReasoning, memoryMessages = []) {
+  const normalizedMemory = normalizeMemoryMessages(memoryMessages);
+  const recentUserMessages = normalizedMemory.filter(message => message.role === 'user').slice(-3);
+  const recentAssistant = normalizedMemory.filter(message => message.role === 'assistant').slice(-1)[0];
+  const followUp = isConversationalFollowUp(query) || (normalizedMemory.length > 0 && getQueryTerms(query).length <= 3);
+
+  if (!followUp) {
+    return buildConversationalLegalAnswer(query, intent, results, reasoningProfile, graphReasoning);
+  }
+
+  const lines = [];
+  const previousFacts = recentUserMessages
+    .map(message => message.content)
+    .filter(content => !isConversationalFollowUp(content));
+  const lastUserFact = previousFacts.length
+    ? previousFacts[previousFacts.length - 1]
+    : (reasoningProfile?.facts || []).find(fact => !isConversationalFollowUp(fact)) || query;
+
+  lines.push('Siguiendo el mismo caso, no voy a repetir toda la guía inicial.');
+  lines.push('');
+  lines.push(`Lo que tengo del hilo es: ${truncateForRag(lastUserFact, 220)}`);
+  if (recentAssistant) {
+    lines.push(`Ya veníamos revisando: ${truncateForRag(recentAssistant.content, 260)}`);
+  }
+
+  const intelligence = (results || [])
+    .map(item => item.intelligence || item.inteligencia)
+    .find(item => item && typeof item === 'object');
+  const steps = Array.isArray(intelligence?.pasos) ? intelligence.pasos : reasoningProfile?.nextSteps || [];
+  const documents = Array.isArray(intelligence?.documentos) ? intelligence.documentos : [];
+  const risks = Array.isArray(intelligence?.riesgos) ? intelligence.riesgos : reasoningProfile?.risks || [];
+
+  lines.push('');
+  lines.push('Para avanzar desde aquí:');
+  const nextSteps = steps.length ? steps : [
+    'ordenar los hechos en una línea de tiempo',
+    'separar documentos, pagos y comunicaciones',
+    'definir si buscas reclamar, denunciar, negociar o calcular un monto'
+  ];
+  nextSteps.slice(0, 4).forEach((step, index) => {
+    lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
+  });
+
+  if (documents.length) {
+    lines.push('');
+    lines.push(`Ten a la mano: ${documents.slice(0, 6).join(', ')}.`);
+  }
+
+  if (risks.length) {
+    lines.push('');
+    lines.push(`Cuidado con: ${risks.slice(0, 3).join('; ')}.`);
+  }
+
+  const questions = buildTargetedMissingQuestions(intent, reasoningProfile)
+    .filter(line => !/^Para (orientarte|afinar)/.test(line));
+  if (questions.length) {
+    lines.push('');
+    lines.push('Respóndeme estos datos y sigo el análisis sin empezar de cero:');
+    questions.slice(0, 3).forEach((question, index) => {
+      lines.push(`${index + 1}. ${question.replace(/^\d+\.\s*/, '')}`);
+    });
+  }
+
+  lines.push('');
+  lines.push(buildSourceSummary(results, intent, 2));
+  return lines.join('\n');
+}
+
 function splitLegalSections(raw) {
   return String(raw || '')
     .split(/\n{2,}|(?=^#{1,3}\s)/m)
@@ -3211,7 +3315,14 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
   }));
 
   const merged = [...normalizedStructured, ...normalizedDocuments]
-    .sort((a, b) => b.relevance - a.relevance)
+    .map(item => ({
+      ...item,
+      rankingScore: Number(item.relevance || 0)
+        + (String(item.id || '').startsWith('kb:') ? 30 : 0)
+        + (itemHasExternalUrl(item) ? 20 : 0)
+        - (isGenericSourceResult(item) ? 35 : 0)
+    }))
+    .sort((a, b) => b.rankingScore - a.rankingScore || b.relevance - a.relevance)
     .reduce((acc, item) => {
       if (!acc.some(existing => existing.id === item.id)) acc.push(item);
       return acc;
@@ -3686,7 +3797,7 @@ async function runLegalIntelligence(options = {}) {
   const providerResult = await generateWithConfiguredProvider(messages, { temperature });
   if (!providerResult.answer) {
     return {
-      answer: buildConversationalLegalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile, legalGraphReasoning),
+      answer: buildMemoryAwareLocalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile, legalGraphReasoning, effectiveConversationMemory),
       intent,
       results: ragContext.results,
       ragSources: ragContext.sources,
@@ -4296,11 +4407,12 @@ app.post('/api/chat', async (req, res) => {
     const query = extractUserQuery(req.body?.prompt);
     const localResults = query ? searchLegalKnowledgeBase(query) : [];
     const intent = query ? interpretLegalQuery(query, Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []) : null;
-    const fallbackReasoningProfile = query && intent ? buildLegalReasoningProfile(query, intent, [], localResults) : null;
+    const fallbackMemory = Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : [];
+    const fallbackReasoningProfile = query && intent ? buildLegalReasoningProfile(query, intent, fallbackMemory, localResults) : null;
     const fallbackGraphReasoning = query && intent ? buildLegalGraphReasoning(intent, localResults) : null;
     res.json({
       answer: query
-        ? buildConversationalLegalAnswer(query, intent, localResults, fallbackReasoningProfile, fallbackGraphReasoning)
+        ? buildMemoryAwareLocalAnswer(query, intent, localResults, fallbackReasoningProfile, fallbackGraphReasoning, fallbackMemory)
         : 'LEXIA no pudo procesar la consulta, pero la base jurídica local está disponible en /api/legal-search.',
       intent,
       results: localResults,
