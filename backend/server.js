@@ -1942,15 +1942,15 @@ function buildConversationMemoryContext(messages = [], intent = null) {
   const normalized = normalizeMemoryMessages(messages);
   if (!normalized.length) return '';
 
-  const lines = ['MEMORIA CONVERSACIONAL RECIENTE DE ESTA MISMA CONVERSACIÓN:'];
+  const lines = ['HILO DE CONVERSACIÓN RECIENTE:'];
   if (intent) {
     lines.push(`Tema jurídico detectado: ${intent.area.label} / ${intent.topic.label}.`);
   }
-  lines.push('Usa este contexto para resolver referencias como "eso", "ese caso", "qué plazo", "qué hago ahora" o preguntas de seguimiento. No inventes datos que no estén en la memoria.');
+  lines.push('Lee esto como una conversación viva. El último mensaje puede corregir o precisar lo anterior. No repitas respuestas anteriores.');
 
-  normalized.forEach((message, index) => {
+  normalized.slice(-6).forEach((message, index) => {
     const speaker = message.role === 'assistant' ? 'LEXIA' : 'Usuario';
-    lines.push(`${index + 1}. ${speaker}: ${message.content}`);
+    lines.push(`${index + 1}. ${speaker}: ${truncateForRag(message.content, 320)}`);
   });
 
   return lines.join('\n');
@@ -3394,7 +3394,7 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
 
   const context = [
     'CONTEXTO RAG RECUPERADO DE LA BASE LOCAL DE LEXIA:',
-    'Usa estas referencias como fuente principal. Si una respuesta requiere una fuente que no está aquí, dilo claramente y sugiere verificar en una fuente oficial.'
+    'Usa estas referencias solo como apoyo. Primero responde al caso y al último mensaje del usuario; no conviertas la respuesta en un resumen de fuentes.'
   ];
 
   merged.forEach((item, index) => {
@@ -3901,12 +3901,13 @@ PERSONALIDAD Y ESTILO:
 CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Razonamiento jurídico: antes de responder, analiza internamente hechos, problema jurídico, regla aplicable, riesgos, prueba disponible, datos faltantes y conclusión probable. No muestres cadena de pensamiento; muestra solo un resumen claro del criterio y las razones principales.
 - Chat con IA jurídica: responde la pregunta concreta antes de ampliar.
+- Conversación antes que fuente: si el usuario está aclarando o siguiendo el hilo, responde a esa aclaración. No abras secciones de fuentes salvo que cites una norma, entidad o referencia concreta que cambie la respuesta.
 - Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
 - Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
 - Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
 - Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
-- Fuentes citadas: termina con una sección "Fuentes y verificación" indicando las normas o referencias usadas. Si no hay fuente específica en el contexto, dilo claramente y recomienda verificar en El Peruano, SPIJ, PJ, TC o la entidad competente.
-- RAG: antes de responder, usa el "CONTEXTO RAG RECUPERADO" cuando exista. Cita las referencias recuperadas como [R1], [R2], etc. No inventes fuentes que no estén en ese contexto.
+- Fuentes citadas: usa "Fuentes y verificación" solo cuando realmente hayas usado una fuente concreta. No llenes la respuesta con fuentes si el usuario solo está conversando o aclarando hechos.
+- RAG: cuando exista "CONTEXTO RAG RECUPERADO", úsalo como respaldo silencioso. Cita [R1], [R2] solo si esa fuente sostiene una afirmación importante. No dejes que el RAG sustituya el diálogo.
 
 ESPECIALIDAD EN DERECHO PERUANO:
 - Civil: contratos, obligaciones, bienes, herencias, familia.
@@ -3987,13 +3988,23 @@ async function runLegalIntelligence(options = {}) {
   const localResults = searchLegalKnowledgeBase(interpretationSearchQuery);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(interpretationSearchQuery, localResults);
   logLocalSearchSufficiency('Legal Intelligence Engine', interpretationSearchQuery, localSearchEvaluation);
-  const ragContext = buildRagContext(interpretationSearchQuery, localResults);
+  const dialogueMode = effectiveConversationMemory.length > 0 || isShortUserInput(userQuery);
+  const ragContext = buildRagContext(interpretationSearchQuery, localResults, dialogueMode ? 3 : 8);
   const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, effectiveConversationMemory, ragContext.results);
   const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
   const legalGraphReasoning = buildLegalGraphReasoning(intent, ragContext.results);
   const legalGraphContext = buildLegalGraphContext(legalGraphReasoning);
   const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
-  const context = [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context].filter(Boolean).join('\n\n');
+  const dialogueInstruction = dialogueMode
+    ? [
+        'MODO DIÁLOGO:',
+        'El usuario está conversando o aclarando el caso. Prioriza entender y responder el último mensaje.',
+        'No repitas estructura previa. No hagas resumen de fuentes. Haz como máximo una pregunta concreta.'
+      ].join('\n')
+    : '';
+  const context = dialogueMode
+    ? [dialogueInstruction, conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n')
+    : [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context].filter(Boolean).join('\n\n');
   const intentContext = [
     'INTENCIÓN JURÍDICA DETECTADA:',
     `Tipo: ${intent.type.label}`,
