@@ -22,15 +22,21 @@ const app = express();
 const port = process.env.PORT || 3000;
 const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
 const openAiKey = process.env.OPENAI_API_KEY;
-const xAiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY || process.env.GROCK_API_KEY || '';
+const rawXAiKey = process.env.XAI_API_KEY || '';
+const rawGroqKey = process.env.GROQ_API_KEY || process.env.GROCK_API_KEY || '';
+const xAiKey = rawXAiKey && !String(rawXAiKey).startsWith('gsk_') ? rawXAiKey : '';
+const groqKey = rawGroqKey || (String(rawXAiKey).startsWith('gsk_') ? rawXAiKey : '');
 const xAiBaseUrl = String(process.env.XAI_BASE_URL || process.env.GROK_BASE_URL || 'https://api.x.ai/v1').trim().replace(/\/+$/, '');
 const grokModel = process.env.XAI_MODEL || process.env.GROK_MODEL || 'grok-4.3';
+const groqBaseUrl = String(process.env.GROQ_BASE_URL || process.env.GROCK_BASE_URL || 'https://api.groq.com/openai/v1').trim().replace(/\/+$/, '');
+const groqModel = process.env.GROQ_MODEL || process.env.GROCK_MODEL || 'llama-3.3-70b-versatile';
 const ollamaBaseUrl = String(process.env.OLLAMA_BASE_URL || '').trim().replace(/\/+$/, '');
 const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
 const configuredAiProvider = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
 const forceLocalProvider = configuredAiProvider === 'local';
-const preferGrok = !forceLocalProvider && (['grok', 'grock', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
+const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
+const preferGroq = !forceLocalProvider && (['groq', 'grock'].includes(configuredAiProvider) || (configuredAiProvider === 'grok' && Boolean(groqKey) && !xAiKey) || process.env.GROQ_PREFER === 'true' || process.env.GROCK_PREFER === 'true');
 const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
 const legacyDataDir = path.join(projectRoot, 'data');
@@ -3667,6 +3673,82 @@ async function callGrokChat(messages, options = {}) {
   }
 }
 
+async function callGroqChat(messages, options = {}) {
+  if (!groqKey) {
+    throw {
+      provider: 'groq',
+      code: 'not_configured',
+      error: 'GroqCloud no está configurado.'
+    };
+  }
+
+  const model = options.model || groqModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.GROQ_TEMPERATURE || process.env.GROCK_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35);
+  const { controller, timeout } = createProviderTimeout();
+
+  try {
+    const response = await fetch(`${groqBaseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: Number(process.env.GROQ_MAX_TOKENS || process.env.GROCK_MAX_TOKENS || 2000),
+        temperature
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let parsedError = null;
+      try {
+        parsedError = JSON.parse(errorBody);
+      } catch {
+        parsedError = null;
+      }
+      console.error('❌ Error GroqCloud:', errorBody);
+      throw {
+        provider: 'groq',
+        code: parsedError?.error?.code || null,
+        error: parsedError?.error?.message || parsedError?.error || `GroqCloud respondió con estado ${response.status}.`,
+        status: response.status
+      };
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content?.trim();
+    if (!answer) {
+      throw {
+        provider: 'groq',
+        code: 'empty_response',
+        error: 'GroqCloud no devolvió una respuesta válida.'
+      };
+    }
+
+    return {
+      answer,
+      model: data.model || model,
+      provider: 'groq',
+      source: 'LEXIA (RAG local + GroqCloud)'
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw {
+        provider: 'groq',
+        code: 'timeout',
+        error: 'GroqCloud no respondió dentro del tiempo límite.'
+      };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callOllamaChat(messages, options = {}) {
   if (!ollamaEnabled) {
     throw {
@@ -3758,13 +3840,18 @@ async function generateWithConfiguredProvider(messages, options = {}) {
     };
   }
 
-  const providers = preferGrok
-    ? ['grok', 'openai', 'ollama']
-    : (preferOllama ? ['ollama', 'grok', 'openai'] : ['openai', 'grok', 'ollama']);
+  const providers = preferGroq
+    ? ['groq', 'grok', 'openai', 'ollama']
+    : (preferGrok
+      ? ['grok', 'groq', 'openai', 'ollama']
+      : (preferOllama ? ['ollama', 'groq', 'grok', 'openai'] : ['openai', 'groq', 'grok', 'ollama']));
   const errors = [];
 
   for (const provider of providers) {
     try {
+      if (provider === 'groq' && groqKey) {
+        return { ...(await callGroqChat(messages, options)), providerErrors: errors };
+      }
       if (provider === 'grok' && xAiKey) {
         return { ...(await callGrokChat(messages, options)), providerErrors: errors };
       }
@@ -4579,8 +4666,10 @@ app.listen(port, async () => {
   console.log(`💱 Modelo OpenAI: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}`);
   console.log(`⚡ Grok/xAI: ${xAiKey ? '✅ Conectado' : '❌ No configurado'}`);
   console.log(`🧠 Modelo Grok: ${grokModel}`);
+  console.log(`⚡ GroqCloud: ${groqKey ? '✅ Conectado' : '❌ No configurado'}`);
+  console.log(`🧠 Modelo GroqCloud: ${groqModel}`);
   console.log(`🧠 Ollama: ${ollamaEnabled ? `✅ ${ollamaBaseUrl}` : '❌ No configurado'}`);
   console.log(`🧩 Modelo Ollama: ${ollamaModel}`);
-  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferGrok ? 'grok' : (preferOllama ? 'ollama' : 'openai'))}`);
+  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferGroq ? 'groq' : (preferGrok ? 'grok' : (preferOllama ? 'ollama' : 'openai')))}`);
   console.log('\n' + '='.repeat(60) + '\n');
 });
