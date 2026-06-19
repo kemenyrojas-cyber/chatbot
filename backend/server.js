@@ -8,6 +8,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const cheerio = require('cheerio');
 const { Pool } = require('pg');
+const { createLexiaEngine } = require('./lexia-engine/orchestrator');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -3937,199 +3938,59 @@ REGLAS:
 - No afirmes tener información en tiempo real si no está disponible en el contexto.`;
 }
 
+let lexiaEngineInstance = null;
+
+function getLexiaEngine() {
+  if (lexiaEngineInstance) return lexiaEngineInstance;
+
+  lexiaEngineInstance = createLexiaEngine({
+    brain: {
+      interpret: interpretLegalQuery,
+      mergeIntent: mergeConversationIntent,
+      buildInterpretationSearchQuery,
+      isGreetingOnly,
+      isConversationalFollowUp,
+      isShortUserInput
+    },
+    memory: {
+      normalizeMessages: normalizeMemoryMessages,
+      buildSearchQuery: buildMemorySearchQuery,
+      buildContext: buildConversationMemoryContext
+    },
+    knowledge: {
+      ensureAvailable: ensureLegalKnowledgeAvailable,
+      search: searchLegalKnowledgeBase,
+      evaluateSufficiency: evaluateLocalSearchSufficiency,
+      logSufficiency: logLocalSearchSufficiency,
+      buildRagContext
+    },
+    reasoner: {
+      buildProfile: buildLegalReasoningProfile,
+      buildContext: buildLegalReasoningContext,
+      buildGraph: buildLegalGraphReasoning,
+      buildGraphContext: buildLegalGraphContext
+    },
+    response: {
+      buildSystemPrompt: buildLexiaSystemPrompt,
+      buildGreetingAnswer,
+      buildFollowUpClarificationAnswer,
+      buildLocalAnswer: buildMemoryAwareLocalAnswer
+    },
+    providers: {
+      generate: generateWithConfiguredProvider
+    },
+    config: {
+      temperature: () => Number(process.env.OPENAI_TEMPERATURE || 0.35),
+      externalProviderRequested: () => externalProviderRequested,
+      configuredProvider: () => configuredAiProvider
+    }
+  });
+
+  return lexiaEngineInstance;
+}
+
 async function runLegalIntelligence(options = {}) {
-  const userQuery = String(options.userQuery || '').trim();
-  const prompt = String(options.prompt || `Consulta del usuario:\n${userQuery}`);
-  const conversationMemory = normalizeMemoryMessages(options.conversationMemory || []);
-  const memorySearchQuery = buildMemorySearchQuery(userQuery, conversationMemory);
-  const currentIntent = interpretLegalQuery(userQuery, conversationMemory);
-  const memoryIntent = interpretLegalQuery(memorySearchQuery, conversationMemory);
-  const intent = mergeConversationIntent(currentIntent, memoryIntent);
-  const effectiveConversationMemory = intent?.interpretation?.topicShift ? [] : conversationMemory;
-  const conversationMemoryContext = buildConversationMemoryContext(effectiveConversationMemory, intent);
-
-  if (isGreetingOnly(userQuery)) {
-    return {
-      answer: buildGreetingAnswer(),
-      intent,
-      results: [],
-      ragSources: [],
-      source: 'LEXIA',
-      fallback: false,
-      model: 'local-greeting',
-      provider: 'local',
-      metadata: {
-        model: 'local-greeting',
-        source: 'LEXIA'
-      }
-    };
-  }
-
-  if (isConversationalFollowUp(userQuery) && !conversationMemory.length) {
-    return {
-      answer: buildFollowUpClarificationAnswer(),
-      intent: currentIntent,
-      results: [],
-      ragSources: [],
-      source: 'LEXIA',
-      fallback: false,
-      model: 'local-follow-up',
-      provider: 'local',
-      metadata: {
-        model: 'local-follow-up',
-        source: 'LEXIA'
-      }
-    };
-  }
-
-  await ensureLegalKnowledgeAvailable();
-  const searchMemoryBase = intent?.interpretation?.topicShift ? userQuery : memorySearchQuery;
-  const interpretationSearchQuery = buildInterpretationSearchQuery(userQuery, intent, searchMemoryBase);
-  const localResults = searchLegalKnowledgeBase(interpretationSearchQuery);
-  const localSearchEvaluation = evaluateLocalSearchSufficiency(interpretationSearchQuery, localResults);
-  logLocalSearchSufficiency('Legal Intelligence Engine', interpretationSearchQuery, localSearchEvaluation);
-  const dialogueMode = effectiveConversationMemory.length > 0 || isShortUserInput(userQuery);
-  const ragContext = buildRagContext(interpretationSearchQuery, localResults, dialogueMode ? 3 : 8);
-  const legalReasoningProfile = buildLegalReasoningProfile(userQuery, intent, effectiveConversationMemory, ragContext.results);
-  const legalReasoningContext = buildLegalReasoningContext(legalReasoningProfile);
-  const legalGraphReasoning = buildLegalGraphReasoning(intent, ragContext.results);
-  const legalGraphContext = buildLegalGraphContext(legalGraphReasoning);
-  const temperature = Number(process.env.OPENAI_TEMPERATURE || 0.35);
-  const dialogueInstruction = dialogueMode
-    ? [
-        'MODO DIÁLOGO:',
-        'El usuario está conversando o aclarando el caso. Prioriza entender y responder el último mensaje.',
-        'No repitas estructura previa. No hagas resumen de fuentes. Haz como máximo una pregunta concreta.'
-      ].join('\n')
-    : '';
-  const context = dialogueMode
-    ? [dialogueInstruction, conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n')
-    : [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context].filter(Boolean).join('\n\n');
-  const intentContext = [
-    'INTENCIÓN JURÍDICA DETECTADA:',
-    `Tipo: ${intent.type.label}`,
-    `Área: ${intent.area.label}`,
-    `Tema: ${intent.topic.label}`,
-    `Objetivo: ${intent.objective?.label || 'No determinado'}`,
-    `Complejidad: ${intent.complexity || 'baja'}`,
-    `Conceptos relacionados: ${(intent.concepts || []).join(', ') || 'no identificados'}`,
-    `Datos faltantes: ${(intent.missingInfo || []).join(', ') || 'sin faltantes críticos'}`,
-    `Confianza: tipo=${intent.type.confidence}, área=${intent.area.confidence}, tema=${intent.topic.confidence}`
-  ].join('\n');
-  const messages = [
-    {
-      role: 'system',
-      content: buildLexiaSystemPrompt() + '\n\n' + intentContext + (context ? '\n\n' + context : '')
-    },
-    ...effectiveConversationMemory.map(message => ({
-      role: message.role,
-      content: message.content
-    })),
-    {
-      role: 'user',
-      content: prompt
-    }
-  ];
-
-  const providerResult = await generateWithConfiguredProvider(messages, { temperature });
-  if (!providerResult.answer) {
-    if (externalProviderRequested) {
-      const firstError = providerResult.providerErrors?.[0] || {};
-      return {
-        answer: [
-          'No voy a fingir una respuesta inteligente con una plantilla local.',
-          '',
-          `LEXIA intentó consultar el proveedor configurado (${configuredAiProvider}), pero no recibió respuesta útil.`,
-          firstError.error ? `Error técnico: ${firstError.error}` : '',
-          '',
-          'Revisa la API key, el modelo y las variables de entorno del servidor. Cuando el proveedor esté activo, responderé usando el hilo completo y el contexto jurídico del cerebro de LEXIA.'
-        ].filter(Boolean).join('\n'),
-        intent,
-        results: ragContext.results,
-        ragSources: ragContext.sources,
-        source: 'LEXIA Provider Guard',
-        fallback: true,
-        model: 'provider-unavailable',
-        provider: configuredAiProvider,
-        providerError: firstError.error || 'Proveedor generativo no disponible.',
-        providerCode: firstError.code || null,
-        retrieval: {
-          mode: 'rag',
-          results: ragContext.results.length,
-          memoryMessages: effectiveConversationMemory.length
-        },
-        metadata: {
-          model: 'provider-unavailable',
-          source: 'LEXIA Provider Guard',
-          ragSources: ragContext.sources,
-          providerErrors: providerResult.providerErrors,
-          memoryMessages: effectiveConversationMemory.length,
-          localSearchEvaluation,
-          legalReasoningProfile,
-          legalGraphReasoning,
-          legalInterpretation: intent
-        }
-      };
-    }
-
-    return {
-      answer: buildMemoryAwareLocalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile, legalGraphReasoning, effectiveConversationMemory),
-      intent,
-      results: ragContext.results,
-      ragSources: ragContext.sources,
-      source: 'LEXIA RAG Local',
-      fallback: true,
-      model: 'local-rag-engine',
-      provider: 'local',
-      providerError: providerResult.providerErrors?.[0]?.error || null,
-      providerCode: providerResult.providerErrors?.[0]?.code || null,
-      retrieval: {
-        mode: 'rag',
-        results: ragContext.results.length,
-        memoryMessages: effectiveConversationMemory.length
-      },
-      metadata: {
-        model: 'local-rag-engine',
-        source: 'LEXIA RAG Local',
-        ragSources: ragContext.sources,
-        providerErrors: providerResult.providerErrors,
-        reasoning: providerResult.reasoning,
-        memoryMessages: effectiveConversationMemory.length,
-        localSearchEvaluation,
-        legalReasoningProfile,
-        legalGraphReasoning,
-        legalInterpretation: intent
-      }
-    };
-  }
-
-  return {
-    answer: providerResult.answer,
-    intent,
-    results: ragContext.results,
-    ragSources: ragContext.sources,
-    source: providerResult.source,
-    fallback: false,
-    model: providerResult.model,
-    provider: providerResult.provider,
-    retrieval: {
-      mode: 'rag',
-      results: ragContext.results.length,
-      memoryMessages: effectiveConversationMemory.length
-    },
-    metadata: {
-      model: providerResult.model,
-      source: providerResult.source,
-      ragSources: ragContext.sources,
-      memoryMessages: effectiveConversationMemory.length,
-      localSearchEvaluation,
-      legalReasoningProfile,
-      legalGraphReasoning,
-      legalInterpretation: intent,
-      providerErrors: providerResult.providerErrors,
-      reasoning: providerResult.reasoning
-    }
-  };
+  return getLexiaEngine().runLegalIntelligence(options);
 }
 
 // Detector robusto de consultas jurídicas
