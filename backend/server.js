@@ -9,6 +9,8 @@ const pdfParse = require('pdf-parse');
 const cheerio = require('cheerio');
 const { Pool } = require('pg');
 const { createLexiaEngine } = require('./lexia-engine/orchestrator');
+const { createRateLimiter } = require('./lexia-engine/flow-control');
+const { prioritizeKnowledgeResults } = require('./lexia-engine/knowledge-prioritizer');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -41,6 +43,12 @@ const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAi
 const preferGroq = !forceLocalProvider && (['groq', 'grock'].includes(configuredAiProvider) || (configuredAiProvider === 'grok' && Boolean(groqKey) && !xAiKey) || process.env.GROQ_PREFER === 'true' || process.env.GROCK_PREFER === 'true');
 const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
+const lexiaQueryRateLimiter = createRateLimiter({
+  enabled: process.env.LEXIA_RATE_LIMIT_ENABLED !== 'false',
+  windowMs: Number(process.env.LEXIA_RATE_LIMIT_WINDOW_MS || 60000),
+  maxRequests: Number(process.env.LEXIA_RATE_LIMIT_MAX || 30),
+  bucketLimit: Number(process.env.LEXIA_RATE_LIMIT_BUCKET_LIMIT || 10000)
+});
 const legacyDataDir = path.join(projectRoot, 'data');
 const databaseUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || '';
 const databaseProvider = process.env.SUPABASE_DATABASE_URL ? 'supabase' : 'postgres';
@@ -80,6 +88,7 @@ if (ollamaEnabled) {
 
 app.use(express.json({ limit: '15mb' }));
 app.use(cors());
+app.use(['/api/chat', '/api/legal-query', '/api/legal-search', '/api/legal-engine/feed', '/api/legal-engine/discover'], lexiaQueryRateLimiter);
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -3959,7 +3968,7 @@ function getLexiaEngine() {
     },
     knowledge: {
       ensureAvailable: ensureLegalKnowledgeAvailable,
-      search: searchLegalKnowledgeBase,
+      search: query => prioritizeKnowledgeResults(searchLegalKnowledgeBase(query), query),
       evaluateSufficiency: evaluateLocalSearchSufficiency,
       logSufficiency: logLocalSearchSufficiency,
       buildRagContext
