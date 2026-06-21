@@ -117,7 +117,8 @@ function createLexiaEngine(deps) {
           'El usuario está conversando o aclarando el caso. Prioriza entender y responder el último mensaje.',
           'Interpreta referencias como "eso", "las leyes", "qué hago" o "explícame" usando el hilo anterior.',
           'No repitas estructura previa. No hagas resumen de fuentes salvo que el usuario pida base legal.',
-          'Usa párrafos cortos y resalta con **negrita** solo la idea clave, el riesgo, la base legal o el siguiente paso.',
+          'Responde como chat humano con una abogada: natural, breve, interactivo y sin convertir todo en subtítulos.',
+          'Usa **negrita** dentro de frases naturales solo para la idea clave, el riesgo, la base legal o el siguiente paso.',
           'Haz como máximo una pregunta concreta.'
         ].join('\n')
       : '';
@@ -131,7 +132,7 @@ function createLexiaEngine(deps) {
       '- Si el contexto solo identifica una garantía o norma general, dilo así; no completes con memoria externa.',
       '- Si una fuente RAG concreta contradice tu conocimiento general, prioriza la fuente RAG.',
       '- Mejora la redacción, pero conserva el sentido jurídico y las fuentes verificadas.',
-      '- Mantén la respuesta escaneable: respuesta directa, base legal si aplica, pasos/documentos y una sola pregunta final.'
+      '- Mantén la respuesta escaneable, pero conversacional: respuesta directa, explicación breve, paso útil y una sola pregunta final.'
     ].join('\n');
     const context = dialogueMode
       ? [dialogueInstruction, conversationMemoryContext, legalReasoningContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')

@@ -2385,6 +2385,20 @@ function buildSingleLegalQuestion(intent, reasoningProfile) {
   return '¿Qué resultado buscas: reclamar, denunciar, negociar, responder un documento o solo entender tus derechos?';
 }
 
+function isConversationContinuation(query, memoryMessages = []) {
+  const normalized = normalizeText(query);
+  const hasMemory = normalizeMemoryMessages(memoryMessages).length > 0;
+  if (!hasMemory || !normalized) return false;
+
+  const continuationPatterns = [
+    /^(ya|ahora|entonces|pero|tambien|también|ademas|además)\b/,
+    /\b(ya le|ya me|ya nos|le han|me han|nos han|le dijeron|me dijeron|nos dijeron)\b/,
+    /\b(fecha|sentencia|audiencia|notificacion|notificación|citacion|citación|resolucion|resolución|plazo|miercoles|miércoles|lunes|martes|jueves|viernes)\b/
+  ];
+  const asksNewTopic = /\b(otro caso|otra consulta|cambiando de tema|ahora quiero saber sobre)\b/.test(normalized);
+  return !asksNewTopic && continuationPatterns.some(pattern => pattern.test(normalized));
+}
+
 function isShortUserInput(query) {
   const terms = getQueryTerms(query);
   return terms.length <= 3 || String(query || '').trim().length <= 45;
@@ -2508,7 +2522,7 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
 
   if (!primary) {
     return [
-      '**Respuesta corta:** hay que ubicar la regla legal o constitucional que reconoce ese derecho.',
+      'Sí, aquí lo importante es ubicar **la regla legal concreta** que sostiene tu posición.',
       '',
       'No encontré una fuente específica en la base local para responder con seguridad. Lo correcto es verificar el texto vigente en una fuente oficial como El Peruano, SPIJ, el Tribunal Constitucional o la entidad competente.'
     ].join('\n');
@@ -2524,22 +2538,22 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
   ));
   const sourceSummary = buildSourceSummary(usefulResults.length ? usefulResults : results, intent, 3);
   const lines = [
-    `**Base legal:** la referencia más relevante que encontré es **${title}**.`,
+    `Para esa parte, la referencia que mejor encaja es **${title}**.`,
     '',
     excerpt
-      ? `**Punto central:** ${excerpt}`
+      ? `Lo central es esto: **${excerpt}**`
       : 'Esa fuente aparece como la referencia más cercana para ubicar el fundamento legal aplicable.',
   ];
 
   if (articleResult) {
-    lines.push('', `**Referencia concreta:** ${getResultTitle(articleResult)} (${getResultSource(articleResult)}).`);
+    lines.push('', `También aparece una referencia más concreta: **${getResultTitle(articleResult)}** (${getResultSource(articleResult)}).`);
   }
 
   lines.push(
     '',
-    '**Para aplicarlo a tu caso:** revisa el acto concreto, la notificación, el plazo y si realmente se permitió presentar descargos, pruebas o recurso.',
+    'Para usarlo bien en tu caso, hay que mirar el acto concreto, la notificación, el plazo y si realmente se permitió presentar descargos, pruebas o recurso.',
     '',
-    `**Fuente principal:** ${source}.`
+    `Fuente principal: **${source}**.`
   );
 
   if (sourceSummary && !sourceSummary.includes('No encontré una fuente específica')) {
@@ -2613,7 +2627,9 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   const normalizedMemory = normalizeMemoryMessages(memoryMessages);
   const recentUserMessages = normalizedMemory.filter(message => message.role === 'user').slice(-3);
   const recentAssistant = normalizedMemory.filter(message => message.role === 'assistant').slice(-1)[0];
-  const followUp = isConversationalFollowUp(query) || (normalizedMemory.length > 0 && getQueryTerms(query).length <= 3);
+  const followUp = isConversationalFollowUp(query)
+    || (normalizedMemory.length > 0 && getQueryTerms(query).length <= 3)
+    || isConversationContinuation(query, normalizedMemory);
 
   if (!followUp) {
     return buildConversationalLegalAnswer(query, intent, results, reasoningProfile, graphReasoning);
@@ -2627,17 +2643,21 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     ? previousFacts[previousFacts.length - 1]
     : (reasoningProfile?.facts || []).find(fact => !isConversationalFollowUp(fact)) || query;
 
-  lines.push(`**En tu caso:** ${truncateForRag(lastUserFact, 220)}`);
+  if (isConversationContinuation(query, normalizedMemory)) {
+    lines.push(`Entiendo. Ese dato cambia el enfoque: si ya hay fecha para sentencia, ahora lo urgente es **prepararse para ese acto y cuidar los plazos posteriores**.`);
+  } else {
+    lines.push(`En tu caso, sigo tomando como punto de partida esto: **${truncateForRag(lastUserFact, 220)}**.`);
+  }
 
   if (intent?.type?.id === 'consulta_normativa') {
     const normativeResults = (Array.isArray(results) ? results : []).filter(isUsefulNormativeResult);
     const primaryNormative = normativeResults[0] || results?.[0];
     if (primaryNormative) {
       lines.push('');
-      lines.push(`**Base legal:** ${getResultTitle(primaryNormative)}.`);
+      lines.push(`La base legal que más se relaciona es **${getResultTitle(primaryNormative)}**.`);
       const normativeText = String(primaryNormative?.contenido || primaryNormative?.content || getResultText(primaryNormative)).replace(/\s+/g, ' ').trim();
       if (normativeText) {
-        lines.push(`**Punto central:** ${truncateForRag(normativeText, 420)}`);
+        lines.push(`En simple: **${truncateForRag(normativeText, 320)}**`);
       }
     }
   }
@@ -2645,9 +2665,17 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   const intelligence = (results || [])
     .map(item => item.intelligence || item.inteligencia)
     .find(item => item && typeof item === 'object');
-  const steps = Array.isArray(intelligence?.pasos) ? intelligence.pasos : reasoningProfile?.nextSteps || [];
-  const documents = Array.isArray(intelligence?.documentos) ? intelligence.documentos : [];
-  const risks = Array.isArray(intelligence?.riesgos) ? intelligence.riesgos : reasoningProfile?.risks || [];
+  const normalizedQuery = normalizeText(query);
+  const isSentenceStage = /\b(sentencia|lectura de sentencia|fecha para sentencia|audiencia)\b/.test(normalizedQuery);
+  const steps = isSentenceStage
+    ? ['confirmar hora, modalidad y juzgado de la audiencia', 'coordinar con su abogado la estrategia antes de la lectura', 'prepararse para revisar si corresponde apelación']
+    : (Array.isArray(intelligence?.pasos) ? intelligence.pasos : reasoningProfile?.nextSteps || []);
+  const documents = isSentenceStage
+    ? ['notificación o resolución que fija fecha', 'expediente o número de caso', 'DNI', 'datos del abogado', 'pruebas y escritos presentados']
+    : (Array.isArray(intelligence?.documentos) ? intelligence.documentos : []);
+  const risks = isSentenceStage
+    ? ['dejar vencer el plazo para impugnar si la sentencia es desfavorable']
+    : (Array.isArray(intelligence?.riesgos) ? intelligence.riesgos : reasoningProfile?.risks || []);
 
   const nextSteps = steps.length ? steps : [
     'ordenar los hechos en una línea de tiempo',
@@ -2655,23 +2683,26 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     'definir si buscas reclamar, denunciar, negociar o calcular un monto'
   ];
   lines.push('');
-  lines.push(`**Qué hacer ahora:** ${nextSteps.slice(0, 3).join(', ')}.`);
+  lines.push(`Yo haría esto ahora: **${nextSteps.slice(0, 3).join(', ')}**.`);
 
   if (documents.length) {
     lines.push('');
-    lines.push(`**Documentos clave:** ${documents.slice(0, 5).join(', ')}.`);
+    lines.push(`Ten a la mano **${documents.slice(0, 5).join(', ')}**.`);
   }
 
   if (risks.length) {
     lines.push('');
-    lines.push(`**Cuidado principal:** ${risks[0]}.`);
+    lines.push(`El cuidado principal es **${risks[0]}**.`);
   }
 
   lines.push('');
-  lines.push(buildSingleLegalQuestion(intent, reasoningProfile));
+  lines.push(isSentenceStage
+    ? '¿La fecha del miércoles es para **lectura de sentencia** y ya tiene abogado asignado o particular?'
+    : buildSingleLegalQuestion(intent, reasoningProfile));
 
   const sourceSummary = buildSourceSummary(results, intent, 2);
-  if (results.length && !sourceSummary.includes('No encontré una fuente específica')) {
+  const userAskedForSources = intent?.type?.id === 'consulta_normativa' || /\b(ley|leyes|articulo|artículo|norma|base legal|fuente|fundamento)\b/i.test(query);
+  if (userAskedForSources && results.length && !sourceSummary.includes('No encontré una fuente específica')) {
     lines.push('');
     lines.push(sourceSummary);
   }
@@ -3129,8 +3160,8 @@ PERSONALIDAD Y ESTILO:
 - Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
 - Si faltan datos, responde lo posible con supuestos claros y formula una pregunta concreta para continuar.
 - Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
-- Sé precisa y visual: usa párrafos cortos, máximo una idea por párrafo y evita bloques largos de texto.
-- Resalta en **negrita** solo las frases realmente importantes: derecho aplicable, riesgo, plazo, documento clave o siguiente paso. No pongas todo en negrita.
+- Sé precisa sin sonar rígida: responde como chat humano, con párrafos cortos y una idea por párrafo.
+- Resalta en **negrita** solo frases dentro de la conversación: derecho aplicable, riesgo, plazo, documento clave o siguiente paso. No conviertas cada frase en subtítulo.
 - Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
 - No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
 - Mantente dentro del mundo jurídico. No respondas como consejero general, psicólogo, vendedor ni bot administrativo.
@@ -3158,12 +3189,12 @@ ESPECIALIDAD EN DERECHO PERUANO:
 - Constitucional: derechos fundamentales y garantías.
 
 FORMATO DE RESPUESTA:
-No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación jurídica clara solo con las partes que aporten valor:
-1. Primero, una respuesta directa en 1 o 2 frases.
-2. Luego, si aporta valor, usa bloques breves con títulos en negrita como **Base legal**, **Qué hacer ahora**, **Documentos clave** o **Riesgo**.
-3. Evita más de 4 bloques visuales por respuesta salvo que el usuario pida un análisis amplio.
-4. Usa listas cortas de 2 a 4 puntos cuando ayuden a leer rápido.
-5. Cierra con una sola pregunta concreta si falta información. Usa "Fuentes y verificación" solo cuando hayas usado normas o referencias específicas.
+No uses un formato rígido si la consulta es simple. La respuesta debe sentirse como conversación de chat con una abogada:
+1. Primero reacciona al dato del usuario y responde directo.
+2. Explica en lenguaje simple, con frases naturales y no como informe.
+3. Usa **negrita** dentro de las frases para marcar lo importante, no como encabezado repetitivo.
+4. Usa lista corta solo si ayuda a leer, máximo 3 puntos.
+5. Cierra con una sola pregunta concreta si falta información. Usa "Fuentes y verificación" solo cuando el usuario pida leyes, artículos, normas o cuando cites una fuente específica.
 
 REGLAS:
 - Siempre responde en español, con tono profesional, cercano y claro.
