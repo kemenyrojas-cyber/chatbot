@@ -1625,9 +1625,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     markNotificationsRead.addEventListener("click", () => {
-        const notifications = loadList(storageKeys.notifications).map(item => (
-            item.role === currentRole ? { ...item, read: true } : item
-        ));
+        const notifications = loadList(storageKeys.notifications).filter(item => item.role !== currentRole);
         saveList(storageKeys.notifications, notifications);
         if (currentEmail) {
             void apiJson("/api/notifications/read-all", {
