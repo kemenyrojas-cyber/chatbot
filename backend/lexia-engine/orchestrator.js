@@ -109,7 +109,10 @@ function createLexiaEngine(deps) {
       }
     ];
 
-    const providerResult = await providers.generate(messages, { temperature });
+    const providerResult = await providers.generate(messages, {
+      temperature,
+      providerConfig: options.providerConfig || (typeof config.providerConfig === 'function' ? config.providerConfig() : undefined)
+    });
     if (!providerResult.answer) {
       if (config.externalProviderRequested()) {
         const firstError = providerResult.providerErrors?.[0] || {};

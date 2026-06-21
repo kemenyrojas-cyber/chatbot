@@ -7,6 +7,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const cheerio = require('cheerio');
 const { Pool } = require('pg');
+const dotenv = require('dotenv');
 const { createLexiaEngine } = require('./lexia-engine/orchestrator');
 const { createRateLimiter } = require('./lexia-engine/flow-control');
 const { createKnowledgeEngine } = require('./lexia-engine/knowledge');
@@ -18,30 +19,70 @@ const frontendSrcRoot = path.join(frontendRoot, 'src');
 const publicRoot = path.join(frontendRoot, 'public');
 const aiEngineRoot = path.join(projectRoot, 'ai-engine');
 
-require('dotenv').config({ path: path.join(projectRoot, '.env') });
+for (const envPath of [path.join(projectRoot, '.env'), path.join(__dirname, '.env')]) {
+  if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+}
+
+function envValue(name, fallback = '') {
+  return String(process.env[name] || fallback).trim();
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
-const publicUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '';
-const openAiKey = process.env.OPENAI_API_KEY;
-const rawXAiKey = process.env.XAI_API_KEY || '';
-const rawGroqKey = process.env.GROQ_API_KEY || process.env.GROCK_API_KEY || '';
+const publicUrl = envValue('RENDER_EXTERNAL_URL') || envValue('PUBLIC_URL');
+const openAiKey = envValue('OPENAI_API_KEY');
+const rawXAiKey = envValue('XAI_API_KEY');
+const rawGroqKey = envValue('GROQ_API_KEY') || envValue('GROCK_API_KEY');
 const xAiKey = rawXAiKey && !String(rawXAiKey).startsWith('gsk_') ? rawXAiKey : '';
 const groqKey = rawGroqKey || (String(rawXAiKey).startsWith('gsk_') ? rawXAiKey : '');
-const xAiBaseUrl = String(process.env.XAI_BASE_URL || process.env.GROK_BASE_URL || 'https://api.x.ai/v1').trim().replace(/\/+$/, '');
-const grokModel = process.env.XAI_MODEL || process.env.GROK_MODEL || 'grok-4.3';
-const groqBaseUrl = String(process.env.GROQ_BASE_URL || process.env.GROCK_BASE_URL || 'https://api.groq.com/openai/v1').trim().replace(/\/+$/, '');
-const groqModel = process.env.GROQ_MODEL || process.env.GROCK_MODEL || 'llama-3.3-70b-versatile';
-const ollamaBaseUrl = String(process.env.OLLAMA_BASE_URL || '').trim().replace(/\/+$/, '');
-const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
+const openAiBaseUrl = envValue('OPENAI_BASE_URL', 'https://api.openai.com/v1').replace(/\/+$/, '');
+const openAiModel = envValue('OPENAI_MODEL', 'gpt-4o-mini');
+const xAiBaseUrl = (envValue('XAI_BASE_URL') || envValue('GROK_BASE_URL') || 'https://api.x.ai/v1').replace(/\/+$/, '');
+const grokModel = envValue('XAI_MODEL') || envValue('GROK_MODEL') || 'grok-4.3';
+const groqBaseUrl = (envValue('GROQ_BASE_URL') || envValue('GROCK_BASE_URL') || 'https://api.groq.com/openai/v1').replace(/\/+$/, '');
+const groqModel = envValue('GROQ_MODEL') || envValue('GROCK_MODEL') || 'llama-3.3-70b-versatile';
+const ollamaBaseUrl = envValue('OLLAMA_BASE_URL').replace(/\/+$/, '');
+const ollamaModel = envValue('OLLAMA_MODEL', 'llama3.1:8b');
+const ollamaApiKey = envValue('OLLAMA_API_KEY');
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
-const configuredAiProvider = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
+const configuredAiProvider = envValue('AI_PROVIDER').toLowerCase();
 const forceLocalProvider = configuredAiProvider === 'local';
 const externalProviderRequested = Boolean(configuredAiProvider && configuredAiProvider !== 'local');
 const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
 const preferGroq = !forceLocalProvider && (['groq', 'grock'].includes(configuredAiProvider) || (configuredAiProvider === 'grok' && Boolean(groqKey) && !xAiKey) || process.env.GROQ_PREFER === 'true' || process.env.GROCK_PREFER === 'true');
 const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
+const aiProviderConfig = {
+  openai: {
+    apiKey: openAiKey,
+    baseUrl: openAiBaseUrl,
+    model: openAiModel,
+    temperature: Number(process.env.OPENAI_TEMPERATURE || 0.35),
+    maxTokens: Number(process.env.OPENAI_MAX_TOKENS || 2000)
+  },
+  grok: {
+    apiKey: xAiKey,
+    baseUrl: xAiBaseUrl,
+    model: grokModel,
+    temperature: Number(process.env.GROK_TEMPERATURE || process.env.XAI_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35),
+    maxTokens: Number(process.env.GROK_MAX_TOKENS || process.env.XAI_MAX_TOKENS || 2000)
+  },
+  groq: {
+    apiKey: groqKey,
+    baseUrl: groqBaseUrl,
+    model: groqModel,
+    temperature: Number(process.env.GROQ_TEMPERATURE || process.env.GROCK_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35),
+    maxTokens: Number(process.env.GROQ_MAX_TOKENS || process.env.GROCK_MAX_TOKENS || 2000)
+  },
+  ollama: {
+    enabled: ollamaEnabled,
+    apiKey: ollamaApiKey,
+    baseUrl: ollamaBaseUrl,
+    model: ollamaModel,
+    temperature: Number(process.env.OLLAMA_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35),
+    keepAlive: envValue('OLLAMA_KEEP_ALIVE', '5m')
+  }
+};
 const lexiaQueryRateLimiter = createRateLimiter({
   enabled: process.env.LEXIA_RATE_LIMIT_ENABLED !== 'false',
   windowMs: Number(process.env.LEXIA_RATE_LIMIT_WINDOW_MS || 60000),
@@ -2555,7 +2596,9 @@ function createProviderTimeout() {
 }
 
 async function callOpenAiChat(messages, options = {}) {
-  if (!openAiKey) {
+  const providerConfig = options.providerConfig?.openai || aiProviderConfig.openai;
+  const apiKey = String(providerConfig?.apiKey || '').trim();
+  if (!apiKey) {
     throw {
       provider: 'openai',
       code: 'not_configured',
@@ -2563,22 +2606,24 @@ async function callOpenAiChat(messages, options = {}) {
     };
   }
 
-  const model = options.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.OPENAI_TEMPERATURE || 0.35);
+  const baseUrl = String(providerConfig?.baseUrl || openAiBaseUrl).replace(/\/+$/, '');
+  const model = options.model || providerConfig?.model || openAiModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(providerConfig?.temperature ?? 0.35);
+  const maxTokens = Number(providerConfig?.maxTokens || 2000);
   const { controller, timeout } = createProviderTimeout();
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiKey}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model,
         messages,
-        max_tokens: 2000,
+        max_tokens: maxTokens,
         temperature
       })
     });
@@ -2632,7 +2677,9 @@ async function callOpenAiChat(messages, options = {}) {
 }
 
 async function callGrokChat(messages, options = {}) {
-  if (!xAiKey) {
+  const providerConfig = options.providerConfig?.grok || aiProviderConfig.grok;
+  const apiKey = String(providerConfig?.apiKey || '').trim();
+  if (!apiKey) {
     throw {
       provider: 'grok',
       code: 'not_configured',
@@ -2640,22 +2687,24 @@ async function callGrokChat(messages, options = {}) {
     };
   }
 
-  const model = options.model || grokModel;
-  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.GROK_TEMPERATURE || process.env.XAI_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35);
+  const baseUrl = String(providerConfig?.baseUrl || xAiBaseUrl).replace(/\/+$/, '');
+  const model = options.model || providerConfig?.model || grokModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(providerConfig?.temperature ?? 0.35);
+  const maxTokens = Number(providerConfig?.maxTokens || 2000);
   const { controller, timeout } = createProviderTimeout();
 
   try {
-    const response = await fetch(`${xAiBaseUrl}/chat/completions`, {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${xAiKey}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model,
         messages,
-        max_tokens: Number(process.env.GROK_MAX_TOKENS || process.env.XAI_MAX_TOKENS || 2000),
+        max_tokens: maxTokens,
         temperature
       })
     });
@@ -2708,7 +2757,9 @@ async function callGrokChat(messages, options = {}) {
 }
 
 async function callGroqChat(messages, options = {}) {
-  if (!groqKey) {
+  const providerConfig = options.providerConfig?.groq || aiProviderConfig.groq;
+  const apiKey = String(providerConfig?.apiKey || '').trim();
+  if (!apiKey) {
     throw {
       provider: 'groq',
       code: 'not_configured',
@@ -2716,22 +2767,24 @@ async function callGroqChat(messages, options = {}) {
     };
   }
 
-  const model = options.model || groqModel;
-  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.GROQ_TEMPERATURE || process.env.GROCK_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35);
+  const baseUrl = String(providerConfig?.baseUrl || groqBaseUrl).replace(/\/+$/, '');
+  const model = options.model || providerConfig?.model || groqModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(providerConfig?.temperature ?? 0.35);
+  const maxTokens = Number(providerConfig?.maxTokens || 2000);
   const { controller, timeout } = createProviderTimeout();
 
   try {
-    const response = await fetch(`${groqBaseUrl}/chat/completions`, {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${groqKey}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model,
         messages,
-        max_tokens: Number(process.env.GROQ_MAX_TOKENS || process.env.GROCK_MAX_TOKENS || 2000),
+        max_tokens: maxTokens,
         temperature
       })
     });
@@ -2784,7 +2837,9 @@ async function callGroqChat(messages, options = {}) {
 }
 
 async function callOllamaChat(messages, options = {}) {
-  if (!ollamaEnabled) {
+  const providerConfig = options.providerConfig?.ollama || aiProviderConfig.ollama;
+  const enabled = Boolean(providerConfig?.enabled && providerConfig?.baseUrl);
+  if (!enabled) {
     throw {
       provider: 'ollama',
       code: 'not_configured',
@@ -2792,16 +2847,17 @@ async function callOllamaChat(messages, options = {}) {
     };
   }
 
-  const model = options.model || ollamaModel;
-  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(process.env.OLLAMA_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35);
+  const baseUrl = String(providerConfig?.baseUrl || ollamaBaseUrl).replace(/\/+$/, '');
+  const model = options.model || providerConfig?.model || ollamaModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(providerConfig?.temperature ?? 0.35);
   const { controller, timeout } = createProviderTimeout();
   const headers = { 'Content-Type': 'application/json' };
-  if (process.env.OLLAMA_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.OLLAMA_API_KEY}`;
+  if (providerConfig?.apiKey) {
+    headers.Authorization = `Bearer ${providerConfig.apiKey}`;
   }
 
   try {
-    const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
+    const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       signal: controller.signal,
       headers,
@@ -2809,7 +2865,7 @@ async function callOllamaChat(messages, options = {}) {
         model,
         messages,
         stream: false,
-        keep_alive: process.env.OLLAMA_KEEP_ALIVE || '5m',
+        keep_alive: providerConfig?.keepAlive || '5m',
         options: {
           temperature
         }
@@ -2880,20 +2936,21 @@ async function generateWithConfiguredProvider(messages, options = {}) {
       ? ['grok', 'groq', 'openai', 'ollama']
       : (preferOllama ? ['ollama', 'groq', 'grok', 'openai'] : ['openai', 'groq', 'grok', 'ollama']));
   const errors = [];
+  const providerConfig = options.providerConfig || aiProviderConfig;
 
   for (const provider of providers) {
     try {
-      if (provider === 'groq' && groqKey) {
-        return { ...(await callGroqChat(messages, options)), providerErrors: errors };
+      if (provider === 'groq' && providerConfig.groq?.apiKey) {
+        return { ...(await callGroqChat(messages, { ...options, providerConfig })), providerErrors: errors };
       }
-      if (provider === 'grok' && xAiKey) {
-        return { ...(await callGrokChat(messages, options)), providerErrors: errors };
+      if (provider === 'grok' && providerConfig.grok?.apiKey) {
+        return { ...(await callGrokChat(messages, { ...options, providerConfig })), providerErrors: errors };
       }
-      if (provider === 'openai' && openAiKey) {
-        return { ...(await callOpenAiChat(messages, options)), providerErrors: errors };
+      if (provider === 'openai' && providerConfig.openai?.apiKey) {
+        return { ...(await callOpenAiChat(messages, { ...options, providerConfig })), providerErrors: errors };
       }
-      if (provider === 'ollama' && ollamaEnabled) {
-        return { ...(await callOllamaChat(messages, options)), providerErrors: errors };
+      if (provider === 'ollama' && providerConfig.ollama?.enabled) {
+        return { ...(await callOllamaChat(messages, { ...options, providerConfig })), providerErrors: errors };
       }
     } catch (error) {
       const providerError = {
@@ -3013,6 +3070,7 @@ function getLexiaEngine() {
     },
     config: {
       temperature: () => Number(process.env.OPENAI_TEMPERATURE || 0.35),
+      providerConfig: () => aiProviderConfig,
       externalProviderRequested: () => externalProviderRequested,
       configuredProvider: () => configuredAiProvider
     }
@@ -3553,7 +3611,8 @@ app.post('/api/chat', async (req, res) => {
     const intelligenceResult = await runLegalIntelligence({
       userQuery,
       prompt,
-      conversationMemory
+      conversationMemory,
+      providerConfig: aiProviderConfig
     });
     const persisted = await persistAnswer(intelligenceResult.answer, intelligenceResult.metadata);
 
