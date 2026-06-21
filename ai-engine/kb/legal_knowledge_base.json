@@ -11,6 +11,25 @@
       "resumen": "Elementos esenciales de la compraventa y advertencias para bienes inmuebles."
     },
     {
+      "id": "normativa-consumidor-servicios-educativos-001",
+      "titulo": "Servicios educativos privados: cobros, información y reclamo del consumidor",
+      "materia": "Derecho del Consumidor",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Cuando una universidad, instituto o centro educativo privado cobra montos que el estudiante considera excesivos, el análisis inicial combina derecho del consumidor, contrato de servicios educativos y reglas de transparencia. La Constitución Política del Perú reconoce en el artículo 65 que el Estado defiende el interés de los consumidores y usuarios y garantiza el derecho a la información sobre bienes y servicios. El Código de Protección y Defensa del Consumidor, Ley 29571, exige que el proveedor brinde información relevante, clara, veraz y oportuna sobre precios, condiciones, cobros, restricciones y características del servicio. En servicios educativos, debe revisarse si el cobro fue informado antes de contratar o matricularse, si está previsto en contrato, reglamento, tarifario o comunicado oficial, si el aumento fue unilateral o sorpresivo, si existe una contraprestación real y si se respetó el deber de idoneidad del servicio ofrecido.",
+      "resumen": "Ruta jurídica para revisar cobros, aumentos o pagos exigidos por universidades o servicios educativos privados.",
+      "inteligencia": {
+        "hechos_clave": ["monto cobrado antes y monto actual", "concepto exacto del cobro", "contrato, matrícula, tarifario o reglamento aplicable", "comunicación oficial del aumento", "servicio educativo efectivamente recibido"],
+        "problemas_juridicos": ["determinar si el cobro fue informado de forma clara y previa", "verificar si el proveedor modificó condiciones unilateralmente", "evaluar idoneidad del servicio educativo", "identificar si procede reclamo ante la universidad o Indecopi"],
+        "reglas_practicas": ["la universidad debe sustentar los cobros en información previa, clara y verificable", "un cobro no debe analizarse solo por ser alto, sino por su legalidad, transparencia, contrato y justificación", "el estudiante debe conservar tarifarios, comunicados, recibos y contrato"],
+        "riesgos": ["pagar o aceptar condiciones sin dejar constancia de disconformidad", "perder correos, comunicados o comprobantes", "confundir desacuerdo económico con infracción si no se revisa contrato y tarifario"],
+        "documentos": ["contrato de servicios educativos", "constancia de matrícula", "tarifario", "comunicados de la universidad", "boletas o recibos", "correos o mensajes", "captura del portal de pagos"],
+        "pasos": ["pedir sustento escrito del cobro", "comparar contrato, tarifario y comunicaciones previas", "presentar reclamo en el Libro de Reclamaciones si no hay explicación suficiente", "guardar cargo o constancia del reclamo", "evaluar denuncia ante Indecopi si la respuesta no corrige el problema"],
+        "preguntas": ["¿Qué concepto exacto te están cobrando?", "¿Ese monto estaba en el contrato, tarifario o comunicado previo?", "¿El aumento fue avisado antes de la matrícula o después?"]
+      }
+    },
+    {
       "id": "normativa-proceso-civil-001",
       "titulo": "Procedimiento civil: demanda, pruebas, sentencia y recursos",
       "materia": "Derecho Procesal Civil",

@@ -836,6 +836,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function formatChatContent(content) {
         return escapeHtml(content)
+            .replace(/\*\*([^*\n][^*\n]*?)\*\*/g, "<strong>$1</strong>")
             .replace(/\n{2,}/g, "</p><p>")
             .replace(/\n/g, "<br>");
     }

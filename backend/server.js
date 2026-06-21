@@ -1400,7 +1400,10 @@ const legalIntentTypes = [
       'articulo', 'artículo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución',
       'art culo', 'constituci',
       'decreto', 'norma', 'reglamento', 'dame el articulo', 'dame el artículo',
-      'busca el articulo', 'busca el artículo', 'que dice el articulo', 'qué dice el artículo'
+      'busca el articulo', 'busca el artículo', 'que dice el articulo', 'qué dice el artículo',
+      'cual es la ley', 'cuál es la ley', 'que ley', 'qué ley', 'que norma', 'qué norma',
+      'fundamento legal', 'base legal', 'sustento legal', 'derecho a', 'derecho al',
+      'derecho de', 'derecho del'
     ]
   },
   {
@@ -1456,10 +1459,13 @@ const legalAreas = [
       'constitucion', 'constitución', 'constitucional', 'derechos fundamentales', 'amparo',
       'constituci',
       'habeas corpus', 'habeas data', 'accion de cumplimiento', 'acción de cumplimiento',
-      'tribunal constitucional', 'tc', 'articulo constitucional', 'artículo constitucional'
+      'tribunal constitucional', 'tc', 'articulo constitucional', 'artículo constitucional',
+      'debido proceso', 'tutela jurisdiccional', 'derecho de defensa', 'derecho a la defensa',
+      'garantias procesales', 'garantías procesales', 'defensa en juicio'
     ],
     topics: [
       { id: 'constitucion', label: 'Constitución', keywords: ['constitucion', 'constitución', 'constituci', 'articulo', 'artículo', 'art culo', 'derechos fundamentales'] },
+      { id: 'debido_proceso_defensa', label: 'Debido proceso y derecho de defensa', keywords: ['debido proceso', 'tutela jurisdiccional', 'derecho de defensa', 'derecho a la defensa', 'garantias procesales', 'garantías procesales', 'defensa en juicio'] },
       { id: 'habeas_data', label: 'Hábeas data', keywords: ['habeas data', 'datos personales', 'acceso a informacion', 'acceso a información'] },
       { id: 'amparo', label: 'Amparo', keywords: ['amparo', 'derechos constitucionales'] },
       { id: 'habeas_corpus', label: 'Hábeas corpus', keywords: ['habeas corpus', 'libertad individual'] }
@@ -1514,6 +1520,33 @@ const legalAreas = [
     ]
   },
   {
+    id: 'derecho_consumidor',
+    label: 'Derecho del Consumidor',
+    keywords: [
+      'consumidor', 'consumo', 'indecopi', 'proveedor', 'reclamo', 'libro de reclamaciones',
+      'servicio', 'servicio educativo', 'universidad', 'instituto', 'colegio', 'educacion',
+      'educación', 'matricula', 'matrícula', 'pension', 'pensión', 'mensualidad',
+      'cobro', 'cobran', 'cobrando', 'cobro excesivo', 'cobran demasiado', 'cobrando demasiado',
+      'aumento', 'tarifa', 'cuota'
+    ],
+    topics: [
+      {
+        id: 'servicios_educativos',
+        label: 'Servicios educativos y cobros',
+        keywords: [
+          'universidad', 'instituto', 'colegio', 'servicio educativo', 'educacion', 'educación',
+          'matricula', 'matrícula', 'pension', 'pensión', 'mensualidad', 'cobro', 'aumento',
+          'tarifa', 'cuota', 'cobran demasiado', 'cobrando demasiado'
+        ]
+      },
+      {
+        id: 'reclamo_consumidor',
+        label: 'Reclamo de consumidor',
+        keywords: ['indecopi', 'libro de reclamaciones', 'reclamo', 'queja', 'proveedor', 'idoneidad', 'informacion al consumidor', 'información al consumidor']
+      }
+    ]
+  },
+  {
     id: 'derecho_administrativo',
     label: 'Derecho Administrativo',
     keywords: ['administrativo', 'municipalidad', 'entidad publica', 'entidad pública', 'procedimiento administrativo', 'sancion', 'sanción', 'multa'],
@@ -1551,7 +1584,7 @@ function confidenceFromScore(score, high = 10, medium = 4) {
 
 function inferLegalObjective(normalizedText) {
   const objectives = [
-    { id: 'ubicar_norma', label: 'Ubicar norma o artículo', patterns: ['dame', 'busca', 'articulo', 'artículo', 'art culo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución', 'constituci', 'que dice', 'qué dice'] },
+    { id: 'ubicar_norma', label: 'Ubicar norma o artículo', patterns: ['dame', 'busca', 'articulo', 'artículo', 'art culo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución', 'constituci', 'que dice', 'qué dice', 'que ley', 'qué ley', 'cual es la ley', 'cuál es la ley', 'fundamento legal', 'base legal', 'sustento legal', 'derecho a', 'derecho al', 'derecho de', 'derecho del'] },
     { id: 'orientacion', label: 'Orientación legal', patterns: ['que hago', 'qué hago', 'que puedo hacer', 'qué puedo hacer', 'me paso', 'me pasó', 'ayer', 'hoy', 'tengo un problema', 'mi vecino', 'mi empleador'] },
     { id: 'calcular_plazo', label: 'Identificar plazo o vencimiento', patterns: ['plazo', 'cuanto tiempo', 'cuánto tiempo', 'dias', 'días', 'vence', 'vencimiento', 'caducidad', 'prescripcion', 'prescripción'] },
     { id: 'preparar_documento', label: 'Preparar o revisar documento', patterns: ['redacta', 'prepara', 'modelo', 'plantilla', 'carta', 'demanda', 'contrato', 'escrito'] },
@@ -1734,6 +1767,18 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
 }
 
 function buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery) {
+  if (intent?.type?.id === 'consulta_normativa') {
+    const memoryAwareNormativeQuery = [
+      userQuery,
+      intent?.area?.label,
+      intent?.topic?.label,
+      intent?.objective?.label,
+      ...(intent?.concepts || []).slice(0, 8),
+      memorySearchQuery && memorySearchQuery !== userQuery ? memorySearchQuery : ''
+    ].filter(Boolean).join(' ');
+    return truncateForRag(memoryAwareNormativeQuery || userQuery, 1600);
+  }
+
   const enriched = [
     userQuery,
     intent?.area?.label,
@@ -2332,6 +2377,7 @@ function buildSingleLegalQuestion(intent, reasoningProfile) {
   if (topicId === 'despido') return '¿Te entregaron una carta de despido o solo te lo dijeron verbalmente?';
   if (topicId === 'beneficios_sociales') return '¿Sigues trabajando ahí o ya terminó la relación laboral?';
   if (topicId === 'alimentos') return '¿Ya existe una sentencia o acta de conciliación sobre alimentos?';
+  if (topicId === 'servicios_educativos') return '¿Ese cobro aparece en el contrato, tarifario o comunicado oficial de la universidad?';
   if (topicId === 'propiedad_inmueble' || topicId === 'posesion') return '¿Tienes título, contrato o partida registral del inmueble?';
   if (intent?.area?.id === 'derecho_penal') return '¿Ya hiciste denuncia o todavía estás evaluando si corresponde denunciar?';
   if (missing.some(item => normalizeText(item).includes('fecha'))) return '¿Cuándo ocurrió el hecho principal?';
@@ -2378,39 +2424,129 @@ function buildLocalLegalAnalysisSections(intent, results, reasoningProfile) {
 
   if (!topResult && !rules.length && !steps.length) return lines;
 
-  lines.push('Análisis inicial:');
+  lines.push('**Análisis inicial**');
   if (legalProblems.length) {
-    lines.push(`El problema jurídico principal es ${legalProblems[0]}.`);
+    lines.push(`El problema jurídico principal es **${legalProblems[0]}**.`);
   } else if (reasoningProfile?.legalIssue) {
     lines.push(reasoningProfile.legalIssue);
   }
   if (rules.length) {
-    lines.push(`Criterio práctico: ${rules[0]}.`);
+    lines.push(`Criterio práctico: **${rules[0]}**.`);
   }
   if (risks.length) {
-    lines.push(`Riesgo a cuidar: ${risks[0]}.`);
+    lines.push(`Riesgo a cuidar: **${risks[0]}**.`);
   }
 
   if (steps.length) {
-    lines.push('', 'Qué hacer ahora:');
+    lines.push('', '**Qué hacer ahora**');
     steps.slice(0, 4).forEach((step, index) => {
       lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
     });
   }
 
   if (documents.length) {
-    lines.push('', 'Documentos o pruebas útiles:');
+    lines.push('', '**Documentos o pruebas útiles**');
     lines.push(documents.slice(0, 5).join(', ') + '.');
   }
 
   if (usefulQuestions.length) {
-    lines.push('', 'Para darte una ruta más exacta, responde:');
+    lines.push('', '**Para darte una ruta más exacta, responde:**');
     usefulQuestions.slice(0, 3).forEach((question, index) => {
       lines.push(`${index + 1}. ${question}`);
     });
   }
 
   return lines;
+}
+
+function getResultTitle(item) {
+  return item?.titulo || item?.title || 'Referencia jurídica';
+}
+
+function getResultSource(item) {
+  return item?.fuente || item?.source || 'Base jurídica local LEXIA';
+}
+
+function getResultText(item) {
+  return String(item?.resumen || item?.excerpt || item?.contenido || item?.content || '').replace(/\s+/g, ' ').trim();
+}
+
+function isUsefulNormativeResult(item) {
+  const text = normalizeText([
+    getResultTitle(item),
+    getResultSource(item),
+    item?.module,
+    item?.modulo,
+    item?.matter,
+    item?.materia,
+    getResultText(item)
+  ].join(' '));
+
+  return !(
+    text.includes('plataforma del estado peruano')
+    || text.includes('que es gob pe')
+    || text.includes('directorio nacional de redes sociales')
+    || text.includes('lexia engine web discovery')
+    || (text.includes('constitucion politica del peru') && text.includes('constitucion politica peru 2025 md'))
+    || text.includes('legal faqs')
+  );
+}
+
+function buildNormativeLegalAnswer(query, intent, results = []) {
+  const usefulResults = (Array.isArray(results) ? results : [])
+    .filter(isUsefulNormativeResult)
+    .sort((a, b) => {
+      const aStructured = String(a?.id || '').startsWith('kb:') ? 1 : 0;
+      const bStructured = String(b?.id || '').startsWith('kb:') ? 1 : 0;
+      const aNormative = (a?.module || a?.modulo) === 'normativa' ? 1 : 0;
+      const bNormative = (b?.module || b?.modulo) === 'normativa' ? 1 : 0;
+      return (bStructured - aStructured)
+        || (bNormative - aNormative)
+        || Number(b.relevance || 0) - Number(a.relevance || 0);
+    });
+  const primary = usefulResults[0] || results[0];
+
+  if (!primary) {
+    return [
+      '**Respuesta corta:** hay que ubicar la regla legal o constitucional que reconoce ese derecho.',
+      '',
+      'No encontré una fuente específica en la base local para responder con seguridad. Lo correcto es verificar el texto vigente en una fuente oficial como El Peruano, SPIJ, el Tribunal Constitucional o la entidad competente.'
+    ].join('\n');
+  }
+
+  const title = getResultTitle(primary);
+  const source = getResultSource(primary);
+  const text = getResultText(primary);
+  const excerpt = truncateForRag(text, 520);
+  const articleResult = usefulResults.find(item => (
+    normalizeText(item?.module || item?.modulo).includes('legal article')
+    && normalizeText(getResultTitle(item)).includes('articulo')
+  ));
+  const sourceSummary = buildSourceSummary(usefulResults.length ? usefulResults : results, intent, 3);
+  const lines = [
+    `**Base legal:** la referencia más relevante que encontré es **${title}**.`,
+    '',
+    excerpt
+      ? `**Punto central:** ${excerpt}`
+      : 'Esa fuente aparece como la referencia más cercana para ubicar el fundamento legal aplicable.',
+  ];
+
+  if (articleResult) {
+    lines.push('', `**Referencia concreta:** ${getResultTitle(articleResult)} (${getResultSource(articleResult)}).`);
+  }
+
+  lines.push(
+    '',
+    '**Para aplicarlo a tu caso:** revisa el acto concreto, la notificación, el plazo y si realmente se permitió presentar descargos, pruebas o recurso.',
+    '',
+    `**Fuente principal:** ${source}.`
+  );
+
+  if (sourceSummary && !sourceSummary.includes('No encontré una fuente específica')) {
+    lines.push('', sourceSummary);
+  }
+
+  return lines.join('\n');
 }
 
 function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
@@ -2431,12 +2567,7 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
   const documents = collectIntelligenceItems(results, 'documentos', 4);
 
   if (intent?.type?.id === 'consulta_normativa') {
-    lines.push(guidance[0] || 'Primero hay que ubicar la norma exacta y confirmar si está vigente.');
-    if (results.length) {
-      lines.push('Con las referencias disponibles puedo ayudarte a entender el alcance, pero no conviene citar una norma sin verificar el texto oficial.');
-    } else {
-      lines.push('No tengo una coincidencia exacta en la base local; lo correcto es verificarla en una fuente oficial antes de usarla.');
-    }
+    return buildNormativeLegalAnswer(query, intent, results);
   } else {
     if (guidance.length) {
       lines.push(guidance.slice(0, shortInput ? 1 : 2).join(' '));
@@ -2446,21 +2577,21 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
 
     if (!shortInput && rules.length) {
       lines.push('');
-      lines.push(`La clave jurídica aquí es esta: ${rules[0]}.`);
+      lines.push(`**Clave jurídica:** ${rules[0]}.`);
     }
 
     if (!shortInput && risks.length) {
-      lines.push(`El riesgo práctico es ${risks[0]}, así que conviene actuar con documentos y fechas claras.`);
+      lines.push(`**Riesgo práctico:** ${risks[0]}. Conviene actuar con documentos y fechas claras.`);
     }
 
     if (!shortInput && steps.length) {
       lines.push('');
-      lines.push(`Yo empezaría por ${steps.slice(0, 3).join(', ')}.`);
+      lines.push(`**Qué hacer ahora:** ${steps.slice(0, 3).join(', ')}.`);
     }
 
     if (!shortInput && documents.length) {
       lines.push('');
-      lines.push(`Ten cerca ${documents.slice(0, 4).join(', ')}; con eso se puede evaluar mejor la ruta legal.`);
+      lines.push(`**Documentos clave:** ${documents.slice(0, 4).join(', ')}.`);
     }
 
     lines.push('');
@@ -2496,7 +2627,20 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     ? previousFacts[previousFacts.length - 1]
     : (reasoningProfile?.facts || []).find(fact => !isConversationalFollowUp(fact)) || query;
 
-  lines.push(`En tu caso, lo importante sigue siendo esto: ${truncateForRag(lastUserFact, 220)}`);
+  lines.push(`**En tu caso:** ${truncateForRag(lastUserFact, 220)}`);
+
+  if (intent?.type?.id === 'consulta_normativa') {
+    const normativeResults = (Array.isArray(results) ? results : []).filter(isUsefulNormativeResult);
+    const primaryNormative = normativeResults[0] || results?.[0];
+    if (primaryNormative) {
+      lines.push('');
+      lines.push(`**Base legal:** ${getResultTitle(primaryNormative)}.`);
+      const normativeText = String(primaryNormative?.contenido || primaryNormative?.content || getResultText(primaryNormative)).replace(/\s+/g, ' ').trim();
+      if (normativeText) {
+        lines.push(`**Punto central:** ${truncateForRag(normativeText, 420)}`);
+      }
+    }
+  }
 
   const intelligence = (results || [])
     .map(item => item.intelligence || item.inteligencia)
@@ -2511,16 +2655,16 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     'definir si buscas reclamar, denunciar, negociar o calcular un monto'
   ];
   lines.push('');
-  lines.push(`Lo aterrizo así: primero ${nextSteps.slice(0, 3).join(', ')}.`);
+  lines.push(`**Qué hacer ahora:** ${nextSteps.slice(0, 3).join(', ')}.`);
 
   if (documents.length) {
     lines.push('');
-    lines.push(`Para sostenerlo legalmente, sirven especialmente: ${documents.slice(0, 5).join(', ')}.`);
+    lines.push(`**Documentos clave:** ${documents.slice(0, 5).join(', ')}.`);
   }
 
   if (risks.length) {
     lines.push('');
-    lines.push(`El cuidado principal es ${risks[0]}.`);
+    lines.push(`**Cuidado principal:** ${risks[0]}.`);
   }
 
   lines.push('');
@@ -2974,6 +3118,7 @@ PERSONALIDAD Y ESTILO:
 - Habla como una abogada cercana: directa, clara y con criterio. No suenes como manual, catálogo, plantilla ni soporte técnico.
 - Responde primero a la intención real del usuario. Si pregunta "qué hago", da una ruta; si pregunta "cómo así", explica lo anterior; si da un dato nuevo, incorpóralo.
 - Si ya hay historial, continúa el hilo sin saludar, sin resumir todo de nuevo y sin repetir la misma estructura.
+- Si el usuario hace una pregunta dependiente del hilo ("dame las leyes", "qué hago", "y ahora", "explícame eso"), interpreta el mensaje usando el caso anterior antes de responder.
 - El último mensaje del usuario manda. Si corrige algo ("no me denunciaron", "yo soy el denunciado", "era verbal", "ya pagué"), actualiza la hipótesis jurídica y responde sobre esa corrección, no repitas la pregunta anterior.
 - Distingue el rol procesal del usuario: víctima, denunciado/investigado, demandante, demandado, trabajador, empleador, acreedor o deudor. Si el rol no está claro, pregunta por ese rol en una sola pregunta.
 - No concluyas que no existe investigación, proceso, deuda, despido o responsabilidad solo porque el usuario no fue notificado o no conoce una denuncia. Formula la conclusión con cuidado: "si no has sido notificado", "hasta donde sabes", "habría que verificar".
@@ -2984,6 +3129,8 @@ PERSONALIDAD Y ESTILO:
 - Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.
 - Si faltan datos, responde lo posible con supuestos claros y formula una pregunta concreta para continuar.
 - Evita respuestas frías, excesivamente largas o llenas de tecnicismos. Prioriza frases directas, ejemplos simples y próximos pasos.
+- Sé precisa y visual: usa párrafos cortos, máximo una idea por párrafo y evita bloques largos de texto.
+- Resalta en **negrita** solo las frases realmente importantes: derecho aplicable, riesgo, plazo, documento clave o siguiente paso. No pongas todo en negrita.
 - Puedes usar "te recomiendo", "conviene revisar" y "lo primero sería", dejando claro que es orientación general y no patrocinio legal.
 - No empieces con listas largas si el usuario hizo una pregunta simple. Primero responde en una frase clara y luego amplía si hace falta.
 - Mantente dentro del mundo jurídico. No respondas como consejero general, psicólogo, vendedor ni bot administrativo.
@@ -2994,6 +3141,7 @@ CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Conversación antes que fuente: si el usuario está aclarando o siguiendo el hilo, responde a esa aclaración. No abras secciones de fuentes salvo que cites una norma, entidad o referencia concreta que cambie la respuesta.
 - Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
 - Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
+- Fidelidad de fuentes: no cites números de artículos, leyes, expedientes, casaciones, sentencias ni entidades si no aparecen expresamente en el RAG, en la síntesis interna de LEXIA o en el mensaje del usuario. Si no hay artículo exacto, di "la base local ubica la garantía, pero no tengo artículo exacto verificado en este contexto".
 - Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
 - Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
 - Fuentes citadas: usa "Fuentes y verificación" solo cuando realmente hayas usado una fuente concreta. No llenes la respuesta con fuentes si el usuario solo está conversando o aclarando hechos.
@@ -3011,11 +3159,11 @@ ESPECIALIDAD EN DERECHO PERUANO:
 
 FORMATO DE RESPUESTA:
 No uses un formato rígido si la consulta es simple. Organiza la respuesta como una conversación jurídica clara solo con las partes que aporten valor:
-1. Primero, una respuesta directa y entendible.
-2. Luego, la explicación legal en lenguaje sencillo.
-3. Si corresponde, base legal, criterios o jurisprudencia relevante.
-4. Después, pasos prácticos y documentos que conviene reunir.
-5. Cierra con una pregunta concreta si falta información, o con "Fuentes y verificación" solo cuando hayas usado normas o referencias específicas.
+1. Primero, una respuesta directa en 1 o 2 frases.
+2. Luego, si aporta valor, usa bloques breves con títulos en negrita como **Base legal**, **Qué hacer ahora**, **Documentos clave** o **Riesgo**.
+3. Evita más de 4 bloques visuales por respuesta salvo que el usuario pida un análisis amplio.
+4. Usa listas cortas de 2 a 4 puntos cuando ayuden a leer rápido.
+5. Cierra con una sola pregunta concreta si falta información. Usa "Fuentes y verificación" solo cuando hayas usado normas o referencias específicas.
 
 REGLAS:
 - Siempre responde en español, con tono profesional, cercano y claro.
@@ -3095,7 +3243,9 @@ function isLegalQuery(text) {
     'prisión','indemnización','daño','perjuicio','responsabilidad','culpa','negligencia','fraude','estafa','extorsión','extorsion',
     'robo','hurto','violencia','acoso','difamación','injuria','calumnia','agresión','asalto','homicidio',
     'aborto','adopción','patria potestad','guarda','visita','pensión','renta','cuota','arancel','honorario',
-    'empresa','sociedad','quiebra','insolvencia','liquidación','ley','código','articulado','inciso'
+    'empresa','sociedad','quiebra','insolvencia','liquidación','ley','código','articulado','inciso',
+    'consumidor','consumo','indecopi','proveedor','servicio educativo','universidad','instituto',
+    'pensión','pension','matrícula','matricula','cobro excesivo','cobran demasiado','cobrando demasiado'
     ,'constitución','constitucion','terreno','predio','lindero','linderos','vecino','empleador','trabajador'
   ];
   return keywords.some(k => text.toLowerCase().includes(k));

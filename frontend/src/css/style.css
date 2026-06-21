@@ -1407,6 +1407,12 @@ button {
     color: #102447;
 }
 
+.chat-message.assistant .chat-bubble strong,
+.chat-message.system .chat-bubble strong {
+    color: #07142B;
+    font-weight: 800;
+}
+
 .chat-bubble p + p {
     margin-top: 12px;
 }

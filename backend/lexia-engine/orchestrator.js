@@ -1,3 +1,34 @@
+function extractArticleNumbers(text) {
+  const matches = String(text || '').matchAll(/\bart(?:iculo|ículo)?\.?\s*(\d+[a-z]?)/gi);
+  return [...new Set([...matches].map(match => String(match[1] || '').toLowerCase()))];
+}
+
+function validateAnswerAgainstSources(answer, results = [], localSynthesis = '') {
+  const citedArticles = extractArticleNumbers(answer);
+  if (!citedArticles.length) {
+    return { ok: true, unsupportedArticles: [] };
+  }
+
+  const sourceText = [
+    localSynthesis,
+    ...results.map(item => [
+      item?.title,
+      item?.titulo,
+      item?.content,
+      item?.contenido,
+      item?.excerpt,
+      item?.resumen
+    ].filter(Boolean).join(' '))
+  ].join(' ');
+  const supportedArticles = new Set(extractArticleNumbers(sourceText));
+  const unsupportedArticles = citedArticles.filter(article => !supportedArticles.has(article));
+
+  return {
+    ok: unsupportedArticles.length === 0,
+    unsupportedArticles
+  };
+}
+
 function createLexiaEngine(deps) {
   const {
     brain,
@@ -71,17 +102,40 @@ function createLexiaEngine(deps) {
     const legalGraphReasoning = reasoner.buildGraph(intent, ragContext.results);
     const legalGraphContext = reasoner.buildGraphContext(legalGraphReasoning);
     const temperature = config.temperature();
+    const localSynthesis = response.buildLocalAnswer(
+      userQuery,
+      intent,
+      ragContext.results,
+      legalReasoningProfile,
+      legalGraphReasoning,
+      effectiveConversationMemory
+    );
 
     const dialogueInstruction = dialogueMode
       ? [
           'MODO DIÁLOGO:',
           'El usuario está conversando o aclarando el caso. Prioriza entender y responder el último mensaje.',
-          'No repitas estructura previa. No hagas resumen de fuentes. Haz como máximo una pregunta concreta.'
+          'Interpreta referencias como "eso", "las leyes", "qué hago" o "explícame" usando el hilo anterior.',
+          'No repitas estructura previa. No hagas resumen de fuentes salvo que el usuario pida base legal.',
+          'Usa párrafos cortos y resalta con **negrita** solo la idea clave, el riesgo, la base legal o el siguiente paso.',
+          'Haz como máximo una pregunta concreta.'
         ].join('\n')
       : '';
+    const lexiaSynthesisContext = [
+      'SÍNTESIS JURÍDICA INTERNA DE LEXIA:',
+      localSynthesis,
+      '',
+      'REGLAS DE FIDELIDAD DE FUENTES:',
+      '- Usa esta síntesis como criterio base. No la reemplaces por una respuesta genérica.',
+      '- No cites números de artículos, leyes, expedientes, casaciones ni sentencias que no aparezcan explícitamente en el contexto RAG o en esta síntesis.',
+      '- Si el contexto solo identifica una garantía o norma general, dilo así; no completes con memoria externa.',
+      '- Si una fuente RAG concreta contradice tu conocimiento general, prioriza la fuente RAG.',
+      '- Mejora la redacción, pero conserva el sentido jurídico y las fuentes verificadas.',
+      '- Mantén la respuesta escaneable: respuesta directa, base legal si aplica, pasos/documentos y una sola pregunta final.'
+    ].join('\n');
     const context = dialogueMode
-      ? [dialogueInstruction, conversationMemoryContext, legalReasoningContext, ragContext.context].filter(Boolean).join('\n\n')
-      : [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context].filter(Boolean).join('\n\n');
+      ? [dialogueInstruction, conversationMemoryContext, legalReasoningContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
+      : [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,
@@ -114,52 +168,14 @@ function createLexiaEngine(deps) {
       providerConfig: options.providerConfig || (typeof config.providerConfig === 'function' ? config.providerConfig() : undefined)
     });
     if (!providerResult.answer) {
-      if (config.externalProviderRequested()) {
-        const firstError = providerResult.providerErrors?.[0] || {};
-        return {
-          answer: [
-            'No voy a fingir una respuesta inteligente con una plantilla local.',
-            '',
-            `LEXIA intentó consultar el proveedor configurado (${config.configuredProvider()}), pero no recibió respuesta útil.`,
-            firstError.error ? `Error técnico: ${firstError.error}` : '',
-            '',
-            'Revisa la API key, el modelo y las variables de entorno del servidor. Cuando el proveedor esté activo, responderé usando el hilo completo y el contexto jurídico del cerebro de LEXIA.'
-          ].filter(Boolean).join('\n'),
-          intent,
-          results: ragContext.results,
-          ragSources: ragContext.sources,
-          source: 'LEXIA Provider Guard',
-          fallback: true,
-          model: 'provider-unavailable',
-          provider: config.configuredProvider(),
-          providerError: firstError.error || 'Proveedor generativo no disponible.',
-          providerCode: firstError.code || null,
-          retrieval: {
-            mode: 'rag',
-            results: ragContext.results.length,
-            memoryMessages: effectiveConversationMemory.length
-          },
-          metadata: {
-            model: 'provider-unavailable',
-            source: 'LEXIA Provider Guard',
-            ragSources: ragContext.sources,
-            providerErrors: providerResult.providerErrors,
-            memoryMessages: effectiveConversationMemory.length,
-            localSearchEvaluation,
-            legalReasoningProfile,
-            legalGraphReasoning,
-            legalInterpretation: intent,
-            engineStage: 'providers:unavailable'
-          }
-        };
-      }
-
       return {
-        answer: response.buildLocalAnswer(userQuery, intent, ragContext.results, legalReasoningProfile, legalGraphReasoning, effectiveConversationMemory),
+        answer: localSynthesis,
         intent,
         results: ragContext.results,
         ragSources: ragContext.sources,
-        source: 'LEXIA RAG Local',
+        source: config.externalProviderRequested()
+          ? 'LEXIA Integrated Reasoning (provider unavailable)'
+          : 'LEXIA Integrated Reasoning',
         fallback: true,
         model: 'local-rag-engine',
         provider: 'local',
@@ -176,12 +192,52 @@ function createLexiaEngine(deps) {
           ragSources: ragContext.sources,
           providerErrors: providerResult.providerErrors,
           reasoning: providerResult.reasoning,
+          localSynthesis,
           memoryMessages: effectiveConversationMemory.length,
           localSearchEvaluation,
           legalReasoningProfile,
           legalGraphReasoning,
           legalInterpretation: intent,
-          engineStage: 'local:fallback'
+          engineStage: config.externalProviderRequested() ? 'local:synthesis_after_provider_failure' : 'local:synthesis'
+        }
+      };
+    }
+
+    const sourceValidation = validateAnswerAgainstSources(providerResult.answer, ragContext.results, localSynthesis);
+    if (!sourceValidation.ok) {
+      return {
+        answer: localSynthesis,
+        intent,
+        results: ragContext.results,
+        ragSources: ragContext.sources,
+        source: 'LEXIA Integrated Reasoning (provider source rejected)',
+        fallback: true,
+        model: 'local-rag-engine',
+        provider: 'local',
+        providerError: `Respuesta del proveedor descartada por citar artículos no verificados: ${sourceValidation.unsupportedArticles.join(', ')}`,
+        providerCode: 'unsupported_source_citation',
+        retrieval: {
+          mode: 'rag',
+          results: ragContext.results.length,
+          memoryMessages: effectiveConversationMemory.length
+        },
+        metadata: {
+          model: 'local-rag-engine',
+          source: 'LEXIA Integrated Reasoning (provider source rejected)',
+          ragSources: ragContext.sources,
+          providerErrors: providerResult.providerErrors,
+          rejectedProvider: {
+            provider: providerResult.provider,
+            model: providerResult.model,
+            unsupportedArticles: sourceValidation.unsupportedArticles
+          },
+          localSynthesis,
+          memoryMessages: effectiveConversationMemory.length,
+          localSearchEvaluation,
+          legalReasoningProfile,
+          legalGraphReasoning,
+          legalInterpretation: intent,
+          engineStage: 'local:synthesis_after_provider_source_rejection'
         }
       };
     }
@@ -204,6 +260,7 @@ function createLexiaEngine(deps) {
         model: providerResult.model,
         source: providerResult.source,
         ragSources: ragContext.sources,
+        localSynthesis,
         memoryMessages: effectiveConversationMemory.length,
         localSearchEvaluation,
         legalReasoningProfile,

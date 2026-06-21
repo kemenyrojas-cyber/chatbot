@@ -275,6 +275,43 @@ function loadLegalKnowledgeBase() {
 const legalKnowledgeBase = loadLegalKnowledgeBase();
 const legalKnowledgeCorpus = legalKnowledgeModules.flatMap(moduleName => legalKnowledgeBase[moduleName]);
 
+function extractLegalConceptPhrases(query) {
+  const normalized = normalizeText(query);
+  const phrases = [];
+  const patterns = [
+    /\bderecho\s+(?:a la|al|a|de la|del|de)\s+([a-z0-9ñ\s]{3,60})/g,
+    /\b(?:fundamento|base|sustento)\s+legal\s+(?:de|del|para|sobre)\s+([a-z0-9ñ\s]{3,60})/g
+  ];
+
+  for (const pattern of patterns) {
+    let match = pattern.exec(normalized);
+    while (match) {
+      const phrase = match[0].replace(/\s+/g, ' ').trim();
+      const concept = String(match[1] || '').replace(/\s+/g, ' ').trim();
+      const conceptTerms = concept.split(' ').filter(term => term.length >= 3);
+      if (phrase.startsWith('derecho ') && concept) {
+        phrases.push(
+          phrase,
+          `derecho de ${concept}`,
+          `derecho a ${concept}`,
+          `derecho a la ${concept}`,
+          `derecho al ${concept}`
+        );
+      } else if (conceptTerms.length >= 2) {
+        phrases.push(phrase, concept);
+      } else if (phrase) {
+        phrases.push(phrase);
+      }
+      match = pattern.exec(normalized);
+    }
+  }
+
+  return [...new Set(phrases)]
+    .map(item => item.replace(/\s+/g, ' ').trim())
+    .filter(item => item.length >= 3)
+    .slice(0, 6);
+}
+
 function scoreLegalKnowledgeRecord(record, query, terms) {
   const normalizedQuery = normalizeText(query);
   const normalizedTitle = normalizeText(record.titulo);
@@ -282,10 +319,20 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
   const normalizedMatter = normalizeText(record.materia);
   const normalizedIntelligence = normalizeText(JSON.stringify(record.inteligencia || {}));
   const normalizedBody = normalizeText(`${record.titulo} ${record.materia} ${record.resumen} ${record.contenido} ${record.fuente} ${normalizedIntelligence}`);
+  const legalConceptPhrases = extractLegalConceptPhrases(query);
   let score = 0;
 
   if (normalizedBody.includes(normalizedQuery)) score += 25;
   if (normalizedTitle.includes(normalizedQuery)) score += 20;
+  for (const phrase of legalConceptPhrases) {
+    if (normalizedBody.includes(phrase)) score += 35;
+    const phraseTerms = phrase.split(' ').filter(term => term.length >= 4);
+    const matchedTerms = phraseTerms.filter(term => normalizedBody.includes(term)).length;
+    if (phraseTerms.length && matchedTerms >= Math.min(2, phraseTerms.length)) {
+      score += matchedTerms * 8;
+    }
+    if (normalizedTitle.includes(phrase)) score += 18;
+  }
   for (const term of terms) {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const matches = normalizedBody.match(new RegExp(`\\b${escaped}`, 'g'));
@@ -665,7 +712,7 @@ function filterSourcesForIntent(results, intent) {
   const topic = normalizeText(intent?.topic?.label || '');
   const topicId = normalizeText(intent?.topic?.id || '');
   const area = normalizeText(intent?.area?.label || '');
-  const topicTerms = getQueryTerms(`${topic} ${topicId}`).filter(term => term.length >= 4);
+  const topicTerms = [...new Set(getQueryTerms(`${topic} ${topicId}`).filter(term => term.length >= 4))];
   const hasSpecificTopic = topicTerms.length > 0 && !['tema no determinado', ''].includes(topic);
 
   return results.filter(item => {
@@ -681,7 +728,10 @@ function filterSourcesForIntent(results, intent) {
       item.content
     ].join(' '));
 
-    if (hasSpecificTopic && topicTerms.some(term => containsNormalizedTerm(sourceText, term))) return true;
+    if (hasSpecificTopic) {
+      const matchingTopicTerms = topicTerms.filter(term => containsNormalizedTerm(sourceText, term));
+      if (matchingTopicTerms.length >= Math.min(2, topicTerms.length)) return true;
+    }
     if (!hasSpecificTopic && area && sourceText.includes(area)) return true;
     return false;
   });
@@ -707,12 +757,12 @@ function buildSourceSummary(results, intent, limit = 3) {
 
   if (!relevantSources.length) {
     return [
-      'Fuentes y verificación',
+      '**Fuentes y verificación**',
       `No encontré una fuente específica sobre ${intent?.topic?.label || 'este tema'} en la base local. Conviene verificar la norma aplicable en El Peruano, SPIJ, Ministerio Público, Poder Judicial o la entidad competente.`
     ].join('\n');
   }
 
-  const lines = ['Fuentes y verificación'];
+  const lines = ['**Fuentes y verificación**'];
   relevantSources.slice(0, limit).forEach((item, index) => {
     const title = item.titulo || item.title || 'Referencia jurídica';
     const source = item.fuente || item.source || 'Base jurídica local LEXIA';
@@ -736,7 +786,11 @@ function isGenericSourceResult(item) {
     item?.resumen,
     item?.excerpt
   ].join(' '));
-  return text.includes('constitucion politica')
+  return text.includes('plataforma del estado peruano')
+    || text.includes('que es gob pe')
+    || text.includes('directorio nacional de redes sociales')
+    || text.includes('lexia engine web discovery')
+    || (text.includes('constitucion politica del peru') && text.includes('constitucion politica peru 2025 md'))
     || text.includes('resumen los derechos laborales')
     || text.includes('derechos laborales basicos')
     || text.includes('legal faqs')
@@ -745,13 +799,14 @@ function isGenericSourceResult(item) {
 
 function splitLegalSections(raw) {
   return String(raw || '')
-    .split(/\n{2,}|(?=^#{1,3}\s)/m)
+    .split(/\n{2,}|(?=^#{1,3}\s)|(?=\bArticulo\s+\d)|(?=\bArtículo\s+\d)/m)
     .map(section => section.replace(/\s+/g, ' ').trim())
     .filter(section => section.length >= 80);
 }
 
 function inferLegalType(fileName, text) {
   const normalized = normalizeText(`${fileName} ${text}`);
+  if (normalized.includes('constitucion politica') || normalized.includes('constitución política')) return 'legal_article';
   if (normalized.includes('casacion') || normalized.includes('casación')) return 'cassation';
   if (normalized.includes('jurisprudencia') || normalized.includes('sentencia') || normalized.includes('precedente')) return 'jurisprudence';
   if (normalized.includes('articulo') || normalized.includes('artículo') || normalized.includes('codigo') || normalized.includes('código') || normalized.includes('ley')) return 'legal_article';
@@ -807,10 +862,25 @@ const legalSearchCorpus = [
 function scoreLegalRecord(record, query, terms) {
   const normalizedContent = normalizeText(`${record.title} ${record.excerpt} ${record.content}`);
   const normalizedQuery = normalizeText(query);
+  const legalConceptPhrases = extractLegalConceptPhrases(query);
+  const conceptTerms = new Set(legalConceptPhrases.flatMap(phrase => phrase.split(' ')));
+  const genericNormativeTerms = new Set([
+    'ley', 'norma', 'legal', 'derecho', 'derechos', 'tener', 'permite', 'permiten',
+    'reconoce', 'cual', 'cuales', 'cuál', 'cuáles', 'fundamento', 'base', 'sustento'
+  ]);
   let score = 0;
 
   if (normalizedContent.includes(normalizedQuery)) score += 20;
+  for (const phrase of legalConceptPhrases) {
+    if (normalizedContent.includes(phrase)) {
+      score += 45;
+      if (record.type === 'legal_article' && normalizeText(record.title).includes('articulo')) {
+        score += 120;
+      }
+    }
+  }
   for (const term of terms) {
+    if (legalConceptPhrases.length && (genericNormativeTerms.has(term) || conceptTerms.has(term))) continue;
     const matches = normalizedContent.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'));
     if (matches) score += Math.min(matches.length, 8) * 3;
     if (normalizeText(record.title).includes(term)) score += 4;
@@ -904,6 +974,8 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
       ...item,
       rankingScore: Number(item.relevance || 0)
         + (String(item.id || '').startsWith('kb:') ? 30 : 0)
+        + (item.module === 'normativa' ? 18 : 0)
+        + (item.module === 'legal_article' ? 35 : 0)
         + (itemHasExternalUrl(item) ? 20 : 0)
         - (isGenericSourceResult(item) ? 35 : 0)
     }))

@@ -11,3 +11,23 @@ services:
         sync: false
       - key: PGSSLMODE
         value: require
+      - key: AI_PROVIDER
+        value: auto
+      - key: AI_PROVIDER_TIMEOUT_MS
+        value: "45000"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_MODEL
+        value: qwen2.5:3b
+      - key: OLLAMA_ENABLED
+        value: "false"
+      - key: OLLAMA_PREFER
+        value: "false"
+      - key: OLLAMA_KEEP_ALIVE
+        value: 5m
+      - key: OLLAMA_API_KEY
+        sync: false
