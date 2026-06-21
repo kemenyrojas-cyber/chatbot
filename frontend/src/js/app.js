@@ -847,35 +847,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return formatted;
     }
 
-    function renderMessageDiagnostics(metadata = {}) {
-        const diagnostics = metadata?.diagnostics;
-        if (!diagnostics) return "";
-
-        const provider = metadata.provider || diagnostics.providerChecks?.[0]?.provider || "local";
-        const strategy = diagnostics.providerStrategy || "fallback";
-        const mode = diagnostics.conversationMode?.label || diagnostics.conversationMode?.id || "";
-        const ragCount = Array.isArray(diagnostics.ragSources) ? diagnostics.ragSources.length : 0;
-        const memoryCount = Number(diagnostics.memoryMessages || 0);
-        const persisted = metadata.persisted === true ? "memoria guardada" : metadata.persisted === false ? "memoria no confirmada" : "memoria local";
-        const sourceTitles = (diagnostics.ragSources || [])
-            .slice(0, 3)
-            .map(source => source.title || source.source || "Fuente RAG")
-            .join(" | ");
-
-        return `
-            <details class="chat-diagnostics">
-                <summary>Diagnóstico LEXIA</summary>
-                <div>
-                    <span>Proveedor: ${escapeHtml(provider)} (${escapeHtml(strategy)})</span>
-                    ${mode ? `<span>Modo: ${escapeHtml(mode)}</span>` : ""}
-                    <span>RAG: ${ragCount} fuente(s)</span>
-                    <span>Memoria: ${memoryCount} mensaje(s), ${escapeHtml(persisted)}</span>
-                    ${sourceTitles ? `<span>Fuentes: ${escapeHtml(sourceTitles)}</span>` : ""}
-                </div>
-            </details>
-        `;
-    }
-
     function createChatSession(initialQuestion = "") {
         const sessionId = createId();
         const title = initialQuestion.trim() || `Nueva consulta ${new Date().toLocaleDateString("es-PE")}`;
@@ -986,7 +957,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <strong>${item.role === "user" ? "Tú" : "LEXIA"}</strong>
                     <span>${formatDate(item.createdAt)}</span>
                 </div>
-                <div class="chat-bubble"><p>${formatChatContent(item.content)}</p>${item.role === "assistant" ? renderMessageDiagnostics(item.metadata) : ""}</div>
+                <div class="chat-bubble"><p>${formatChatContent(item.content)}</p></div>
             </article>
         `).join("");
 
