@@ -1607,6 +1607,61 @@ function inferLegalObjective(normalizedText) {
   };
 }
 
+function classifyConversationMode(query, memoryMessages = []) {
+  const normalized = normalizeText(query);
+  const memory = normalizeMemoryMessages(memoryMessages);
+  const hasMemory = memory.length > 0;
+  const userTerms = getQueryTerms(query);
+
+  const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
+  const normRequest = /\b(dame|dime|busca|muestrame|muéstrame|necesito)\b.*\b(ley|leyes|articulo|artículo|articulos|artículos|norma|codigo|código)\b/.test(normalized)
+    || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized);
+  const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
+  const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste)\b/.test(normalized);
+  const actionRequest = /\b(que hago|qué hago|que puedo hacer|qué puedo hacer|como procedo|cómo procedo|que sigue|qué sigue|siguiente paso|pasos|denuncio|demando|respondo)\b/.test(normalized);
+  const topicShift = /\b(otro caso|otra consulta|cambiando de tema|ahora quiero saber sobre|nuevo caso)\b/.test(normalized);
+  const asksQuestion = /[?¿]/.test(String(query || '')) || /\b(que|qué|como|cómo|cuando|cuándo|donde|dónde|cual|cuál|por que|por qué)\b/.test(normalized);
+  const hasLegalSignal = isLegalQuery(query) || userTerms.length >= 4;
+  const looksLikeCaseFact = /\b(\d+|edad|años|ano|año|menor|niño|niña|adolescente|ayer|hoy|amenaza|mensaje|audio|captura|denuncia|policia|policía|fiscalia|fiscalía|contrato|carta|despido|deuda|pago)\b/.test(normalized);
+  const newFact = hasMemory
+    && !sourceRequest
+    && !normRequest
+    && !confusion
+    && !correction
+    && !actionRequest
+    && !topicShift
+    && (hasLegalSignal || looksLikeCaseFact || (!asksQuestion && userTerms.length >= 2));
+
+  let id = 'case_start';
+  if (topicShift) id = 'topic_shift';
+  else if (sourceRequest) id = 'source_request';
+  else if (normRequest) id = 'norm_request';
+  else if (confusion) id = 'confusion';
+  else if (correction) id = 'correction';
+  else if (actionRequest) id = 'action_request';
+  else if (newFact) id = 'new_fact';
+  else if (hasMemory && isConversationalFollowUp(query)) id = 'follow_up';
+  else if (hasMemory && userTerms.length <= 3) id = 'follow_up';
+
+  const deterministic = ['source_request', 'norm_request', 'confusion', 'correction', 'action_request', 'new_fact'].includes(id);
+  return {
+    id,
+    label: {
+      case_start: 'Nuevo caso o consulta',
+      topic_shift: 'Cambio de tema',
+      source_request: 'Pedido de fuente o base legal',
+      norm_request: 'Pedido de norma o artículo',
+      confusion: 'Usuario confundido',
+      correction: 'Corrección del usuario',
+      action_request: 'Pedido de próximos pasos',
+      new_fact: 'Dato nuevo del caso',
+      follow_up: 'Seguimiento conversacional'
+    }[id] || 'Mensaje conversacional',
+    hasMemory,
+    deterministic
+  };
+}
+
 function inferComplexity(normalizedText, query, areaConfidence, topicConfidence) {
   const terms = getQueryTerms(query);
   const hasProcedure = /\b(demanda|denuncia|apelacion|apelación|casacion|casación|medida cautelar|expediente|audiencia|sentencia|recurso)\b/.test(normalizedText);
@@ -1646,6 +1701,7 @@ function interpretLegalQuery(query, memoryMessages = []) {
   const fullText = [memoryText, query].filter(Boolean).join(' ');
   const currentNormalized = normalizeText(query);
   const normalized = normalizeText(fullText);
+  const conversationMode = classifyConversationMode(query, memoryMessages);
   const terms = getQueryTerms(query);
   const typeScores = legalIntentTypes
     .map(type => ({ ...type, score: countPatternScore(normalized, type.patterns, 4) }))
@@ -1707,6 +1763,7 @@ function interpretLegalQuery(query, memoryMessages = []) {
       confidence: matchedTopic ? topicConfidence : (fallbackTopic ? 'media' : 'baja')
     },
     objective,
+    conversationMode,
     concepts: uniqueConcepts,
     complexity: inferComplexity(normalized, query, areaConfidence, topicConfidence),
     missingInfo: buildMissingInfoForInterpretation(normalized, typeId, areaId, topicId),
@@ -1714,6 +1771,7 @@ function interpretLegalQuery(query, memoryMessages = []) {
       areaScore: matchedArea?.score || 0,
       topicScore: matchedTopic?.score || 0,
       typeScore: matchedType?.score || 0,
+      conversationMode: conversationMode.id,
       usedMemory: Boolean(memoryText),
       currentAreaScore: currentAreaScores[0]?.score || 0,
       currentAreaId: currentAreaScores[0]?.score > 0 ? currentAreaScores[0].id : '',
@@ -1754,6 +1812,7 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
     area,
     topic,
     objective: topicShift || currentIntent?.objective?.confidence === 'alta' ? currentIntent.objective : (memoryIntent?.objective || currentIntent.objective),
+    conversationMode: currentIntent?.conversationMode || memoryIntent?.conversationMode || { id: 'case_start', label: 'Nuevo caso o consulta', deterministic: false },
     concepts: topicShift
       ? [...new Set([...(currentIntent?.concepts || [])])].slice(0, 12)
       : [...new Set([...(currentIntent?.concepts || []), ...(memoryIntent?.concepts || [])])].slice(0, 12),
@@ -1765,6 +1824,7 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
       ...(memoryIntent?.interpretation || {}),
       ...(currentIntent?.interpretation || {}),
       mergedWithMemory: useMemoryArea || useMemoryTopic,
+      conversationMode: currentIntent?.conversationMode?.id || memoryIntent?.conversationMode?.id,
       topicShift
     },
     originalQuery: currentIntent?.originalQuery || '',
@@ -1867,7 +1927,7 @@ function buildConversationMemoryContext(messages = [], intent = null) {
   if (intent) {
     lines.push(`Tema jurídico detectado: ${intent.area.label} / ${intent.topic.label}.`);
   }
-  lines.push('Lee esto como una conversación viva. El último mensaje puede corregir o precisar lo anterior. No repitas respuestas anteriores.');
+  lines.push('Lee esto como una conversación viva. Trata los mensajes del usuario como hechos del caso. Las respuestas de LEXIA son contexto conversacional, no hechos probados; no las repitas ni las uses para inventar datos.');
 
   normalized.slice(-6).forEach((message, index) => {
     const speaker = message.role === 'assistant' ? 'LEXIA' : 'Usuario';
@@ -1875,6 +1935,26 @@ function buildConversationMemoryContext(messages = [], intent = null) {
   });
 
   return lines.join('\n');
+}
+
+function buildConversationMemoryState(messages = []) {
+  const normalized = normalizeMemoryMessages(messages);
+  const userFacts = normalized
+    .filter(message => message.role === 'user')
+    .map(message => message.content)
+    .filter(content => !isConversationalFollowUp(content));
+  const assistantReplies = normalized
+    .filter(message => message.role === 'assistant')
+    .map(message => message.content);
+  const lastUserFact = userFacts[userFacts.length - 1] || '';
+
+  return {
+    userFacts,
+    assistantReplies,
+    lastUserFact,
+    userFactText: userFacts.slice(-5).join(' '),
+    hasUserFacts: userFacts.length > 0
+  };
 }
 
 function buildMemorySearchQuery(userQuery, messages = []) {
@@ -1886,19 +1966,13 @@ function buildMemorySearchQuery(userQuery, messages = []) {
     .slice(-4)
     .map(message => message.content)
     .join(' ');
-  const recentAssistantContext = normalized
-    .filter(message => message.role === 'assistant')
-    .slice(-2)
-    .map(message => message.content)
-    .join(' ');
 
   return truncateForRag(
     [
       recentUserFacts ? `Hechos y tema previos: ${recentUserFacts}` : '',
-      recentAssistantContext ? `Orientación previa: ${recentAssistantContext}` : '',
       `Pregunta actual: ${userQuery}`
     ].filter(Boolean).join('\n'),
-    1800
+    1400
   );
 }
 
@@ -2636,10 +2710,192 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
   return lines.join('\n');
 }
 
+function selectBestLegalResult(results = [], intent = null) {
+  const list = Array.isArray(results) ? results : [];
+  if (!list.length) return null;
+  const topicTerms = getQueryTerms(`${intent?.topic?.label || ''} ${intent?.topic?.id || ''}`).filter(term => term.length >= 4);
+
+  return [...list].sort((a, b) => {
+    const aText = normalizeText([getResultTitle(a), getResultSource(a), a?.materia, a?.matter, getFullResultText(a)].join(' '));
+    const bText = normalizeText([getResultTitle(b), getResultSource(b), b?.materia, b?.matter, getFullResultText(b)].join(' '));
+    const aCitations = collectLegalCitationBadges([a]).length;
+    const bCitations = collectLegalCitationBadges([b]).length;
+    const aTopic = topicTerms.filter(term => aText.includes(term)).length;
+    const bTopic = topicTerms.filter(term => bText.includes(term)).length;
+    const aNorm = normalizeText(a?.modulo || a?.module).includes('normativa') ? 1 : 0;
+    const bNorm = normalizeText(b?.modulo || b?.module).includes('normativa') ? 1 : 0;
+    return (bTopic - aTopic)
+      || (bCitations - aCitations)
+      || (bNorm - aNorm)
+      || Number(b.relevance || 0) - Number(a.relevance || 0);
+  })[0];
+}
+
+function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_request') {
+  const primary = selectBestLegalResult(results, intent);
+  let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 4);
+  if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 4);
+  const topicLabel = intent?.topic?.label && intent.topic.label !== 'Tema no determinado'
+    ? intent.topic.label
+    : 'ese punto';
+
+  if (!primary || !legalBadges.length) {
+    return [
+      modeId === 'norm_request'
+        ? `Para darte artículos sobre **${topicLabel}**, necesito una fuente normativa exacta.`
+        : `Tienes razón en pedir la base. En este momento no tengo un artículo exacto verificado en la base local para **${topicLabel}**.`,
+      '',
+      'No voy a inventar el número de artículo. Conviene verificarlo en El Peruano, SPIJ o la fuente oficial correspondiente, o cargar esa norma al cerebro de LEXIA.',
+      '',
+      '¿Quieres que lo tratemos como búsqueda de norma exacta y me indiques si tienes el código, ley o documento a revisar?'
+    ].join('\n');
+  }
+
+  const fullText = getFullResultText(primary);
+  const excerpt = truncateForRag(fullText, modeId === 'norm_request' ? 520 : 360);
+  const lines = [
+    modeId === 'norm_request'
+      ? `La base legal verificada que encuentro para **${topicLabel}** es ${legalBadges.map(item => `[${item}]`).join(' ')}.`
+      : `Lo saco de esta base legal verificada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`,
+    ''
+  ];
+
+  if (excerpt) {
+    lines.push(`En simple: **${excerpt}**`);
+    lines.push('');
+  }
+
+  lines.push(`Fuente usada por LEXIA: **${getResultTitle(primary)}** | ${getResultSource(primary)}.`);
+  return lines.join('\n');
+}
+
+function buildConfusionAnswer(query, intent, results = [], reasoningProfile = null) {
+  const primary = selectBestLegalResult(results, intent);
+  let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 2);
+  if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 2);
+  const rules = collectIntelligenceItems(primary ? [primary] : results, 'reglas_practicas', 2);
+  const topicId = intent?.topic?.id || '';
+  const topicLabel = intent?.topic?.label || 'este punto';
+  const lines = ['Tienes razón, lo explico más simple.'];
+
+  if (topicId === 'extorsion') {
+    lines.push('');
+    lines.push(`Para que hablemos de **extorsión**, no basta una deuda o una discusión. Tiene que haber **amenaza, violencia o presión ilegítima** para obligar a alguien a entregar dinero, hacer algo o dejar de hacer algo${legalBadges.length ? ` ${legalBadges.map(item => `[${item}]`).join(' ')}` : ''}.`);
+  } else if (topicId === 'abuso_sexual_menor') {
+    lines.push('');
+    lines.push(`En simple: si la víctima es menor de edad, lo primero no es discutir trámites, sino **proteger al menor y ubicar el tipo de hecho**. Si hubo acceso carnal o acto análogo con menor de 14 años, la base penal visible es ${legalBadges.map(item => `[${item}]`).join(' ') || 'la norma penal aplicable verificada por fuente'}.`);
+  } else {
+    lines.push('');
+    lines.push(`La idea central sobre **${topicLabel}** es esta: ${rules[0] || reasoningProfile?.legalIssue || 'hay que conectar los hechos concretos con una norma o vía legal verificable'}.`);
+    if (legalBadges.length) lines.push(`La base visible es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+
+  lines.push('');
+  lines.push('Dicho en una frase: **primero identificamos el hecho clave, luego vemos si encaja en una norma, y recién después decidimos qué hacer**.');
+  lines.push('');
+  lines.push('¿Qué parte quieres que te baje más: el hecho que debe probarse, la ley aplicable o el paso práctico?');
+  return lines.join('\n');
+}
+
+function buildCorrectionAnswer(query, intent, results = [], memoryMessages = []) {
+  const memoryState = buildConversationMemoryState(memoryMessages);
+  return [
+    'Tienes razón: corrijo el enfoque.',
+    '',
+    'Voy a tomar como válido **lo que tú estás precisando ahora**, no una interpretación anterior de LEXIA. Para no arrastrar un error, separo así:',
+    '',
+    memoryState.lastUserFact
+      ? `Hecho del usuario que tengo como base: **${truncateForRag(memoryState.lastUserFact, 220)}**.`
+      : 'Aún necesito que me indiques el hecho correcto con una frase corta.',
+    '',
+    'Con esa corrección, la respuesta debe rehacerse desde el hecho correcto y solo citar norma si aparece en la base local.',
+    '',
+    '¿Cuál es exactamente el dato que debo corregir: el hecho, la norma citada o el paso que recomendé?'
+  ].join('\n');
+}
+
+function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null) {
+  const primary = selectBestLegalResult(results, intent);
+  let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 3);
+  if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 3);
+  const scopedResults = primary ? [primary] : results;
+  const steps = collectIntelligenceItems(scopedResults, 'pasos', 3);
+  const risks = collectIntelligenceItems(scopedResults, 'riesgos', 2);
+  const lines = [
+    `Ese dato sí importa: **${truncateForRag(query, 180)}**.`,
+    '',
+    `Con eso, el análisis se ajusta dentro de **${intent?.topic?.label || intent?.area?.label || 'la materia del caso'}**.`
+  ];
+
+  if (legalBadges.length) {
+    lines.push(`La base que tengo verificada es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+  if (risks.length) {
+    lines.push('');
+    lines.push(`El cuidado principal ahora es **${risks[0]}**.`);
+  }
+  if (steps.length) {
+    lines.push('');
+    lines.push(`Siguiente paso práctico: **${steps[0]}**.`);
+  }
+  lines.push('');
+  lines.push(buildSingleLegalQuestion(intent, reasoningProfile));
+  return lines.join('\n');
+}
+
+function buildActionAnswer(query, intent, results = [], reasoningProfile = null) {
+  const primary = selectBestLegalResult(results, intent);
+  const scopedResults = primary ? [primary] : results;
+  const steps = collectIntelligenceItems(scopedResults, 'pasos', 4);
+  const documents = collectIntelligenceItems(scopedResults, 'documentos', 4);
+  let legalBadges = collectLegalCitationBadges(scopedResults, 2);
+  if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 2);
+  const nextSteps = steps.length ? steps : (reasoningProfile?.nextSteps || []).slice(0, 3);
+  const lines = ['Vamos por partes. Yo haría esto:'];
+
+  nextSteps.slice(0, 3).forEach((step, index) => {
+    lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
+  });
+
+  if (documents.length) {
+    lines.push('');
+    lines.push(`Ten a la mano: **${documents.slice(0, 4).join(', ')}**.`);
+  }
+  if (legalBadges.length) {
+    lines.push('');
+    lines.push(`Base legal visible: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+  lines.push('');
+  lines.push(buildSingleLegalQuestion(intent, reasoningProfile));
+  return lines.join('\n');
+}
+
+function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = null, graphReasoning = null, memoryMessages = []) {
+  const modeId = intent?.conversationMode?.id || 'case_start';
+  if (modeId === 'source_request' || modeId === 'norm_request') {
+    return buildSourceOrNormAnswer(query, intent, results, modeId);
+  }
+  if (modeId === 'confusion') {
+    return buildConfusionAnswer(query, intent, results, reasoningProfile);
+  }
+  if (modeId === 'correction') {
+    return buildCorrectionAnswer(query, intent, results, memoryMessages);
+  }
+  if (modeId === 'new_fact') {
+    return buildNewFactAnswer(query, intent, results, reasoningProfile);
+  }
+  if (modeId === 'action_request') {
+    return buildActionAnswer(query, intent, results, reasoningProfile);
+  }
+  return '';
+}
+
 function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
   const lines = [];
   const shortInput = isShortUserInput(query);
   const normalizedQuery = normalizeText(query);
+  const modeAnswer = buildModeAwareAnswer(query, intent, results, reasoningProfile, graphReasoning, []);
+  if (modeAnswer) return modeAnswer;
   const forcedBenefitsGuidance = normalizedQuery.includes('beneficios sociales')
     ? [
         'Si tu empleador no te paga beneficios sociales, el punto no es solo reclamar: primero hay que identificar qué concepto falta y desde cuándo.',
@@ -2705,7 +2961,8 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
 function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, graphReasoning, memoryMessages = []) {
   const normalizedMemory = normalizeMemoryMessages(memoryMessages);
   const recentUserMessages = normalizedMemory.filter(message => message.role === 'user').slice(-3);
-  const recentAssistant = normalizedMemory.filter(message => message.role === 'assistant').slice(-1)[0];
+  const modeAnswer = buildModeAwareAnswer(query, intent, results, reasoningProfile, graphReasoning, normalizedMemory);
+  if (modeAnswer) return modeAnswer;
   const followUp = isConversationalFollowUp(query)
     || (normalizedMemory.length > 0 && getQueryTerms(query).length <= 3)
     || isConversationContinuation(query, normalizedMemory);
@@ -2722,11 +2979,7 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     ? previousFacts[previousFacts.length - 1]
     : (reasoningProfile?.facts || []).find(fact => !isConversationalFollowUp(fact)) || query;
 
-  if (isConversationContinuation(query, normalizedMemory)) {
-    lines.push(`Entiendo. Ese dato cambia el enfoque: si ya hay fecha para sentencia, ahora lo urgente es **prepararse para ese acto y cuidar los plazos posteriores**.`);
-  } else {
-    lines.push(`En tu caso, sigo tomando como punto de partida esto: **${truncateForRag(lastUserFact, 220)}**.`);
-  }
+  lines.push(`En tu caso, sigo tomando como punto de partida esto: **${truncateForRag(lastUserFact, 220)}**.`);
 
   const legalBadges = collectLegalCitationBadges(results);
   if (legalBadges.length) {
@@ -2751,7 +3004,7 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     .map(item => item.intelligence || item.inteligencia)
     .find(item => item && typeof item === 'object');
   const normalizedQuery = normalizeText(query);
-  const isSentenceStage = /\b(sentencia|lectura de sentencia|fecha para sentencia|audiencia)\b/.test(normalizedQuery);
+  const isSentenceStage = /\b(sentencia|lectura de sentencia|fecha para sentencia|audiencia de sentencia)\b/.test(normalizedQuery);
   const steps = isSentenceStage
     ? ['confirmar hora, modalidad y juzgado de la audiencia', 'coordinar con su abogado la estrategia antes de la lectura', 'prepararse para revisar si corresponde apelación']
     : (Array.isArray(intelligence?.pasos) ? intelligence.pasos : reasoningProfile?.nextSteps || []);
@@ -3946,6 +4199,7 @@ app.post('/api/chat', async (req, res) => {
         ragSources: intelligenceResult.ragSources || [],
         memoryMessages: intelligenceResult.metadata?.memoryMessages || 0,
         localSearchEvaluation: intelligenceResult.metadata?.localSearchEvaluation || null,
+        conversationMode: intelligenceResult.metadata?.conversationMode || intelligenceResult.intent?.conversationMode || null,
         engineStage: intelligenceResult.metadata?.engineStage || null
       },
       persisted

@@ -111,10 +111,45 @@ function createLexiaEngine(deps) {
       effectiveConversationMemory
     );
 
+    if (intent?.conversationMode?.deterministic) {
+      return {
+        answer: localSynthesis,
+        intent,
+        results: ragContext.results,
+        ragSources: ragContext.sources,
+        source: 'LEXIA Conversational Controller',
+        fallback: false,
+        model: 'local-conversation-controller',
+        provider: 'local',
+        retrieval: {
+          mode: 'rag',
+          results: ragContext.results.length,
+          memoryMessages: effectiveConversationMemory.length
+        },
+        metadata: {
+          model: 'local-conversation-controller',
+          source: 'LEXIA Conversational Controller',
+          ragSources: ragContext.sources,
+          localSynthesis,
+          memoryMessages: effectiveConversationMemory.length,
+          localSearchEvaluation,
+          legalReasoningProfile,
+          legalGraphReasoning,
+          legalInterpretation: intent,
+          conversationMode: intent.conversationMode,
+          providerErrors: [],
+          providerStrategy: 'controlled',
+          providerChecks: [],
+          engineStage: `conversation:${intent.conversationMode.id}`
+        }
+      };
+    }
+
     const dialogueInstruction = dialogueMode
       ? [
           'MODO DIÁLOGO:',
           'El usuario está conversando o aclarando el caso. Prioriza entender y responder el último mensaje.',
+          `Modo conversacional detectado: ${intent?.conversationMode?.label || 'No determinado'}.`,
           'Interpreta referencias como "eso", "las leyes", "qué hago" o "explícame" usando el hilo anterior.',
           'No repitas estructura previa. No hagas resumen de fuentes salvo que el usuario pida base legal.',
           'Responde como chat humano con una abogada: natural, breve, interactivo y sin convertir todo en subtítulos.',
@@ -201,6 +236,7 @@ function createLexiaEngine(deps) {
           legalReasoningProfile,
           legalGraphReasoning,
           legalInterpretation: intent,
+          conversationMode: intent.conversationMode,
           engineStage: config.externalProviderRequested() ? 'local:synthesis_after_provider_failure' : 'local:synthesis'
         }
       };
@@ -242,6 +278,7 @@ function createLexiaEngine(deps) {
           legalReasoningProfile,
           legalGraphReasoning,
           legalInterpretation: intent,
+          conversationMode: intent.conversationMode,
           engineStage: 'local:synthesis_after_provider_source_rejection'
         }
       };
@@ -271,6 +308,7 @@ function createLexiaEngine(deps) {
         legalReasoningProfile,
         legalGraphReasoning,
         legalInterpretation: intent,
+        conversationMode: intent.conversationMode,
         providerErrors: providerResult.providerErrors,
         providerStrategy: providerResult.providerStrategy || 'fallback',
         providerChecks: providerResult.providerChecks || [],
