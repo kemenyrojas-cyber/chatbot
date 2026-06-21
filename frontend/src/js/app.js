@@ -836,6 +836,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function formatChatContent(content) {
         return escapeHtml(content)
+            .replace(/\[((?:[^\]\n]*(?:ley|c[oó]digo|decreto|constituci[oó]n|art\.|art[ií]culo|cpp)[^\]\n]*))\]/gi, "<span class=\"legal-citation\">[$1]</span>")
             .replace(/\*\*([^*\n][^*\n]*?)\*\*/g, "<strong>$1</strong>")
             .replace(/\n{2,}/g, "</p><p>")
             .replace(/\n/g, "<br>");

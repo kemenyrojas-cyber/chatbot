@@ -171,7 +171,7 @@
       "fecha": "",
       "fuente": "Base jurídica interna LEXIA",
       "url": "",
-      "contenido": "En amenazas o extorsión se debe priorizar la seguridad, preservar mensajes, audios, números telefónicos, cuentas bancarias, perfiles y cualquier dato de contacto. No conviene negociar ni borrar evidencia sin orientación. Si existe amenaza inmediata, debe buscarse ayuda urgente de la autoridad competente.",
+      "contenido": "La extorsión está tipificada en el Código Penal peruano, artículo 200. En términos generales, se configura cuando alguien, mediante violencia, amenaza u otra forma de presión ilegítima, obliga a otra persona a otorgar una ventaja económica indebida o realizar una conducta contra su voluntad. En amenazas o extorsión se debe priorizar la seguridad, preservar mensajes, audios, números telefónicos, cuentas bancarias, perfiles y cualquier dato de contacto. No conviene negociar ni borrar evidencia sin orientación. Si existe amenaza inmediata, debe buscarse ayuda urgente de la autoridad competente.",
       "resumen": "Ruta inicial para casos de extorsión, amenaza o cobro intimidatorio.",
       "inteligencia": {
         "hechos_clave": ["tipo de amenaza", "medio usado", "monto o exigencia", "identificación del agresor", "riesgo inmediato"],

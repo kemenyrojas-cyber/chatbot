@@ -1413,6 +1413,12 @@ button {
     font-weight: 800;
 }
 
+.chat-message.assistant .chat-bubble .legal-citation,
+.chat-message.system .chat-bubble .legal-citation {
+    color: #B91C1C;
+    font-weight: 800;
+}
+
 .chat-bubble p + p {
     margin-top: 12px;
 }

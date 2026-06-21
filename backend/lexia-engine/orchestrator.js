@@ -131,6 +131,7 @@ function createLexiaEngine(deps) {
       '- No cites números de artículos, leyes, expedientes, casaciones ni sentencias que no aparezcan explícitamente en el contexto RAG o en esta síntesis.',
       '- Si el contexto solo identifica una garantía o norma general, dilo así; no completes con memoria externa.',
       '- Si una fuente RAG concreta contradice tu conocimiento general, prioriza la fuente RAG.',
+      '- Cuando fundamentes una afirmación jurídica importante, muestra la norma entre corchetes, por ejemplo [Código Penal, art. 200]. Solo usa corchetes si esa norma aparece en el RAG, en esta síntesis o en el mensaje del usuario.',
       '- Mejora la redacción, pero conserva el sentido jurídico y las fuentes verificadas.',
       '- Mantén la respuesta escaneable, pero conversacional: respuesta directa, explicación breve, paso útil y una sola pregunta final.'
     ].join('\n');

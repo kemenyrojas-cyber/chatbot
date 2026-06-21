@@ -2485,6 +2485,56 @@ function getResultText(item) {
   return String(item?.resumen || item?.excerpt || item?.contenido || item?.content || '').replace(/\s+/g, ' ').trim();
 }
 
+function getFullResultText(item) {
+  return String(item?.contenido || item?.content || item?.resumen || item?.excerpt || '').replace(/\s+/g, ' ').trim();
+}
+
+function collectLegalCitationBadges(results = [], limit = 3) {
+  const badges = [];
+  const seen = new Set();
+  const addBadge = value => {
+    const clean = String(value || '').replace(/\s+/g, ' ').trim();
+    let key = normalizeText(clean)
+      .replace(/\bperuano\b/g, '')
+      .replace(/\barticulo\b/g, 'art')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!clean || seen.has(key)) return;
+    seen.add(key);
+    badges.push(clean);
+  };
+
+  for (const item of Array.isArray(results) ? results : []) {
+    const text = [
+      getResultTitle(item),
+      getResultSource(item),
+      item?.materia,
+      item?.matter,
+      getFullResultText(item)
+    ].filter(Boolean).join(' ');
+
+    const normalized = normalizeText(text);
+    if (normalized.includes('codigo penal') && normalized.includes('articulo 200')) {
+      addBadge('Código Penal, art. 200');
+    }
+    if (normalized.includes('constitucion politica') && normalized.includes('articulo 65')) {
+      addBadge('Constitución Política del Perú, art. 65');
+    }
+    if (normalized.includes('ley 29571') || normalized.includes('codigo de proteccion y defensa del consumidor')) {
+      addBadge('Ley 29571, Código de Protección y Defensa del Consumidor');
+    }
+
+    const genericMatches = text.matchAll(/\b(Decreto(?:\s+Legislativo|\s+Supremo)?\s+(?:N[.°º]\s*)?\d+[A-Z-]*|Ley\s+(?:N[.°º]\s*)?\d+[A-Z-]*|C[oó]digo\s+[A-ZÁÉÍÓÚÑa-záéíóúñ ]+,\s*art(?:\.|[ií]culo)?\s*\d+[A-Z]?)\b/g);
+    for (const match of genericMatches) {
+      addBadge(match[1]);
+      if (badges.length >= limit) break;
+    }
+    if (badges.length >= limit) break;
+  }
+
+  return badges.slice(0, limit);
+}
+
 function isUsefulNormativeResult(item) {
   const text = normalizeText([
     getResultTitle(item),
@@ -2530,8 +2580,9 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
 
   const title = getResultTitle(primary);
   const source = getResultSource(primary);
-  const text = getResultText(primary);
+  const text = getFullResultText(primary);
   const excerpt = truncateForRag(text, 520);
+  const legalBadges = collectLegalCitationBadges(usefulResults.length ? usefulResults : results);
   const articleResult = usefulResults.find(item => (
     normalizeText(item?.module || item?.modulo).includes('legal article')
     && normalizeText(getResultTitle(item)).includes('articulo')
@@ -2547,6 +2598,10 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
 
   if (articleResult) {
     lines.push('', `También aparece una referencia más concreta: **${getResultTitle(articleResult)}** (${getResultSource(articleResult)}).`);
+  }
+
+  if (legalBadges.length) {
+    lines.push('', `El fundamento normativo visible sería ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
 
   lines.push(
@@ -2579,6 +2634,7 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
   const risks = collectIntelligenceItems(results, 'riesgos', 2);
   const steps = collectIntelligenceItems(results, 'pasos', 3);
   const documents = collectIntelligenceItems(results, 'documentos', 4);
+  const legalBadges = collectLegalCitationBadges(results);
 
   if (intent?.type?.id === 'consulta_normativa') {
     return buildNormativeLegalAnswer(query, intent, results);
@@ -2592,6 +2648,11 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     if (!shortInput && rules.length) {
       lines.push('');
       lines.push(`**Clave jurídica:** ${rules[0]}.`);
+    }
+
+    if (legalBadges.length) {
+      lines.push('');
+      lines.push(`Esto se fundamenta en ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
     }
 
     if (!shortInput && risks.length) {
@@ -2647,6 +2708,12 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     lines.push(`Entiendo. Ese dato cambia el enfoque: si ya hay fecha para sentencia, ahora lo urgente es **prepararse para ese acto y cuidar los plazos posteriores**.`);
   } else {
     lines.push(`En tu caso, sigo tomando como punto de partida esto: **${truncateForRag(lastUserFact, 220)}**.`);
+  }
+
+  const legalBadges = collectLegalCitationBadges(results);
+  if (legalBadges.length) {
+    lines.push('');
+    lines.push(`La base que sostiene esta orientación es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
 
   if (intent?.type?.id === 'consulta_normativa') {
@@ -3173,6 +3240,7 @@ CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
 - Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
 - Fidelidad de fuentes: no cites números de artículos, leyes, expedientes, casaciones, sentencias ni entidades si no aparecen expresamente en el RAG, en la síntesis interna de LEXIA o en el mensaje del usuario. Si no hay artículo exacto, di "la base local ubica la garantía, pero no tengo artículo exacto verificado en este contexto".
+- Fundamento visible: cuando afirmes que algo está prohibido, protegido, sancionado, permitido o que un delito es grave, añade la norma en corchetes, por ejemplo [Código Penal, art. 200] o [Ley 29571]. Usa esos corchetes solo si la norma aparece en el RAG, en la síntesis interna o fue dada por el usuario.
 - Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
 - Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
 - Fuentes citadas: usa "Fuentes y verificación" solo cuando realmente hayas usado una fuente concreta. No llenes la respuesta con fuentes si el usuario solo está conversando o aclarando hechos.
