@@ -1478,10 +1478,13 @@ const legalAreas = [
       'penal', 'delito', 'denuncia', 'fiscalia', 'fiscalía', 'pena', 'prision', 'prisión',
       'extorsion', 'extorsión', 'robo', 'hurto', 'estafa', 'fraude', 'homicidio',
       'lesiones', 'amenaza', 'amenazas', 'violencia', 'coaccion', 'coacción',
+      'abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual',
+      'menor abusado', 'menor de edad abusado', 'tocamientos', 'actos libidinosos',
       'secuestro', 'difamacion', 'difamación', 'injuria', 'calumnia'
     ],
     topics: [
       { id: 'extorsion', label: 'Extorsión', keywords: ['extorsion', 'extorsión', 'chantaje', 'amenaza para pagar', 'cobro de cupos'] },
+      { id: 'abuso_sexual_menor', label: 'Abuso sexual contra menores', keywords: ['abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual', 'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada', 'tocamientos', 'actos libidinosos'] },
       { id: 'robo', label: 'Robo', keywords: ['robo', 'asaltaron', 'asalto'] },
       { id: 'hurto', label: 'Hurto', keywords: ['hurto', 'sustraccion', 'sustracción'] },
       { id: 'estafa', label: 'Estafa', keywords: ['estafa', 'fraude', 'engaño'] },
@@ -2517,8 +2520,20 @@ function collectLegalCitationBadges(results = [], limit = 3) {
     if (normalized.includes('codigo penal') && normalized.includes('articulo 200')) {
       addBadge('Código Penal, art. 200');
     }
+    if (normalized.includes('codigo penal') && normalized.includes('articulo 173')) {
+      addBadge('Código Penal, art. 173');
+    }
+    if (normalized.includes('codigo penal') && (normalized.includes('articulo 176 a') || normalized.includes('articulo 176a'))) {
+      addBadge('Código Penal, art. 176-A');
+    }
     if (normalized.includes('constitucion politica') && normalized.includes('articulo 65')) {
       addBadge('Constitución Política del Perú, art. 65');
+    }
+    if (normalized.includes('ley 30403')) {
+      addBadge('Ley 30403');
+    }
+    if (normalized.includes('codigo de los ninos y adolescentes') && normalized.includes('articulo 3 a')) {
+      addBadge('Código de los Niños y Adolescentes, art. 3-A');
     }
     if (normalized.includes('ley 29571') || normalized.includes('codigo de proteccion y defensa del consumidor')) {
       addBadge('Ley 29571, Código de Protección y Defensa del Consumidor');

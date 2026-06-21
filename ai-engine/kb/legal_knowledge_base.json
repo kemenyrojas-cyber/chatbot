@@ -184,6 +184,25 @@
       }
     },
     {
+      "id": "normativa-penal-abuso-sexual-menor-001",
+      "titulo": "Abuso sexual contra menores: protección penal y actuación urgente",
+      "materia": "Derecho Penal",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Cuando se habla de abuso contra un menor de edad, primero debe distinguirse si se trata de abuso sexual, maltrato físico, violencia psicológica, explotación o abandono. Si hay acceso carnal o acto análogo con menor de catorce años, la referencia penal central es la violación sexual de menor de edad regulada en el Código Penal peruano, artículo 173. Si se trata de tocamientos, actos de connotación sexual o actos libidinosos, corresponde revisar el Código Penal, artículo 176-A. Si el hecho es castigo físico o trato humillante contra niños, niñas o adolescentes, también debe revisarse la Ley 30403 y el Código de los Niños y Adolescentes, artículo 3-A, sobre derecho al buen trato. En estos casos se debe priorizar la protección inmediata del menor, evitar revictimización, conservar pruebas y acudir a la autoridad competente.",
+      "resumen": "Base penal y ruta urgente para abuso sexual, maltrato o violencia contra menores de edad.",
+      "inteligencia": {
+        "hechos_clave": ["edad del menor", "tipo de abuso o violencia", "fecha y lugar", "persona agresora", "riesgo actual", "prueba disponible"],
+        "problemas_juridicos": ["proteger inmediatamente al menor", "identificar si corresponde delito sexual, maltrato o violencia familiar", "preservar prueba sin revictimizar", "activar denuncia o medidas de protección"],
+        "reglas_practicas": ["no exponer al menor a interrogatorios repetidos", "priorizar atención médica y psicológica si corresponde", "conservar ropa, mensajes, capturas, audios o datos del agresor", "acudir a Policía, Fiscalía o Centro de Emergencia Mujer según urgencia"],
+        "riesgos": ["revictimización del menor", "pérdida de prueba", "contacto del agresor con la víctima", "demora en medidas de protección"],
+        "documentos": ["DNI o datos del menor", "datos del presunto agresor", "mensajes o capturas", "audios o videos", "informes médicos o psicológicos", "denuncia o constancia policial si existe"],
+        "pasos": ["poner al menor a salvo", "buscar atención médica o psicológica si corresponde", "guardar pruebas sin manipularlas", "denunciar ante Policía o Fiscalía", "pedir medidas de protección si hay riesgo"],
+        "preguntas": ["¿El menor está a salvo ahora mismo?", "¿El abuso fue sexual, físico, psicológico o de otro tipo?", "¿El presunto agresor tiene contacto con el menor?"]
+      }
+    },
+    {
       "id": "normativa-civil-contrato-incumplimiento-001",
       "titulo": "Incumplimiento contractual: obligaciones, prueba y remedios",
       "materia": "Derecho Civil",
