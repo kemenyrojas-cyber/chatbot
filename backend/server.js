@@ -1616,6 +1616,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
   const normRequest = /\b(dame|dime|busca|muestrame|muéstrame|necesito)\b.*\b(ley|leyes|articulo|artículo|articulos|artículos|norma|codigo|código)\b/.test(normalized)
     || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized);
+  const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
   const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
   const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste)\b/.test(normalized);
   const actionRequest = /\b(que hago|qué hago|que puedo hacer|qué puedo hacer|como procedo|cómo procedo|que sigue|qué sigue|siguiente paso|pasos|denuncio|demando|respondo)\b/.test(normalized);
@@ -1626,6 +1627,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   const newFact = hasMemory
     && !sourceRequest
     && !normRequest
+    && !definitionRequest
     && !confusion
     && !correction
     && !actionRequest
@@ -1636,6 +1638,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   if (topicShift) id = 'topic_shift';
   else if (sourceRequest) id = 'source_request';
   else if (normRequest) id = 'norm_request';
+  else if (definitionRequest) id = 'definition_request';
   else if (confusion) id = 'confusion';
   else if (correction) id = 'correction';
   else if (actionRequest) id = 'action_request';
@@ -1643,7 +1646,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   else if (hasMemory && isConversationalFollowUp(query)) id = 'follow_up';
   else if (hasMemory && userTerms.length <= 3) id = 'follow_up';
 
-  const deterministic = ['source_request', 'norm_request', 'confusion', 'correction', 'action_request', 'new_fact'].includes(id);
+  const deterministic = ['source_request', 'norm_request', 'definition_request', 'confusion', 'correction', 'action_request', 'new_fact'].includes(id);
   return {
     id,
     label: {
@@ -1651,6 +1654,7 @@ function classifyConversationMode(query, memoryMessages = []) {
       topic_shift: 'Cambio de tema',
       source_request: 'Pedido de fuente o base legal',
       norm_request: 'Pedido de norma o artículo',
+      definition_request: 'Pregunta de definición o explicación',
       confusion: 'Usuario confundido',
       correction: 'Corrección del usuario',
       action_request: 'Pedido de próximos pasos',
@@ -2797,6 +2801,71 @@ function buildConfusionAnswer(query, intent, results = [], reasoningProfile = nu
   return lines.join('\n');
 }
 
+function extractDefinitionTerm(query) {
+  const normalized = normalizeText(query);
+  const patterns = [
+    /\b(?:que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\s+(.+)$/i
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalized);
+    if (match?.[1]) {
+      return match[1]
+        .replace(/\b(el|la|los|las|un|una|unos|unas)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+  }
+  return normalized;
+}
+
+function buildDefinitionAnswer(query, intent, results = [], reasoningProfile = null) {
+  const term = extractDefinitionTerm(query);
+  const primary = selectBestLegalResult(results, intent);
+  const legalBadges = collectLegalCitationBadges(primary ? [primary] : results, 2);
+  const normalizedTerm = normalizeText(term);
+  const definitions = [
+    {
+      match: ['revictimizacion', 'revictimización'],
+      answer: 'Revictimización significa **hacer que la víctima vuelva a sufrir por la forma en que se maneja el caso**. Por ejemplo: hacerle repetir muchas veces lo ocurrido, exponerla, culparla, tratarla con dureza o no protegerla del agresor.'
+    },
+    {
+      match: ['prueba digital', 'evidencia digital'],
+      answer: 'Prueba digital es **todo rastro electrónico que puede ayudar a demostrar lo ocurrido**: capturas, audios, videos, mensajes, correos, números telefónicos, perfiles, cuentas o registros.'
+    },
+    {
+      match: ['medida de proteccion', 'medidas de proteccion', 'medida de protección', 'medidas de protección'],
+      answer: 'Una medida de protección es **una orden para reducir el riesgo inmediato**. Puede servir para alejar al agresor, impedir contacto o activar apoyo de autoridades según el caso.'
+    },
+    {
+      match: ['denuncia'],
+      answer: 'Una denuncia es **poner en conocimiento de la autoridad hechos que podrían ser delito**. No basta decir el nombre del delito; hay que contar qué pasó, cuándo, dónde, quién participó y qué pruebas existen.'
+    },
+    {
+      match: ['prescripcion', 'prescripción'],
+      answer: 'La prescripción es **el vencimiento del tiempo legal para perseguir o reclamar algo**. Depende del tipo de caso, la fecha de los hechos y las reglas aplicables.'
+    }
+  ];
+  const found = definitions.find(item => item.match.some(pattern => normalizedTerm.includes(normalizeText(pattern))));
+  const lines = [];
+
+  if (found) {
+    lines.push(found.answer);
+  } else {
+    const rules = collectIntelligenceItems(primary ? [primary] : results, 'reglas_practicas', 1);
+    lines.push(`En simple, **${term || 'ese concepto'}** debe entenderse dentro del caso como una idea práctica, no como una frase aislada.`);
+    if (rules.length) lines.push(`La idea relacionada es: **${rules[0]}**.`);
+  }
+
+  if (legalBadges.length) {
+    lines.push('');
+    lines.push(`Base relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+
+  lines.push('');
+  lines.push('Para tu caso, lo importante es no quedarse en la palabra, sino ver **qué hecho concreto prueba ese riesgo o concepto**.');
+  return lines.join('\n');
+}
+
 function buildCorrectionAnswer(query, intent, results = [], memoryMessages = []) {
   const memoryState = buildConversationMemoryState(memoryMessages);
   return [
@@ -2874,6 +2943,9 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   const modeId = intent?.conversationMode?.id || 'case_start';
   if (modeId === 'source_request' || modeId === 'norm_request') {
     return buildSourceOrNormAnswer(query, intent, results, modeId);
+  }
+  if (modeId === 'definition_request') {
+    return buildDefinitionAnswer(query, intent, results, reasoningProfile);
   }
   if (modeId === 'confusion') {
     return buildConfusionAnswer(query, intent, results, reasoningProfile);
