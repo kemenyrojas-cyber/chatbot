@@ -193,6 +193,7 @@ function createLexiaEngine(deps) {
           source: 'LEXIA RAG Local',
           ragSources: ragContext.sources,
           providerErrors: providerResult.providerErrors,
+          providerStrategy: providerResult.providerStrategy || 'fallback',
           reasoning: providerResult.reasoning,
           localSynthesis,
           memoryMessages: effectiveConversationMemory.length,
@@ -228,6 +229,8 @@ function createLexiaEngine(deps) {
           source: 'LEXIA Integrated Reasoning (provider source rejected)',
           ragSources: ragContext.sources,
           providerErrors: providerResult.providerErrors,
+          providerStrategy: providerResult.providerStrategy || 'fallback',
+          providerChecks: providerResult.providerChecks || [],
           rejectedProvider: {
             provider: providerResult.provider,
             model: providerResult.model,
@@ -269,6 +272,8 @@ function createLexiaEngine(deps) {
         legalGraphReasoning,
         legalInterpretation: intent,
         providerErrors: providerResult.providerErrors,
+        providerStrategy: providerResult.providerStrategy || 'fallback',
+        providerChecks: providerResult.providerChecks || [],
         reasoning: providerResult.reasoning,
         engineStage: 'providers:answer'
       }

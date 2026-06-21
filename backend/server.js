@@ -46,6 +46,7 @@ const ollamaModel = envValue('OLLAMA_MODEL', 'llama3.1:8b');
 const ollamaApiKey = envValue('OLLAMA_API_KEY');
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
 const configuredAiProvider = envValue('AI_PROVIDER').toLowerCase();
+const providerStrategy = envValue('LEXIA_PROVIDER_STRATEGY', 'fallback').toLowerCase();
 const forceLocalProvider = configuredAiProvider === 'local';
 const externalProviderRequested = Boolean(configuredAiProvider && configuredAiProvider !== 'local');
 const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
@@ -1479,12 +1480,14 @@ const legalAreas = [
       'extorsion', 'extorsión', 'robo', 'hurto', 'estafa', 'fraude', 'homicidio',
       'lesiones', 'amenaza', 'amenazas', 'violencia', 'coaccion', 'coacción',
       'abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual',
-      'menor abusado', 'menor de edad abusado', 'tocamientos', 'actos libidinosos',
+      'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada',
+      'menor de edad', 'menores de edad', 'niño', 'niña', 'adolescente',
+      'tocamientos', 'actos libidinosos',
       'secuestro', 'difamacion', 'difamación', 'injuria', 'calumnia'
     ],
     topics: [
       { id: 'extorsion', label: 'Extorsión', keywords: ['extorsion', 'extorsión', 'chantaje', 'amenaza para pagar', 'cobro de cupos'] },
-      { id: 'abuso_sexual_menor', label: 'Abuso sexual contra menores', keywords: ['abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual', 'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada', 'tocamientos', 'actos libidinosos'] },
+      { id: 'abuso_sexual_menor', label: 'Abuso sexual contra menores', keywords: ['abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual', 'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada', 'menor de edad', 'menores de edad', 'niño', 'niña', 'adolescente', 'tocamientos', 'actos libidinosos'] },
       { id: 'robo', label: 'Robo', keywords: ['robo', 'asaltaron', 'asalto'] },
       { id: 'hurto', label: 'Hurto', keywords: ['hurto', 'sustraccion', 'sustracción'] },
       { id: 'estafa', label: 'Estafa', keywords: ['estafa', 'fraude', 'engaño'] },
@@ -1587,7 +1590,7 @@ function confidenceFromScore(score, high = 10, medium = 4) {
 
 function inferLegalObjective(normalizedText) {
   const objectives = [
-    { id: 'ubicar_norma', label: 'Ubicar norma o artículo', patterns: ['dame', 'busca', 'articulo', 'artículo', 'art culo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución', 'constituci', 'que dice', 'qué dice', 'que ley', 'qué ley', 'cual es la ley', 'cuál es la ley', 'fundamento legal', 'base legal', 'sustento legal', 'derecho a', 'derecho al', 'derecho de', 'derecho del'] },
+    { id: 'ubicar_norma', label: 'Ubicar norma o artículo', patterns: ['dame', 'busca', 'articulo', 'artículo', 'art culo', 'inciso', 'ley', 'codigo', 'código', 'constitucion', 'constitución', 'constituci', 'que dice', 'qué dice', 'donde dice', 'dónde dice', 'de donde sacas', 'de dónde sacas', 'en que norma', 'en qué norma', 'que ley', 'qué ley', 'cual es la ley', 'cuál es la ley', 'fundamento legal', 'base legal', 'sustento legal', 'derecho a', 'derecho al', 'derecho de', 'derecho del'] },
     { id: 'orientacion', label: 'Orientación legal', patterns: ['que hago', 'qué hago', 'que puedo hacer', 'qué puedo hacer', 'me paso', 'me pasó', 'ayer', 'hoy', 'tengo un problema', 'mi vecino', 'mi empleador'] },
     { id: 'calcular_plazo', label: 'Identificar plazo o vencimiento', patterns: ['plazo', 'cuanto tiempo', 'cuánto tiempo', 'dias', 'días', 'vence', 'vencimiento', 'caducidad', 'prescripcion', 'prescripción'] },
     { id: 'preparar_documento', label: 'Preparar o revisar documento', patterns: ['redacta', 'prepara', 'modelo', 'plantilla', 'carta', 'demanda', 'contrato', 'escrito'] },
@@ -3194,20 +3197,63 @@ async function generateWithConfiguredProvider(messages, options = {}) {
       : (preferOllama ? ['ollama', 'groq', 'grok', 'openai'] : ['openai', 'groq', 'grok', 'ollama']));
   const errors = [];
   const providerConfig = options.providerConfig || aiProviderConfig;
+  const canRunProvider = provider => (
+    (provider === 'groq' && providerConfig.groq?.apiKey)
+    || (provider === 'grok' && providerConfig.grok?.apiKey)
+    || (provider === 'openai' && providerConfig.openai?.apiKey)
+    || (provider === 'ollama' && providerConfig.ollama?.enabled)
+  );
+  const runProvider = provider => {
+    if (provider === 'groq') return callGroqChat(messages, { ...options, providerConfig });
+    if (provider === 'grok') return callGrokChat(messages, { ...options, providerConfig });
+    if (provider === 'openai') return callOpenAiChat(messages, { ...options, providerConfig });
+    if (provider === 'ollama') return callOllamaChat(messages, { ...options, providerConfig });
+    throw { provider, code: 'unsupported_provider', error: `Proveedor no soportado: ${provider}` };
+  };
+
+  if (providerStrategy === 'ensemble') {
+    const runnableProviders = providers.filter(canRunProvider);
+    const settled = await Promise.allSettled(runnableProviders.map(async provider => ({
+      provider,
+      result: await runProvider(provider)
+    })));
+    const successes = [];
+
+    for (const item of settled) {
+      if (item.status === 'fulfilled') {
+        successes.push(item.value.result);
+      } else {
+        const error = item.reason || {};
+        errors.push({
+          provider: error.provider || 'unknown',
+          code: error.code || null,
+          error: error.error || error.message || 'Error del proveedor generativo.'
+        });
+      }
+    }
+
+    if (successes.length) {
+      const primary = successes[0];
+      return {
+        ...primary,
+        providerErrors: errors,
+        providerStrategy: 'ensemble',
+        providerChecks: successes.map(item => ({
+          provider: item.provider,
+          model: item.model,
+          source: item.source,
+          answerLength: String(item.answer || '').length
+        }))
+      };
+    }
+
+    return { answer: '', provider: 'local', model: 'local-rag-engine', source: 'LEXIA RAG Local', providerErrors: errors, providerStrategy: 'ensemble' };
+  }
 
   for (const provider of providers) {
     try {
-      if (provider === 'groq' && providerConfig.groq?.apiKey) {
-        return { ...(await callGroqChat(messages, { ...options, providerConfig })), providerErrors: errors };
-      }
-      if (provider === 'grok' && providerConfig.grok?.apiKey) {
-        return { ...(await callGrokChat(messages, { ...options, providerConfig })), providerErrors: errors };
-      }
-      if (provider === 'openai' && providerConfig.openai?.apiKey) {
-        return { ...(await callOpenAiChat(messages, { ...options, providerConfig })), providerErrors: errors };
-      }
-      if (provider === 'ollama' && providerConfig.ollama?.enabled) {
-        return { ...(await callOllamaChat(messages, { ...options, providerConfig })), providerErrors: errors };
+      if (canRunProvider(provider)) {
+        return { ...(await runProvider(provider)), providerErrors: errors, providerStrategy: 'fallback' };
       }
     } catch (error) {
       const providerError = {
@@ -3256,6 +3302,7 @@ CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
 - Fidelidad de fuentes: no cites números de artículos, leyes, expedientes, casaciones, sentencias ni entidades si no aparecen expresamente en el RAG, en la síntesis interna de LEXIA o en el mensaje del usuario. Si no hay artículo exacto, di "la base local ubica la garantía, pero no tengo artículo exacto verificado en este contexto".
 - Fundamento visible: cuando afirmes que algo está prohibido, protegido, sancionado, permitido o que un delito es grave, añade la norma en corchetes, por ejemplo [Código Penal, art. 200] o [Ley 29571]. Usa esos corchetes solo si la norma aparece en el RAG, en la síntesis interna o fue dada por el usuario.
+- Citas resaltables: escribe toda norma sustantiva en formato exacto de corchetes para que la interfaz la marque como base legal: [Código Penal, art. 173], [Código Penal, art. 176-A], [Ley 30403], [Constitución Política del Perú, art. 2]. No uses ese formato si la norma no está verificada por el RAG, la síntesis interna o el usuario.
 - Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
 - Sugerencias inteligentes: incluye próximos pasos prácticos, documentos a reunir, riesgos y preguntas de seguimiento útiles.
 - Fuentes citadas: usa "Fuentes y verificación" solo cuando realmente hayas usado una fuente concreta. No llenes la respuesta con fuentes si el usuario solo está conversando o aclarando hechos.
@@ -3892,6 +3939,15 @@ app.post('/api/chat', async (req, res) => {
       model: intelligenceResult.model,
       provider: intelligenceResult.provider,
       retrieval: intelligenceResult.retrieval,
+      diagnostics: {
+        providerStrategy: intelligenceResult.metadata?.providerStrategy || 'fallback',
+        providerChecks: intelligenceResult.metadata?.providerChecks || [],
+        providerErrors: intelligenceResult.metadata?.providerErrors || [],
+        ragSources: intelligenceResult.ragSources || [],
+        memoryMessages: intelligenceResult.metadata?.memoryMessages || 0,
+        localSearchEvaluation: intelligenceResult.metadata?.localSearchEvaluation || null,
+        engineStage: intelligenceResult.metadata?.engineStage || null
+      },
       persisted
     });
   } catch (error) {
@@ -3942,5 +3998,6 @@ app.listen(port, async () => {
   console.log(`🧠 Ollama: ${ollamaEnabled ? `✅ ${ollamaBaseUrl}` : '❌ No configurado'}`);
   console.log(`🧩 Modelo Ollama: ${ollamaModel}`);
   console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferGroq ? 'groq' : (preferGrok ? 'grok' : (preferOllama ? 'ollama' : 'openai')))}`);
+  console.log(`🧪 Estrategia IA: ${providerStrategy === 'ensemble' ? 'ensemble (consulta proveedores configurados)' : 'fallback (primer proveedor disponible)'}`);
   console.log('\n' + '='.repeat(60) + '\n');
 });

@@ -1417,6 +1417,34 @@ button {
 .chat-message.system .chat-bubble .legal-citation {
     color: #B91C1C;
     font-weight: 800;
+    background: #FEE2E2;
+    border: 1px solid #FECACA;
+    border-radius: 6px;
+    padding: 1px 5px;
+}
+
+.chat-diagnostics {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #E2E8F0;
+    color: #64748B;
+    font-size: 11px;
+}
+
+.chat-diagnostics summary {
+    cursor: pointer;
+    font-weight: 800;
+    color: #475569;
+}
+
+.chat-diagnostics div {
+    margin-top: 8px;
+    display: grid;
+    gap: 4px;
+}
+
+.chat-diagnostics span {
+    display: block;
 }
 
 .chat-bubble p + p {

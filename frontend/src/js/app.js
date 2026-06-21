@@ -508,7 +508,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function buildRoleAssistantPrompt() {
         const roleConfig = roleDashboards[currentRole] || roleDashboards["abogado-independiente"];
-        return `Actúa como LEXIA para el rol ${roleConfig.label}. Conversa como una abogada peruana cercana, paciente y clara: entiende primero la preocupación del usuario, responde en palabras sencillas, explica los términos legales necesarios y luego da análisis jurídico, próximos pasos, riesgos, jurisprudencia o criterios cuando existan, y fuentes citadas o rutas de verificación. Si faltan datos, responde lo posible con supuestos y haz preguntas concretas para continuar la conversación. Adapta la profundidad y el lenguaje al perfil del usuario.`;
+        return `Actúa como LEXIA para el rol ${roleConfig.label}. Conversa como una abogada peruana cercana, paciente y clara: entiende primero la preocupación del usuario, responde en palabras sencillas, explica los términos legales necesarios y luego da análisis jurídico, próximos pasos, riesgos, jurisprudencia o criterios cuando existan, y fuentes citadas o rutas de verificación. Cuando fundamentes una conclusión jurídica, cita la norma verificada en formato resaltable, por ejemplo [Código Penal, art. 173] o [Ley 30403]. Si faltan datos, responde lo posible con supuestos y haz preguntas concretas para continuar la conversación. Adapta la profundidad y el lenguaje al perfil del usuario.`;
     }
 
     function renderRole(role) {
@@ -802,11 +802,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     email: currentEmail,
                     materia: brainMatterInput?.value || "",
                     modulo: brainModuleInput?.value || "",
-                    reviewStatus: "pending_review"
+                    reviewStatus: canCurateBrainSources ? "approved" : "pending_review",
+                    autoApprove: canCurateBrainSources
                 })
             });
             brainUrlForm?.reset();
-            setBrainStatus(`Fuente recibida. LEXIA la dejó en ${formatBrainStatus(data.source?.reviewStatus)} con puntaje jurídico ${data.source?.legalScore || 0}.`);
+            const usableText = data.usableInChat ? " Ya está disponible para Nueva Consulta." : " Falta aprobarla para que entre al RAG.";
+            setBrainStatus(`Fuente recibida. LEXIA la dejó en ${formatBrainStatus(data.source?.reviewStatus)} con puntaje jurídico ${data.source?.legalScore || 0}.${usableText}`);
             await loadBrainSources();
         } catch (error) {
             setBrainStatus(error.message || "No se pudo analizar la fuente.", "error");
@@ -835,11 +837,41 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function formatChatContent(content) {
-        return escapeHtml(content)
-            .replace(/\[((?:[^\]\n]*(?:ley|c[oó]digo|decreto|constituci[oó]n|art\.|art[ií]culo|cpp)[^\]\n]*))\]/gi, "<span class=\"legal-citation\">[$1]</span>")
+        let formatted = escapeHtml(content)
+            .replace(/\[((?:[^\]\n]*(?:ley|c[oó]digo|decreto|constituci[oó]n|art\.|art[ií]culo|cpp|cpc|c[oó]digo penal|c[oó]digo civil)[^\]\n]*))\]/gi, "<span class=\"legal-citation\">[$1]</span>")
+            .replace(/\b((?:C[oó]digo\s+(?:Penal|Civil|Procesal(?:\s+Penal|\s+Civil)?|de los Niños y Adolescentes)|Constituci[oó]n(?:\s+Pol[ií]tica(?:\s+del\s+Per[uú])?)?|Ley\s+(?:N[.°º]\s*)?\d+[A-Z-]*|Decreto\s+(?:Legislativo|Supremo)\s+(?:N[.°º]\s*)?\d+[A-Z-]*|CPP|CPC)[^<\n.;:]{0,90}?\b(?:art\.|art[ií]culo|arts\.)\s*\d+[A-Z-]*(?:-[A-Z])?)\b/gi, "<span class=\"legal-citation\">$1</span>")
             .replace(/\*\*([^*\n][^*\n]*?)\*\*/g, "<strong>$1</strong>")
             .replace(/\n{2,}/g, "</p><p>")
             .replace(/\n/g, "<br>");
+        formatted = formatted.replace(/<span class="legal-citation">([^<]*)<span class="legal-citation">([^<]*)<\/span>([^<]*)<\/span>/g, '<span class="legal-citation">$1$2$3</span>');
+        return formatted;
+    }
+
+    function renderMessageDiagnostics(metadata = {}) {
+        const diagnostics = metadata?.diagnostics;
+        if (!diagnostics) return "";
+
+        const provider = metadata.provider || diagnostics.providerChecks?.[0]?.provider || "local";
+        const strategy = diagnostics.providerStrategy || "fallback";
+        const ragCount = Array.isArray(diagnostics.ragSources) ? diagnostics.ragSources.length : 0;
+        const memoryCount = Number(diagnostics.memoryMessages || 0);
+        const persisted = metadata.persisted === true ? "memoria guardada" : metadata.persisted === false ? "memoria no confirmada" : "memoria local";
+        const sourceTitles = (diagnostics.ragSources || [])
+            .slice(0, 3)
+            .map(source => source.title || source.source || "Fuente RAG")
+            .join(" | ");
+
+        return `
+            <details class="chat-diagnostics">
+                <summary>Diagnóstico LEXIA</summary>
+                <div>
+                    <span>Proveedor: ${escapeHtml(provider)} (${escapeHtml(strategy)})</span>
+                    <span>RAG: ${ragCount} fuente(s)</span>
+                    <span>Memoria: ${memoryCount} mensaje(s), ${escapeHtml(persisted)}</span>
+                    ${sourceTitles ? `<span>Fuentes: ${escapeHtml(sourceTitles)}</span>` : ""}
+                </div>
+            </details>
+        `;
     }
 
     function createChatSession(initialQuestion = "") {
@@ -952,7 +984,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <strong>${item.role === "user" ? "Tú" : "LEXIA"}</strong>
                     <span>${formatDate(item.createdAt)}</span>
                 </div>
-                <div class="chat-bubble"><p>${formatChatContent(item.content)}</p></div>
+                <div class="chat-bubble"><p>${formatChatContent(item.content)}</p>${item.role === "assistant" ? renderMessageDiagnostics(item.metadata) : ""}</div>
             </article>
         `).join("");
 
@@ -1482,10 +1514,18 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const answer = (data.answer || "").trim() || "No se obtuvo una respuesta válida.";
+            const assistantMetadata = {
+                provider: data.provider,
+                model: data.model,
+                source: data.source,
+                fallback: data.fallback,
+                persisted: data.persisted,
+                diagnostics: data.diagnostics || null
+            };
             session.messages = [
                 ...stableMessages,
                 { id: userMessageId, role: "user", content: text, createdAt },
-                { id: assistantMessageId, role: "assistant", content: answer, createdAt: assistantCreatedAt }
+                { id: assistantMessageId, role: "assistant", content: answer, createdAt: assistantCreatedAt, metadata: assistantMetadata }
             ];
             upsertChatSession(session);
             addHistoryEntry(text, answer);

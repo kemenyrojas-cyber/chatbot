@@ -68,6 +68,26 @@ function getQueryTerms(query) {
     .filter(term => term.length >= 3 && !stopwords.has(term));
 }
 
+function extractArticleReferences(query) {
+  const normalized = normalizeText(query);
+  const references = [];
+  const patterns = [
+    /\barticulo\s+(\d+[a-z]?)\b/g,
+    /\bart\s+(\d+[a-z]?)\b/g,
+    /\binciso\s+(\d+[a-z]?)\b/g
+  ];
+
+  for (const pattern of patterns) {
+    let match = pattern.exec(normalized);
+    while (match) {
+      references.push(match[1]);
+      match = pattern.exec(normalized);
+    }
+  }
+
+  return [...new Set(references)];
+}
+
 function safeFileStem(fileName) {
   const parsed = path.parse(String(fileName || 'documento'));
   const base = parsed.name || 'documento';
@@ -320,6 +340,11 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
   const normalizedIntelligence = normalizeText(JSON.stringify(record.inteligencia || {}));
   const normalizedBody = normalizeText(`${record.titulo} ${record.materia} ${record.resumen} ${record.contenido} ${record.fuente} ${normalizedIntelligence}`);
   const legalConceptPhrases = extractLegalConceptPhrases(query);
+  const articleRefs = extractArticleReferences(query);
+  const genericNormativeTerms = new Set([
+    'articulo', 'art', 'inciso', 'ley', 'norma', 'legal', 'derecho', 'derechos',
+    'codigo', 'constitucion', 'decreto'
+  ]);
   let score = 0;
 
   if (normalizedBody.includes(normalizedQuery)) score += 25;
@@ -334,6 +359,7 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
     if (normalizedTitle.includes(phrase)) score += 18;
   }
   for (const term of terms) {
+    if (genericNormativeTerms.has(term)) continue;
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const matches = normalizedBody.match(new RegExp(`\\b${escaped}`, 'g'));
     if (matches) score += Math.min(matches.length, 10) * 3;
@@ -341,6 +367,10 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
     if (normalizedMatter.includes(term)) score += 5;
     if (normalizedSummary.includes(term)) score += 4;
     if (normalizedIntelligence.includes(term)) score += 5;
+  }
+  for (const article of articleRefs) {
+    const exactArticlePattern = new RegExp(`\\b(?:articulo|art)\\s+${article}\\b`);
+    if (exactArticlePattern.test(normalizedBody)) score += 90;
   }
 
   if (record.modulo === 'normativa') score += 3;
@@ -864,9 +894,11 @@ function scoreLegalRecord(record, query, terms) {
   const normalizedQuery = normalizeText(query);
   const legalConceptPhrases = extractLegalConceptPhrases(query);
   const conceptTerms = new Set(legalConceptPhrases.flatMap(phrase => phrase.split(' ')));
+  const articleRefs = extractArticleReferences(query);
   const genericNormativeTerms = new Set([
     'ley', 'norma', 'legal', 'derecho', 'derechos', 'tener', 'permite', 'permiten',
-    'reconoce', 'cual', 'cuales', 'cuál', 'cuáles', 'fundamento', 'base', 'sustento'
+    'reconoce', 'cual', 'cuales', 'cuál', 'cuáles', 'fundamento', 'base', 'sustento',
+    'articulo', 'art', 'inciso', 'codigo', 'constitucion', 'decreto'
   ]);
   let score = 0;
 
@@ -880,10 +912,15 @@ function scoreLegalRecord(record, query, terms) {
     }
   }
   for (const term of terms) {
-    if (legalConceptPhrases.length && (genericNormativeTerms.has(term) || conceptTerms.has(term))) continue;
+    if (genericNormativeTerms.has(term) || (legalConceptPhrases.length && conceptTerms.has(term))) continue;
     const matches = normalizedContent.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'));
     if (matches) score += Math.min(matches.length, 8) * 3;
     if (normalizeText(record.title).includes(term)) score += 4;
+  }
+
+  for (const article of articleRefs) {
+    const exactArticlePattern = new RegExp(`\\b(?:articulo|art)\\s+${article}\\b`);
+    if (exactArticlePattern.test(normalizedContent)) score += 140;
   }
 
   if (record.type === 'legal_article') score += 3;
@@ -945,7 +982,53 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     return parts.join('\n');
   };
   const documentResults = searchLegalEngine(query, limit);
-  const normalizedStructured = structuredResults.map(item => ({
+  const topStructured = Array.isArray(structuredResults) ? structuredResults[0] : null;
+  const topMatter = normalizeText(topStructured?.materia || topStructured?.matter || '');
+  const topTitle = normalizeText(topStructured?.titulo || topStructured?.title || '');
+  const penalContext = Number(topStructured?.relevance || 0) >= 60
+    && (topMatter.includes('penal') || topTitle.includes('abuso sexual') || topTitle.includes('menores'));
+  const isPenalDocument = item => {
+    const text = normalizeText([
+      item?.title,
+      item?.source,
+      item?.excerpt,
+      item?.content
+    ].join(' '));
+    return text.includes('codigo penal')
+      || text.includes('código penal')
+      || text.includes('derecho penal')
+      || text.includes('delito')
+      || text.includes('fiscalia')
+      || text.includes('ministerio publico')
+      || text.includes('casacion');
+  };
+  const isRelevantToPenalContext = item => {
+    if (!penalContext) return true;
+    const text = normalizeText([
+      item?.titulo,
+      item?.title,
+      item?.materia,
+      item?.matter,
+      item?.resumen,
+      item?.excerpt,
+      item?.contenido,
+      item?.content
+    ].join(' '));
+    return text.includes('penal')
+      || text.includes('delito')
+      || text.includes('abuso')
+      || text.includes('violacion')
+      || text.includes('tocamientos')
+      || text.includes('actos libidinosos')
+      || text.includes('menor')
+      || text.includes('niño')
+      || text.includes('niña')
+      || text.includes('adolescente')
+      || text.includes('familia');
+  };
+  const normalizedStructured = structuredResults
+    .filter(isRelevantToPenalContext)
+    .map(item => ({
     id: `kb:${item.modulo || 'base'}:${item.id}`,
     title: item.titulo || 'Referencia jurídica',
     source: item.fuente || 'Base jurídica local LEXIA',
@@ -957,7 +1040,9 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     intelligence: item.inteligencia || {},
     relevance: item.relevance || 0
   }));
-  const normalizedDocuments = documentResults.map(item => ({
+  const normalizedDocuments = documentResults
+    .filter(item => !penalContext || isPenalDocument(item))
+    .map(item => ({
     id: `doc:${item.id}`,
     title: item.title || 'Documento legal',
     source: item.source || 'Archivo jurídico local',
