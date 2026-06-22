@@ -1207,6 +1207,186 @@ function getLegalDiscoverySeedUrls() {
     .filter(Boolean);
 }
 
+function getEnabledWebSearchProviders() {
+  const configured = String(process.env.LEGAL_WEB_SEARCH_PROVIDERS || '')
+    .split(/[;,]/)
+    .map(item => item.trim().toLowerCase())
+    .filter(Boolean);
+  const providers = configured.length ? configured : ['brave', 'bing', 'google', 'serpapi'];
+  return [...new Set(providers)].filter(provider => ['brave', 'bing', 'google', 'serpapi'].includes(provider));
+}
+
+function buildLegalSearchQuery(query = '') {
+  const allowedHosts = getAllowedLegalSourceHosts()
+    .filter(host => !host.startsWith('www.'))
+    .slice(0, 8);
+  const siteFilter = allowedHosts.length
+    ? `(${allowedHosts.map(host => `site:${host}`).join(' OR ')})`
+    : '';
+  return [String(query || '').trim(), 'Perú derecho ley jurisprudencia', siteFilter]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+function normalizeSearchCandidateUrl(rawUrl) {
+  try {
+    const parsed = parseTrustedLegalUrl(rawUrl);
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function normalizeSearchCandidates(items = [], provider = 'web') {
+  const candidates = [];
+  const seen = new Set();
+  for (const item of items) {
+    const rawUrl = item?.url || item?.link || item?.href;
+    const url = normalizeSearchCandidateUrl(rawUrl);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const parsed = new URL(url);
+    candidates.push({
+      url,
+      title: String(item?.title || item?.name || parsed.pathname.split('/').filter(Boolean).pop() || parsed.hostname).replace(/\s+/g, ' ').trim().slice(0, 220),
+      snippet: String(item?.snippet || item?.description || item?.body || '').replace(/\s+/g, ' ').trim().slice(0, 360),
+      host: parsed.hostname,
+      relevance: Number(item?.relevance || 1),
+      provider
+    });
+  }
+  return candidates;
+}
+
+async function searchBraveLegalWeb(query, limit) {
+  const apiKey = envValue('BRAVE_SEARCH_API_KEY');
+  if (!apiKey) return { provider: 'brave', candidates: [], skipped: true };
+  const url = new URL('https://api.search.brave.com/res/v1/web/search');
+  url.searchParams.set('q', buildLegalSearchQuery(query));
+  url.searchParams.set('count', String(Math.min(limit, 20)));
+  url.searchParams.set('country', 'PE');
+  url.searchParams.set('search_lang', 'es');
+  const response = await fetchWithTimeout(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      'X-Subscription-Token': apiKey
+    }
+  });
+  if (!response.ok) throw new Error(`Brave Search respondió ${response.status}.`);
+  const data = await response.json();
+  return {
+    provider: 'brave',
+    candidates: normalizeSearchCandidates(data?.web?.results || [], 'brave')
+  };
+}
+
+async function searchBingLegalWeb(query, limit) {
+  const apiKey = envValue('BING_SEARCH_API_KEY');
+  if (!apiKey) return { provider: 'bing', candidates: [], skipped: true };
+  const endpoint = envValue('BING_SEARCH_ENDPOINT', 'https://api.bing.microsoft.com/v7.0/search');
+  const url = new URL(endpoint);
+  url.searchParams.set('q', buildLegalSearchQuery(query));
+  url.searchParams.set('count', String(Math.min(limit, 20)));
+  url.searchParams.set('mkt', 'es-PE');
+  url.searchParams.set('responseFilter', 'Webpages');
+  const response = await fetchWithTimeout(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      'Ocp-Apim-Subscription-Key': apiKey
+    }
+  });
+  if (!response.ok) throw new Error(`Bing Search respondió ${response.status}.`);
+  const data = await response.json();
+  return {
+    provider: 'bing',
+    candidates: normalizeSearchCandidates(data?.webPages?.value || [], 'bing')
+  };
+}
+
+async function searchGoogleLegalWeb(query, limit) {
+  const apiKey = envValue('GOOGLE_SEARCH_API_KEY');
+  const cx = envValue('GOOGLE_SEARCH_CX');
+  if (!apiKey || !cx) return { provider: 'google', candidates: [], skipped: true };
+  const url = new URL('https://www.googleapis.com/customsearch/v1');
+  url.searchParams.set('key', apiKey);
+  url.searchParams.set('cx', cx);
+  url.searchParams.set('q', buildLegalSearchQuery(query));
+  url.searchParams.set('num', String(Math.min(limit, 10)));
+  url.searchParams.set('lr', 'lang_es');
+  url.searchParams.set('gl', 'pe');
+  const response = await fetchWithTimeout(url.toString(), {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) throw new Error(`Google Custom Search respondió ${response.status}.`);
+  const data = await response.json();
+  return {
+    provider: 'google',
+    candidates: normalizeSearchCandidates(data?.items || [], 'google')
+  };
+}
+
+async function searchSerpApiLegalWeb(query, limit) {
+  const apiKey = envValue('SERPAPI_API_KEY');
+  if (!apiKey) return { provider: 'serpapi', candidates: [], skipped: true };
+  const url = new URL('https://serpapi.com/search.json');
+  url.searchParams.set('engine', 'google');
+  url.searchParams.set('api_key', apiKey);
+  url.searchParams.set('q', buildLegalSearchQuery(query));
+  url.searchParams.set('num', String(Math.min(limit, 10)));
+  url.searchParams.set('hl', 'es');
+  url.searchParams.set('gl', 'pe');
+  const response = await fetchWithTimeout(url.toString(), {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) throw new Error(`SerpAPI respondió ${response.status}.`);
+  const data = await response.json();
+  return {
+    provider: 'serpapi',
+    candidates: normalizeSearchCandidates(data?.organic_results || [], 'serpapi')
+  };
+}
+
+async function discoverLegalSourceCandidatesFromSearch(query = '', limit = 12) {
+  if (!String(query || '').trim() || process.env.LEGAL_WEB_SEARCH_ENABLED === 'false') {
+    return { candidates: [], errors: [], providers: [] };
+  }
+
+  const providerMap = {
+    brave: searchBraveLegalWeb,
+    bing: searchBingLegalWeb,
+    google: searchGoogleLegalWeb,
+    serpapi: searchSerpApiLegalWeb
+  };
+  const candidates = [];
+  const errors = [];
+  const providers = [];
+  const seen = new Set();
+
+  for (const provider of getEnabledWebSearchProviders()) {
+    try {
+      const result = await providerMap[provider](query, Math.max(limit, 10));
+      providers.push({
+        provider,
+        skipped: Boolean(result.skipped),
+        results: result.candidates?.length || 0
+      });
+      for (const candidate of result.candidates || []) {
+        if (!candidate.url || seen.has(candidate.url)) continue;
+        seen.add(candidate.url);
+        candidates.push(candidate);
+        if (candidates.length >= limit) break;
+      }
+      if (candidates.length >= limit) break;
+    } catch (error) {
+      errors.push({ provider, error: error.message });
+    }
+  }
+
+  return { candidates: candidates.slice(0, limit), errors, providers };
+}
+
 function normalizeAbsoluteUrl(href, baseUrl) {
   try {
     const parsed = new URL(String(href || '').trim(), baseUrl);
@@ -1261,9 +1441,21 @@ async function discoverLegalSourceCandidates({ query = '', seedUrls = [], limit 
   const maxLimit = Math.max(1, Math.min(Number(limit) || 12, 25));
   const candidates = [];
   const errors = [];
+  const providers = [];
   const seen = new Set();
 
+  const searchDiscovery = await discoverLegalSourceCandidatesFromSearch(query, maxLimit);
+  providers.push(...searchDiscovery.providers);
+  errors.push(...searchDiscovery.errors);
+  for (const candidate of searchDiscovery.candidates) {
+    if (seen.has(candidate.url)) continue;
+    seen.add(candidate.url);
+    candidates.push(candidate);
+    if (candidates.length >= maxLimit) break;
+  }
+
   for (const seedUrl of seeds.slice(0, 8)) {
+    if (candidates.length >= maxLimit) break;
     try {
       const parsedSeed = parseTrustedLegalUrl(seedUrl);
       const response = await fetchWithTimeout(parsedSeed.toString(), {
@@ -1289,7 +1481,7 @@ async function discoverLegalSourceCandidates({ query = '', seedUrls = [], limit 
     if (candidates.length >= maxLimit) break;
   }
 
-  return { candidates: candidates.slice(0, maxLimit), errors };
+  return { candidates: candidates.slice(0, maxLimit), errors, providers };
 }
 
 function evaluateLegalContent(text, title = '', url = '') {
@@ -4162,6 +4354,7 @@ app.post('/api/legal-engine/discover', async (req, res) => {
       query,
       candidates: discovery.candidates,
       errors: discovery.errors,
+      providers: discovery.providers,
       configuredSeeds: getLegalDiscoverySeedUrls().length
     });
   } catch (error) {
