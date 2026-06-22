@@ -57,6 +57,22 @@ function normalizeForSearch(value) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function isPromotionalArticle(article) {
+  const text = normalizeForSearch(`${article.title || ''} ${article.url || ''}`);
+  return /(^|\s)(curso|cursos|diplomado|diplomados|profa)(\s|$)/.test(text)
+    || /(clase modelo|libros gratis|pago en dos cuotas|llena el formulario|preparacion examen|aspirantes a notarios|preguntas y respuestas|preguntas respuestas|codex laboral|nuevos diplomados)/.test(text);
+}
+
+function cleanLpDerechoContent(value) {
+  return normalizeText(value)
+    .replace(/Matric[uú]late:\s*.*?(?=(La norma|El |Artículo|LEY|Decreto|Resoluci[oó]n|Asimismo|Adem[aá]s|En |$))/gi, '')
+    .replace(/Hasta el\s+\d{1,2}\s+[A-ZÁÉÍÓÚ]{3,}\s+libros gratis y pago en dos cuotas/gi, '')
+    .replace(/Inscr[ií]bete aqu[ií]\s+M[aá]s informaci[oó]n/gi, '')
+    .replace(/Llena el formulario.*?(?=(La norma|El |Artículo|LEY|Decreto|Resoluci[oó]n|Asimismo|Adem[aá]s|En |$))/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function slugify(value) {
   return normalizeForSearch(value)
     .replace(/[^a-z0-9]+/g, '-')
@@ -243,8 +259,8 @@ async function scrapeArticleContent(article) {
 function buildRecord(article, moduleName) {
   const readableModule = moduleName.replace('_', '-');
   const id = `lpderecho-${readableModule}-${slugify(article.title || article.url)}`;
-  const content = normalizeText(article.content || article.excerpt);
-  const summary = normalizeText(article.excerpt || content.slice(0, 240));
+  const content = cleanLpDerechoContent(article.content || article.excerpt);
+  const summary = cleanLpDerechoContent(article.excerpt || content.slice(0, 240));
 
   return {
     id,
@@ -267,6 +283,22 @@ function mergeRecords(legalKb, recordsByModule) {
       if (entry.url) existingUrls.add(entry.url);
       if (entry.id) existingIds.add(entry.id);
     }
+  }
+
+  for (const [moduleName, entries] of Object.entries(legalKb)) {
+    legalKb[moduleName] = entries
+      .filter(entry => !(entry.fuente === 'LP Derecho' && isPromotionalArticle({
+        title: entry.titulo,
+        url: entry.url
+      })))
+      .map(entry => {
+        if (entry.fuente !== 'LP Derecho') return entry;
+        return {
+          ...entry,
+          contenido: cleanLpDerechoContent(entry.contenido),
+          resumen: cleanLpDerechoContent(entry.resumen),
+        };
+      });
   }
 
   const added = {
@@ -356,7 +388,9 @@ async function main() {
     if (!uniqueByUrl.has(article.url)) uniqueByUrl.set(article.url, article);
   }
 
-  const selected = Array.from(uniqueByUrl.values()).slice(0, MAX_ARTICLES);
+  const selected = Array.from(uniqueByUrl.values())
+    .filter(article => !isPromotionalArticle(article))
+    .slice(0, MAX_ARTICLES);
   const enriched = [];
 
   for (let i = 0; i < selected.length; i += 1) {
