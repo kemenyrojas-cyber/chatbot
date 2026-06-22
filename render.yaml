@@ -18,7 +18,7 @@ services:
       - key: AI_PROVIDER_TIMEOUT_MS
         value: "45000"
       - key: LEGAL_ALLOWED_SOURCE_HOSTS
-        value: elperuano.pe,www.elperuano.pe,tc.gob.pe,www.tc.gob.pe,pj.gob.pe,www.pj.gob.pe,gob.pe,www.gob.pe,sunarp.gob.pe,www.sunarp.gob.pe,sunafil.gob.pe,www.sunafil.gob.pe,lpderecho.pe,www.lpderecho.pe
+        value: elperuano.pe,www.elperuano.pe,tc.gob.pe,www.tc.gob.pe,pj.gob.pe,www.pj.gob.pe,gob.pe,www.gob.pe,sunarp.gob.pe,www.sunarp.gob.pe,sunafil.gob.pe,www.sunafil.gob.pe,lpderecho.pe,www.lpderecho.pe,estudioderechoylibertad.com,www.estudioderechoylibertad.com
       - key: LEGAL_DISCOVERY_SEED_URLS
         value: https://elperuano.pe/derecho,https://www.tc.gob.pe/jurisprudencia/,https://www.gob.pe/busquedas?term=leyes,https://www.sunafil.gob.pe/noticias/,https://lpderecho.pe/laboral/
       - key: LEGAL_WEB_SEARCH_ENABLED
