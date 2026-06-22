@@ -29,29 +29,76 @@ function validateAnswerAgainstSources(answer, results = [], localSynthesis = '')
   };
 }
 
-function isPartnerViolenceScope(query = '', intent = null) {
-  const text = [
-    query,
-    intent?.topic?.id,
-    intent?.topic?.label,
-    intent?.area?.label
-  ].filter(Boolean).join(' ').toLowerCase();
-  const hasPartner = /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agresión|agredio|agredió|golpe|golpes|lesiones|amenaza|amenazas)\b/i.test(text);
-  const hasMinor = /\b(menor|menores|niñ|nin|adolescente|abuso sexual|violacion sexual|violación sexual|tocamientos|actos libidinosos|176-a|ley 30403)\b/i.test(text)
-    || /\bart(?:\.|iculo|ículo)?\s*173\b/i.test(text);
-  return hasPartner && !hasMinor;
+function normalizeScopeText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9ñ\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function isMinorAbuseRagResult(item = {}) {
-  const text = [
+const legalCaseScopeRules = [
+  { id: 'minor_abuse', pattern: /\b(menor|menores|nino|nina|adolescente|abuso sexual|violacion sexual|tocamientos|actos libidinosos|revictimizacion|ley 30403|176 a|articulo 173)\b/ },
+  { id: 'partner_violence', pattern: /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agredio|golpe|golpes|lesiones|amenaza|amenazas)\b/ },
+  { id: 'homicide', pattern: /\b(homicidio|asesinato|asesinad[oa]s?|asesinaron|mataron|mato|matar|muerte violenta|sicariato)\b/ },
+  { id: 'extortion', pattern: /\b(extorsion|extorsionad[oa]s?|extorsionando|chantaje|chantajeando|cobro de cupos|amenaza para pagar|exigen dinero|me estan cobrando cupo)\b/ },
+  { id: 'robbery_theft', pattern: /\b(robo|robaron|asalto|asaltaron|hurto|sustraccion|me quitaron|me arrebataron)\b/ },
+  { id: 'fraud', pattern: /\b(estafa|estafaron|fraude|engano|enganaron|fraudulento)\b/ },
+  { id: 'defamation', pattern: /\b(difamacion|injuria|calumnia|me difaman|publicaron mentiras)\b/ },
+  { id: 'labor_dismissal', pattern: /\b(despido|despedido|despedida|despidieron|carta de despido|me botaron del trabajo)\b/ },
+  { id: 'labor_benefits', pattern: /\b(beneficios sociales|cts|gratificacion|vacaciones|liquidacion|sueldo|salario|remuneracion)\b/ },
+  { id: 'consumer_education', pattern: /\b(consumidor|indecopi|universidad|instituto|colegio|servicio educativo|matricula|pension|cobro|proveedor|libro de reclamaciones)\b/ },
+  { id: 'property', pattern: /\b(terreno|predio|inmueble|posesion|propiedad|vecino|lindero|partida registral|titulo de propiedad)\b/ },
+  { id: 'family_alimony', pattern: /\b(alimentos|pension alimenticia|pension de alimentos|demanda de alimentos)\b/ },
+  { id: 'family_divorce', pattern: /\b(divorcio|separacion|separarme|divorciarme)\b/ },
+  { id: 'custody', pattern: /\b(tenencia|custodia|visitas|regimen de visitas|patria potestad)\b/ },
+  { id: 'contract', pattern: /\b(contrato|incumplimiento|clausula|compraventa|arrendamiento|alquiler|obligacion contractual)\b/ },
+  { id: 'constitutional', pattern: /\b(amparo|habeas corpus|habeas data|constitucion|derecho fundamental|debido proceso|derecho de defensa)\b/ }
+];
+
+function detectLegalCaseScopes(text = '') {
+  const normalized = normalizeScopeText(text);
+  return legalCaseScopeRules.filter(rule => rule.pattern.test(normalized)).map(rule => rule.id);
+}
+
+function areLegalCaseScopesCompatible(currentScopes = [], resultScopes = []) {
+  if (!currentScopes.length || !resultScopes.length) return true;
+  return currentScopes.some(scope => resultScopes.includes(scope));
+}
+
+function detectRagResultScopes(item = {}) {
+  return detectLegalCaseScopes([
     item.title,
     item.source,
     item.module,
     item.matter,
     item.excerpt
-  ].filter(Boolean).join(' ').toLowerCase();
-  return /\b(abuso sexual|menor|menores|niñ|nin|adolescente|tocamientos|actos libidinosos|176-a|ley 30403)\b/i.test(text)
-    || /\bart(?:\.|iculo|ículo)?\s*173\b/i.test(text);
+  ].filter(Boolean).join(' '));
+}
+
+function resultLooksLikeArea(item = {}, areaId = '') {
+  const text = normalizeScopeText([
+    item.title,
+    item.source,
+    item.module,
+    item.matter,
+    item.excerpt
+  ].filter(Boolean).join(' '));
+  if (areaId === 'derecho_penal') return /\b(derecho penal|codigo penal|delito|denuncia penal|fiscalia|ministerio publico|pena|prision)\b/.test(text);
+  if (areaId === 'derecho_laboral') return /\b(derecho laboral|trabajador|empleador|despido|beneficios sociales|cts|gratificacion|vacaciones|remuneracion)\b/.test(text);
+  if (areaId === 'derecho_consumidor') return /\b(consumidor|indecopi|proveedor|servicio educativo|universidad|matricula|pension|libro de reclamaciones)\b/.test(text);
+  if (areaId === 'derecho_civil') return /\b(derecho civil|contrato|compraventa|propiedad|posesion|inmueble|obligacion|arrendamiento)\b/.test(text);
+  if (areaId === 'derecho_familia') return /\b(derecho de familia|alimentos|divorcio|tenencia|custodia|visitas|patria potestad)\b/.test(text);
+  if (areaId === 'derecho_constitucional') return /\b(constitucion|constitucional|amparo|habeas corpus|habeas data|derecho fundamental|debido proceso)\b/.test(text);
+  return false;
+}
+
+function resultLooksLikeDifferentKnownArea(item = {}, areaId = '') {
+  return ['derecho_penal', 'derecho_laboral', 'derecho_consumidor', 'derecho_civil', 'derecho_familia', 'derecho_constitucional']
+    .filter(candidate => candidate !== areaId)
+    .some(candidate => resultLooksLikeArea(item, candidate));
 }
 
 function rebuildRagContext(results = []) {
@@ -84,8 +131,22 @@ function rebuildRagContext(results = []) {
 }
 
 function filterRagContextForIntent(ragContext, query, intent) {
-  if (!isPartnerViolenceScope(query, intent)) return ragContext;
-  const results = (ragContext?.results || []).filter(item => !isMinorAbuseRagResult(item));
+  const currentScopes = detectLegalCaseScopes([
+    query,
+    intent?.topic?.id,
+    intent?.topic?.label,
+    intent?.area?.label
+  ].filter(Boolean).join(' '));
+  if (!currentScopes.length) return ragContext;
+  let results = (ragContext?.results || []).filter(item => {
+    const resultScopes = detectRagResultScopes(item);
+    return areLegalCaseScopesCompatible(currentScopes, resultScopes);
+  });
+  const areaId = intent?.area?.confidence === 'alta' ? intent.area.id : '';
+  if (areaId) {
+    const areaFiltered = results.filter(item => resultLooksLikeArea(item, areaId) || !resultLooksLikeDifferentKnownArea(item, areaId));
+    if (areaFiltered.length) results = areaFiltered;
+  }
   return results.length === (ragContext?.results || []).length ? ragContext : rebuildRagContext(results);
 }
 

@@ -534,10 +534,14 @@ async function getChatMessages(sessionId, email) {
   if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
 
   const result = await accountsPool.query(
-    `SELECT id, role, content, metadata, created_at
-     FROM chat_messages
-     WHERE session_id = $1 AND account_email = $2
-     ORDER BY created_at ASC`,
+    `SELECT m.id, m.role, m.content, m.metadata, m.created_at
+     FROM chat_messages m
+     JOIN chat_sessions s
+       ON s.id = m.session_id
+      AND s.account_email = m.account_email
+      AND s.deleted_at IS NULL
+     WHERE m.session_id = $1 AND m.account_email = $2
+     ORDER BY m.created_at ASC`,
     [sessionId, normalizeEmail(email)]
   );
   return result.rows.map(serializeChatMessage);
@@ -548,10 +552,14 @@ async function getRecentChatMessages(sessionId, email, limit = 12) {
   if (!ready) throw new Error('PostgreSQL no está configurado para chats.');
 
   const result = await accountsPool.query(
-    `SELECT id, role, content, metadata, created_at
-     FROM chat_messages
-     WHERE session_id = $1 AND account_email = $2
-     ORDER BY created_at DESC
+    `SELECT m.id, m.role, m.content, m.metadata, m.created_at
+     FROM chat_messages m
+     JOIN chat_sessions s
+       ON s.id = m.session_id
+      AND s.account_email = m.account_email
+      AND s.deleted_at IS NULL
+     WHERE m.session_id = $1 AND m.account_email = $2
+     ORDER BY m.created_at DESC
      LIMIT $3`,
     [sessionId, normalizeEmail(email), Math.max(1, Math.min(Number(limit) || 12, 12))]
   );
@@ -1680,6 +1688,7 @@ const legalAreas = [
     ],
     topics: [
       { id: 'extorsion', label: 'Extorsión', keywords: ['extorsion', 'extorsión', 'chantaje', 'amenaza para pagar', 'cobro de cupos'] },
+      { id: 'homicidio', label: 'Homicidio o asesinato', keywords: ['homicidio', 'asesinato', 'asesinaron', 'mataron', 'mato', 'mató', 'matar', 'muerte violenta', 'sicariato'] },
       { id: 'violencia_pareja', label: 'Agresión o violencia de pareja', keywords: ['agresion de pareja', 'agresión de pareja', 'mi pareja me agredio', 'mi pareja me agredió', 'pareja', 'conviviente', 'ex pareja', 'expareja', 'esposo', 'esposa', 'enamorado', 'enamorada', 'violencia familiar', 'violencia contra la mujer', 'lesiones', 'agresion', 'agresión', 'golpe', 'golpes', 'amenaza', 'amenazas'] },
       { id: 'abuso_sexual_menor', label: 'Abuso sexual contra menores', keywords: ['abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual', 'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada', 'menor de edad', 'menores de edad', 'niño', 'niña', 'adolescente', 'tocamientos', 'actos libidinosos'] },
       { id: 'robo', label: 'Robo', keywords: ['robo', 'asaltaron', 'asalto'] },
@@ -1901,34 +1910,49 @@ function buildMissingInfoForInterpretation(normalizedText, typeId, areaId, topic
   return [...new Set(missing)].slice(0, 5);
 }
 
-function getCaseContextFlags(text = '') {
+const legalCaseScopeRules = [
+  { id: 'minor_abuse', label: 'abuso o violencia contra menores', pattern: /\b(menor|menores|nino|nina|adolescente|abuso sexual|violacion sexual|tocamientos|actos libidinosos|revictimizacion|ley 30403|176 a|articulo 173)\b/ },
+  { id: 'partner_violence', label: 'agresión o violencia de pareja', pattern: /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agredio|golpe|golpes|lesiones|amenaza|amenazas)\b/ },
+  { id: 'homicide', label: 'homicidio o asesinato', pattern: /\b(homicidio|asesinato|asesinad[oa]s?|asesinaron|mataron|mato|matar|muerte violenta|sicariato)\b/ },
+  { id: 'extortion', label: 'extorsión', pattern: /\b(extorsion|extorsionad[oa]s?|extorsionando|chantaje|chantajeando|cobro de cupos|amenaza para pagar|exigen dinero|me estan cobrando cupo)\b/ },
+  { id: 'robbery_theft', label: 'robo o hurto', pattern: /\b(robo|robaron|asalto|asaltaron|hurto|sustraccion|me quitaron|me arrebataron)\b/ },
+  { id: 'fraud', label: 'estafa o fraude', pattern: /\b(estafa|estafaron|fraude|engano|enganaron|fraudulento)\b/ },
+  { id: 'defamation', label: 'difamación, injuria o calumnia', pattern: /\b(difamacion|injuria|calumnia|me difaman|publicaron mentiras)\b/ },
+  { id: 'labor_dismissal', label: 'despido laboral', pattern: /\b(despido|despedido|despedida|despidieron|carta de despido|me botaron del trabajo)\b/ },
+  { id: 'labor_benefits', label: 'beneficios sociales laborales', pattern: /\b(beneficios sociales|cts|gratificacion|vacaciones|liquidacion|sueldo|salario|remuneracion)\b/ },
+  { id: 'consumer_education', label: 'consumidor o servicio educativo', pattern: /\b(consumidor|indecopi|universidad|instituto|colegio|servicio educativo|matricula|pension|cobro|proveedor|libro de reclamaciones)\b/ },
+  { id: 'property', label: 'propiedad o posesión', pattern: /\b(terreno|predio|inmueble|posesion|propiedad|vecino|lindero|partida registral|titulo de propiedad)\b/ },
+  { id: 'family_alimony', label: 'alimentos', pattern: /\b(alimentos|pension alimenticia|pension de alimentos|demanda de alimentos)\b/ },
+  { id: 'family_divorce', label: 'divorcio o separación', pattern: /\b(divorcio|separacion|separarme|divorciarme)\b/ },
+  { id: 'custody', label: 'tenencia o visitas', pattern: /\b(tenencia|custodia|visitas|regimen de visitas|patria potestad)\b/ },
+  { id: 'contract', label: 'contrato o incumplimiento contractual', pattern: /\b(contrato|incumplimiento|clausula|compraventa|arrendamiento|alquiler|obligacion contractual)\b/ },
+  { id: 'constitutional', label: 'garantía constitucional', pattern: /\b(amparo|habeas corpus|habeas data|constitucion|derecho fundamental|debido proceso|derecho de defensa)\b/ }
+];
+
+function detectLegalCaseScopes(text = '') {
   const normalized = normalizeText(text);
-  return {
-    minorAbuse: /\b(menor|menores|niño|nino|niña|nina|adolescente|abuso sexual|violacion sexual|violación sexual|tocamientos|actos libidinosos|revictimizacion|revictimización)\b/.test(normalized),
-    partnerViolence: /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agresión|agredio|agredió|golpe|golpes|lesiones|amenaza|amenazas)\b/.test(normalized),
-    labor: /\b(trabajo|trabajador|empleador|despido|beneficios sociales|cts|gratificacion|gratificación|vacaciones|sueldo|salario)\b/.test(normalized),
-    consumer: /\b(consumidor|indecopi|universidad|servicio educativo|matricula|matrícula|pension|pensión|cobro|proveedor|reclamo)\b/.test(normalized),
-    property: /\b(terreno|predio|inmueble|posesion|posesión|propiedad|vecino|lindero|partida registral)\b/.test(normalized)
-  };
+  return legalCaseScopeRules
+    .filter(rule => rule.pattern.test(normalized))
+    .map(rule => rule.id);
+}
+
+function areLegalCaseScopesCompatible(currentScopes = [], previousScopes = []) {
+  if (!currentScopes.length || !previousScopes.length) return true;
+  return currentScopes.some(scope => previousScopes.includes(scope));
 }
 
 function shouldIgnoreMemoryForCurrentQuery(query, memoryMessages = []) {
-  const current = getCaseContextFlags(query);
+  const explicitNewCase = /\b(otro caso|otra consulta|nuevo caso|cambiando de tema|ahora quiero saber sobre)\b/.test(normalizeText(query));
+  if (explicitNewCase) return true;
+
+  const currentScopes = detectLegalCaseScopes(query);
   const memoryText = normalizeMemoryMessages(memoryMessages)
     .filter(message => message.role === 'user')
     .map(message => message.content)
     .join(' ');
-  const previous = getCaseContextFlags(memoryText);
-  const currentHasCaseSignal = current.minorAbuse || current.partnerViolence || current.labor || current.consumer || current.property;
-  if (!currentHasCaseSignal || !memoryText) return false;
-
-  if (current.partnerViolence && previous.minorAbuse && !current.minorAbuse) return true;
-  if (current.minorAbuse && previous.partnerViolence && !current.partnerViolence) return true;
-  if (current.labor && (previous.minorAbuse || previous.partnerViolence || previous.consumer || previous.property)) return true;
-  if (current.consumer && (previous.minorAbuse || previous.partnerViolence || previous.labor || previous.property)) return true;
-  if (current.property && (previous.minorAbuse || previous.partnerViolence || previous.labor || previous.consumer)) return true;
-
-  return false;
+  const previousScopes = detectLegalCaseScopes(memoryText);
+  if (!currentScopes.length || !previousScopes.length) return false;
+  return !areLegalCaseScopesCompatible(currentScopes, previousScopes);
 }
 
 function interpretLegalQuery(query, memoryMessages = []) {
@@ -2016,7 +2040,8 @@ function interpretLegalQuery(query, memoryMessages = []) {
       currentAreaScore: currentAreaScores[0]?.score || 0,
       currentAreaId: currentAreaScores[0]?.score > 0 ? currentAreaScores[0].id : '',
       currentTopicScore: topicScores[0]?.score || 0,
-      ignoredMemory: ignoreMemory
+      ignoredMemory: ignoreMemory,
+      caseScopes: detectLegalCaseScopes(query)
     },
     originalQuery: String(query || '').trim(),
     needsMoreFacts: typeId !== 'consulta_normativa' && (!matchedArea || !matchedTopic)
@@ -2999,17 +3024,58 @@ function isMinorAbuseLegalResult(item) {
     || text.includes('ley 30403');
 }
 
+function detectLegalCaseScopesFromResult(item) {
+  return detectLegalCaseScopes([
+    getResultTitle(item),
+    getResultSource(item),
+    item?.materia,
+    item?.matter,
+    item?.resumen,
+    item?.excerpt
+  ].filter(Boolean).join(' '));
+}
+
+function resultLooksLikeArea(item, areaId = '') {
+  const text = normalizeText([
+    getResultTitle(item),
+    getResultSource(item),
+    item?.materia,
+    item?.matter,
+    item?.resumen,
+    item?.excerpt
+  ].filter(Boolean).join(' '));
+  if (areaId === 'derecho_penal') return /\b(derecho penal|codigo penal|código penal|delito|denuncia penal|fiscalia|fiscalía|ministerio publico|ministerio público|pena|prision|prisión)\b/.test(text);
+  if (areaId === 'derecho_laboral') return /\b(derecho laboral|trabajador|empleador|despido|beneficios sociales|cts|gratificacion|vacaciones|remuneracion)\b/.test(text);
+  if (areaId === 'derecho_consumidor') return /\b(consumidor|indecopi|proveedor|servicio educativo|universidad|matricula|pension|libro de reclamaciones)\b/.test(text);
+  if (areaId === 'derecho_civil') return /\b(derecho civil|contrato|compraventa|propiedad|posesion|inmueble|obligacion|arrendamiento)\b/.test(text);
+  if (areaId === 'derecho_familia') return /\b(derecho de familia|alimentos|divorcio|tenencia|custodia|visitas|patria potestad)\b/.test(text);
+  if (areaId === 'derecho_constitucional') return /\b(constitucion|constitución|constitucional|amparo|habeas corpus|habeas data|derecho fundamental|debido proceso)\b/.test(text);
+  return false;
+}
+
 function filterResultsForCurrentIntent(query, intent, results = []) {
-  const flags = getCaseContextFlags([
+  const currentScopes = detectLegalCaseScopes([
     query,
     intent?.topic?.label,
     intent?.topic?.id,
     intent?.area?.label
   ].filter(Boolean).join(' '));
-  if (flags.partnerViolence && !flags.minorAbuse) {
-    return (Array.isArray(results) ? results : []).filter(item => !isMinorAbuseLegalResult(item));
+  let filtered = Array.isArray(results) ? results : [];
+  if (currentScopes.length) {
+    filtered = filtered.filter(item => {
+    const resultScopes = detectLegalCaseScopesFromResult(item);
+    if (!resultScopes.length) return true;
+    return areLegalCaseScopesCompatible(currentScopes, resultScopes);
+  });
   }
-  return Array.isArray(results) ? results : [];
+
+  const areaId = intent?.area?.confidence === 'alta' ? intent.area.id : '';
+  if (areaId) {
+    const areaFiltered = filtered.filter(item => resultLooksLikeArea(item, areaId) || !legalAreas.some(area => area.id !== areaId && resultLooksLikeArea(item, area.id)));
+    if (areaFiltered.length) filtered = areaFiltered;
+  }
+
+  return filtered;
 }
 
 function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_request') {
