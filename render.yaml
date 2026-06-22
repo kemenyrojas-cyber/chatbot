@@ -21,6 +21,22 @@ services:
         value: elperuano.pe,www.elperuano.pe,tc.gob.pe,www.tc.gob.pe,pj.gob.pe,www.pj.gob.pe,gob.pe,www.gob.pe,sunarp.gob.pe,www.sunarp.gob.pe,sunafil.gob.pe,www.sunafil.gob.pe,lpderecho.pe,www.lpderecho.pe
       - key: LEGAL_DISCOVERY_SEED_URLS
         value: https://elperuano.pe/derecho,https://www.tc.gob.pe/jurisprudencia/,https://www.gob.pe/busquedas?term=leyes,https://www.sunafil.gob.pe/noticias/,https://lpderecho.pe/laboral/
+      - key: LEGAL_WEB_SEARCH_ENABLED
+        value: "true"
+      - key: LEGAL_WEB_SEARCH_PROVIDERS
+        value: brave,bing,google,serpapi
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: BING_SEARCH_API_KEY
+        sync: false
+      - key: BING_SEARCH_ENDPOINT
+        value: https://api.bing.microsoft.com/v7.0/search
+      - key: GOOGLE_SEARCH_API_KEY
+        sync: false
+      - key: GOOGLE_SEARCH_CX
+        sync: false
+      - key: SERPAPI_API_KEY
+        sync: false
       - key: LEGAL_CURATOR_EMAILS
         sync: false
       - key: GROQ_API_KEY
