@@ -1822,7 +1822,9 @@ function classifyConversationMode(query, memoryMessages = []) {
     || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized);
   const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
   const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
-  const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste)\b/.test(normalized);
+  const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste|te vengo diciendo|te estoy diciendo|te digo que|no estas tomando en cuenta|no estás tomando en cuenta|parece que no estas|parece que no estás)\b/.test(normalized);
+  const professionalRoleConflict = /\b(patrocinada|patrocinado|patrocinante|mi cliente|cliente|defendida|defendido)\b/.test(normalized)
+    && /\b(denunciar|denuncio|denuncia|condena|condenaron|pena|penal|defender|defensa|proceso)\b/.test(normalized);
   const denouncedStatus = /\b(si ya denuncie|sí ya denuncié|ya denuncie|ya denuncié|ya hice denuncia|hice denuncia|puse denuncia|ya puse denuncia|ya denuncio|ya denunció|ya fui a la policia|ya fui a la policía|ya fui a fiscalia|ya fui a fiscalía|ya esta denunciado|ya está denunciado)\b/.test(normalized);
   const evaluatingStatus = /\b(estoy evaluando denunciar|evaluando denunciar|todavia estoy evaluando|todavía estoy evaluando|aun estoy evaluando|aún estoy evaluando|todavia no denuncie|todavía no denuncié|aun no denuncie|aún no denuncié|no denuncie|no denuncié|no he denunciado|todavia no|todavía no|aun no|aún no)\b/.test(normalized);
   const statusAnswer = denouncedStatus || evaluatingStatus;
@@ -1837,6 +1839,7 @@ function classifyConversationMode(query, memoryMessages = []) {
     && !definitionRequest
     && !confusion
     && !correction
+    && !professionalRoleConflict
     && !verificationRequest
     && !statusAnswer
     && !actionRequest
@@ -1850,6 +1853,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   else if (normRequest) id = 'norm_request';
   else if (definitionRequest) id = 'definition_request';
   else if (confusion) id = 'confusion';
+  else if (professionalRoleConflict) id = 'professional_role_conflict';
   else if (correction) id = 'correction';
   else if (statusAnswer) id = 'status_answer';
   else if (actionRequest) id = 'action_request';
@@ -1857,7 +1861,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   else if (hasMemory && isConversationalFollowUp(query)) id = 'follow_up';
   else if (hasMemory && userTerms.length <= 3) id = 'follow_up';
 
-  const deterministic = ['source_request', 'verification_request', 'norm_request', 'definition_request', 'confusion', 'correction', 'status_answer', 'action_request', 'new_fact'].includes(id);
+  const deterministic = ['source_request', 'verification_request', 'norm_request', 'definition_request', 'confusion', 'professional_role_conflict', 'correction', 'status_answer', 'action_request', 'new_fact'].includes(id);
   return {
     id,
     label: {
@@ -1868,6 +1872,7 @@ function classifyConversationMode(query, memoryMessages = []) {
       norm_request: 'Pedido de norma o artículo',
       definition_request: 'Pregunta de definición o explicación',
       confusion: 'Usuario confundido',
+      professional_role_conflict: 'Conflicto de rol profesional o patrocinio',
       correction: 'Corrección del usuario',
       status_answer: 'Respuesta sobre estado del trámite',
       action_request: 'Pedido de próximos pasos',
@@ -2717,19 +2722,32 @@ function buildTargetedMissingQuestions(intent, reasoningProfile) {
   ];
 }
 
-function buildSingleLegalQuestion(intent, reasoningProfile) {
+function buildSingleLegalQuestion(intent, reasoningProfile, query = '') {
   const topicId = intent?.topic?.id || '';
   const missing = Array.isArray(reasoningProfile?.missingInfo) ? reasoningProfile.missingInfo : [];
+  const normalizedQuery = normalizeText(query);
+
+  if (/\b(patrocinada|patrocinado|mi cliente|cliente|defendida|defendido)\b/.test(normalizedQuery)) {
+    return '¿Tu patrocinada es víctima, investigada o ya fue condenada?';
+  }
 
   if (topicId === 'despido') return '¿Te entregaron una carta de despido o solo te lo dijeron verbalmente?';
   if (topicId === 'beneficios_sociales') return '¿Sigues trabajando ahí o ya terminó la relación laboral?';
   if (topicId === 'alimentos') return '¿Ya existe una sentencia o acta de conciliación sobre alimentos?';
   if (topicId === 'servicios_educativos') return '¿Ese cobro aparece en el contrato, tarifario o comunicado oficial de la universidad?';
   if (topicId === 'propiedad_inmueble' || topicId === 'posesion') return '¿Tienes título, contrato o partida registral del inmueble?';
-  if (intent?.area?.id === 'derecho_penal') return '¿Ya hiciste denuncia o todavía estás evaluando si corresponde denunciar?';
+  if (topicId === 'extorsion') return '¿La amenaza sigue activa ahora o solo tienes los mensajes guardados?';
+  if (topicId === 'violencia_pareja') return '¿La persona está a salvo ahora mismo o hay riesgo de una nueva agresión?';
+  if (topicId === 'homicidio') return '¿Estás consultando como familiar de la víctima, investigado o abogado de una parte?';
+  if (intent?.area?.id === 'derecho_penal') {
+    if (/\b(denunciado|investigado|condenado|sentenciado|imputado|acusado)\b/.test(normalizedQuery)) {
+      return '¿Estás del lado de la defensa o estás evaluando una acción contra esa persona?';
+    }
+    return '¿Buscas denunciar, defender a alguien o entender el estado del proceso?';
+  }
   if (missing.some(item => normalizeText(item).includes('fecha'))) return '¿Cuándo ocurrió el hecho principal?';
   if (missing.some(item => normalizeText(item).includes('document'))) return '¿Qué documento o prueba tienes ahora mismo?';
-  return '¿Qué resultado buscas: reclamar, denunciar, negociar, responder un documento o solo entender tus derechos?';
+  return '¿Qué resultado buscas concretamente con esta consulta?';
 }
 
 function isConversationContinuation(query, memoryMessages = []) {
@@ -3211,19 +3229,43 @@ function buildDefinitionAnswer(query, intent, results = [], reasoningProfile = n
 
 function buildCorrectionAnswer(query, intent, results = [], memoryMessages = []) {
   const memoryState = buildConversationMemoryState(memoryMessages);
+  const normalizedQuery = normalizeText(query);
+  if (/\b(condenen|condena|condenaron|sentencia|pise el penal|ingrese al penal|carcel|cárcel|prision|prisión)\b/.test(normalizedQuery)) {
+    return [
+      'Tienes razón. El punto no era “denunciar”.',
+      '',
+      'Si lo que te preocupa es que **la condenen o termine ingresando al penal**, entonces el enfoque es defensa y estrategia procesal: revisar en qué etapa está el caso, qué resolución existe, qué plazo corre y qué medio de defensa o recurso todavía es posible.',
+      '',
+      'No debo insistir con denuncia si tú estás hablando de una persona defendida o patrocinada.',
+      '',
+      '¿Ya hay sentencia condenatoria o todavía están antes de sentencia?'
+    ].join('\n');
+  }
   return [
-    'Tienes razón: corrijo el enfoque.',
+    'Tienes razón. Estaba arrastrando una idea que no correspondía.',
     '',
-    'Voy a tomar como válido **lo que tú estás precisando ahora**, no una interpretación anterior de LEXIA. Para no arrastrar un error, separo así:',
+    'Tomo como válido **lo que acabas de precisar**, no mi lectura anterior.',
     '',
     memoryState.lastUserFact
-      ? `Hecho del usuario que tengo como base: **${truncateForRag(memoryState.lastUserFact, 220)}**.`
-      : 'Aún necesito que me indiques el hecho correcto con una frase corta.',
+      ? `Lo que tenía del hilo era: **${truncateForRag(memoryState.lastUserFact, 220)}**. Si eso ya no encaja, lo dejo atrás.`
+      : 'Si me das el dato correcto en una frase, rehago el enfoque desde ahí.',
     '',
-    'Con esa corrección, la respuesta debe rehacerse desde el hecho correcto y solo citar norma si aparece en la base local.',
-    '',
-    '¿Cuál es exactamente el dato que debo corregir: el hecho, la norma citada o el paso que recomendé?'
+    '¿El error está en el hecho que entendí, en la norma que cité o en el paso que te sugerí?'
   ].join('\n');
+}
+
+function buildProfessionalRoleConflictAnswer(query, intent, results = [], reasoningProfile = null) {
+  const lines = [
+    'Tienes razón: si hablas de **tu patrocinada**, no debo tratarte como si fueras la víctima que va a denunciar.',
+    '',
+    'Ahí el enfoque cambia. Primero hay que separar si tú estás actuando como defensa, si quieres dejar constancia de un hecho, si existe un conflicto ético o si estás evaluando apartarte del patrocinio. No es automático decir “denúnciala”.'
+  ];
+
+  lines.push('');
+  lines.push('En concreto, yo revisaría **tu rol, el estado del proceso y qué deber profesional está en juego** antes de sugerir un paso.');
+  lines.push('');
+  lines.push('¿Tu patrocinada ya fue condenada, está investigada o tú quieres apartarte del caso?');
+  return lines.join('\n');
 }
 
 function buildVerificationAnswer(query, intent, results = [], memoryMessages = []) {
@@ -3337,13 +3379,11 @@ function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null
   const steps = collectIntelligenceItems(scopedResults, 'pasos', 3);
   const risks = collectIntelligenceItems(scopedResults, 'riesgos', 2);
   const lines = [
-    `Ese dato sí importa: **${truncateForRag(query, 180)}**.`,
-    '',
-    `Con eso, el análisis se ajusta dentro de **${intent?.topic?.label || intent?.area?.label || 'la materia del caso'}**.`
+    `Entiendo. Con ese dato, ya no conviene responder en abstracto: el foco queda en **${intent?.topic?.label || intent?.area?.label || 'el punto jurídico concreto'}**.`
   ];
 
   if (legalBadges.length) {
-    lines.push(`La base que tengo verificada es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+    lines.push(`La base que tengo verificada para ese enfoque es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
   if (risks.length) {
     lines.push('');
@@ -3354,7 +3394,7 @@ function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null
     lines.push(`Siguiente paso práctico: **${steps[0]}**.`);
   }
   lines.push('');
-  lines.push(buildSingleLegalQuestion(intent, reasoningProfile));
+  lines.push(buildSingleLegalQuestion(intent, reasoningProfile, query));
   return lines.join('\n');
 }
 
@@ -3366,11 +3406,13 @@ function buildActionAnswer(query, intent, results = [], reasoningProfile = null)
   let legalBadges = collectLegalCitationBadges(scopedResults, 2);
   if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 2);
   const nextSteps = steps.length ? steps : (reasoningProfile?.nextSteps || []).slice(0, 3);
-  const lines = ['Vamos por partes. Yo haría esto:'];
+  const lines = ['Lo aterrizo sin vueltas.'];
 
-  nextSteps.slice(0, 3).forEach((step, index) => {
-    lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
-  });
+  const actionSentence = nextSteps.slice(0, 3).map(step => step.charAt(0).toLowerCase() + step.slice(1)).join(', ');
+  if (actionSentence) {
+    lines.push('');
+    lines.push(`Yo empezaría por **${actionSentence}**.`);
+  }
 
   if (documents.length) {
     lines.push('');
@@ -3381,7 +3423,7 @@ function buildActionAnswer(query, intent, results = [], reasoningProfile = null)
     lines.push(`Base legal visible: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
   lines.push('');
-  lines.push(buildSingleLegalQuestion(intent, reasoningProfile));
+  lines.push(buildSingleLegalQuestion(intent, reasoningProfile, query));
   return lines.join('\n');
 }
 
@@ -3396,6 +3438,9 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   }
   if (modeId === 'confusion') {
     return buildConfusionAnswer(query, intent, scopedResults, reasoningProfile);
+  }
+  if (modeId === 'professional_role_conflict') {
+    return buildProfessionalRoleConflictAnswer(query, intent, scopedResults, reasoningProfile);
   }
   if (modeId === 'correction') {
     return buildCorrectionAnswer(query, intent, scopedResults, memoryMessages);
@@ -3472,7 +3517,7 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     lines.push('');
     lines.push(normalizedQuery.includes('beneficios sociales')
       ? '¿Sigues trabajando ahí o ya terminó la relación laboral?'
-      : buildSingleLegalQuestion(intent, reasoningProfile));
+      : buildSingleLegalQuestion(intent, reasoningProfile, query));
   }
 
   const sourceSummary = buildSourceSummary(results, intent);
@@ -3563,7 +3608,7 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   lines.push('');
   lines.push(isSentenceStage
     ? '¿La fecha del miércoles es para **lectura de sentencia** y ya tiene abogado asignado o particular?'
-    : buildSingleLegalQuestion(intent, reasoningProfile));
+    : buildSingleLegalQuestion(intent, reasoningProfile, query));
 
   const sourceSummary = buildSourceSummary(results, intent, 2);
   const userAskedForSources = intent?.type?.id === 'consulta_normativa' || /\b(ley|leyes|articulo|artículo|norma|base legal|fuente|fundamento)\b/i.test(query);
