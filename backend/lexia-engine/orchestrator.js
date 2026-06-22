@@ -29,6 +29,66 @@ function validateAnswerAgainstSources(answer, results = [], localSynthesis = '')
   };
 }
 
+function isPartnerViolenceScope(query = '', intent = null) {
+  const text = [
+    query,
+    intent?.topic?.id,
+    intent?.topic?.label,
+    intent?.area?.label
+  ].filter(Boolean).join(' ').toLowerCase();
+  const hasPartner = /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agresión|agredio|agredió|golpe|golpes|lesiones|amenaza|amenazas)\b/i.test(text);
+  const hasMinor = /\b(menor|menores|niñ|nin|adolescente|abuso sexual|violacion sexual|violación sexual|tocamientos|actos libidinosos|176-a|ley 30403)\b/i.test(text)
+    || /\bart(?:\.|iculo|ículo)?\s*173\b/i.test(text);
+  return hasPartner && !hasMinor;
+}
+
+function isMinorAbuseRagResult(item = {}) {
+  const text = [
+    item.title,
+    item.source,
+    item.module,
+    item.matter,
+    item.excerpt
+  ].filter(Boolean).join(' ').toLowerCase();
+  return /\b(abuso sexual|menor|menores|niñ|nin|adolescente|tocamientos|actos libidinosos|176-a|ley 30403)\b/i.test(text)
+    || /\bart(?:\.|iculo|ículo)?\s*173\b/i.test(text);
+}
+
+function rebuildRagContext(results = []) {
+  if (!results.length) return { context: '', results: [], sources: [] };
+  const lines = [
+    'CONTEXTO RAG RECUPERADO DE LA BASE LOCAL DE LEXIA:',
+    'Usa estas referencias solo como apoyo. Primero responde al caso y al último mensaje del usuario; no conviertas la respuesta en un resumen de fuentes.'
+  ];
+  results.forEach((item, index) => {
+    const sourceId = `R${index + 1}`;
+    const matter = item.matter ? ` | Materia: ${item.matter}` : '';
+    const url = item.url ? ` | URL: ${item.url}` : '';
+    lines.push('');
+    lines.push(`[${sourceId}] ${item.title} | Fuente: ${item.source} | Tipo: ${item.module}${matter}${url}`);
+    lines.push(String(item.content || item.excerpt || '').replace(/\s+/g, ' ').trim().slice(0, 900));
+  });
+  return {
+    context: lines.join('\n'),
+    results,
+    sources: results.map((item, index) => ({
+      id: `R${index + 1}`,
+      title: item.title,
+      source: item.source,
+      module: item.module,
+      matter: item.matter,
+      url: item.url,
+      relevance: item.relevance
+    }))
+  };
+}
+
+function filterRagContextForIntent(ragContext, query, intent) {
+  if (!isPartnerViolenceScope(query, intent)) return ragContext;
+  const results = (ragContext?.results || []).filter(item => !isMinorAbuseRagResult(item));
+  return results.length === (ragContext?.results || []).length ? ragContext : rebuildRagContext(results);
+}
+
 function createLexiaEngine(deps) {
   const {
     brain,
@@ -48,7 +108,7 @@ function createLexiaEngine(deps) {
     const currentIntent = brain.interpret(userQuery, conversationMemory);
     const memoryIntent = brain.interpret(memorySearchQuery, conversationMemory);
     const intent = brain.mergeIntent(currentIntent, memoryIntent);
-    const effectiveConversationMemory = intent?.interpretation?.topicShift ? [] : conversationMemory;
+    const effectiveConversationMemory = (intent?.interpretation?.topicShift || intent?.interpretation?.ignoredMemory) ? [] : conversationMemory;
     const conversationMemoryContext = memory.buildContext(effectiveConversationMemory, intent);
 
     if (brain.isGreetingOnly(userQuery)) {
@@ -96,7 +156,11 @@ function createLexiaEngine(deps) {
     knowledge.logSufficiency('Lexia Engine', interpretationSearchQuery, localSearchEvaluation);
 
     const dialogueMode = effectiveConversationMemory.length > 0 || brain.isShortUserInput(userQuery);
-    const ragContext = knowledge.buildRagContext(interpretationSearchQuery, localResults, dialogueMode ? 3 : 8);
+    const ragContext = filterRagContextForIntent(
+      knowledge.buildRagContext(interpretationSearchQuery, localResults, dialogueMode ? 3 : 8),
+      userQuery,
+      intent
+    );
     const legalReasoningProfile = reasoner.buildProfile(userQuery, intent, effectiveConversationMemory, ragContext.results);
     const legalReasoningContext = reasoner.buildContext(legalReasoningProfile);
     const legalGraphReasoning = reasoner.buildGraph(intent, ragContext.results);

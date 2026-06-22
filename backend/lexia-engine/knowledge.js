@@ -955,6 +955,47 @@ function truncateForRag(value, maxLength = 900) {
 }
 
 function buildRagContext(query, structuredResults = [], limit = 8) {
+  const normalizedQueryForScope = normalizeText(query);
+  const queryHasMinorContext = /\b(menor|menores|niño|nino|niña|nina|adolescente|abuso sexual|violacion sexual|violación sexual|tocamientos|actos libidinosos|revictimizacion|revictimización)\b/.test(normalizedQueryForScope);
+  const queryHasPartnerViolenceContext = /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agresión|agredio|agredió|golpe|golpes|lesiones|amenaza|amenazas)\b/.test(normalizedQueryForScope);
+  const adultPartnerScope = queryHasPartnerViolenceContext && !queryHasMinorContext;
+  const isMinorAbuseResult = item => {
+    const rawText = [
+      item?.titulo,
+      item?.title,
+      item?.materia,
+      item?.matter,
+      item?.resumen,
+      item?.excerpt
+    ].filter(Boolean).join(' ').toLowerCase();
+    const text = normalizeText([
+      item?.titulo,
+      item?.title,
+      item?.materia,
+      item?.matter,
+      item?.resumen,
+      item?.excerpt
+    ].join(' '));
+    return /\b(abuso sexual|menor|menores|niñ|nin|adolescente|tocamientos|actos libidinosos|176-a|ley 30403)\b/i.test(rawText)
+      || /\bart(?:\.|iculo|ículo)?\s*173\b/i.test(rawText)
+      || text.includes('abuso sexual contra menores')
+      || text.includes('menor de edad')
+      || text.includes('menores')
+      || text.includes('menores de edad')
+      || text.includes('nino')
+      || text.includes('nina')
+      || text.includes('adolescente')
+      || text.includes('tocamientos')
+      || text.includes('actos libidinosos')
+      || text.includes('art. 173')
+      || text.includes('articulo 173')
+      || text.includes('artículo 173')
+      || text.includes('176-a');
+  };
+  const isCompatibleWithCurrentScope = item => {
+    if (adultPartnerScope && isMinorAbuseResult(item)) return false;
+    return true;
+  };
   const buildIntelligenceText = item => {
     const intelligence = item.inteligencia && typeof item.inteligencia === 'object' ? item.inteligencia : {};
     const parts = [];
@@ -1027,6 +1068,7 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
       || text.includes('familia');
   };
   const normalizedStructured = structuredResults
+    .filter(isCompatibleWithCurrentScope)
     .filter(isRelevantToPenalContext)
     .map(item => ({
     id: `kb:${item.modulo || 'base'}:${item.id}`,
@@ -1041,6 +1083,7 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     relevance: item.relevance || 0
   }));
   const normalizedDocuments = documentResults
+    .filter(isCompatibleWithCurrentScope)
     .filter(item => !penalContext || isPenalDocument(item))
     .map(item => ({
     id: `doc:${item.id}`,
@@ -1055,6 +1098,7 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
   }));
 
   const merged = [...normalizedStructured, ...normalizedDocuments]
+    .filter(item => !(adultPartnerScope && isMinorAbuseResult(item)))
     .map(item => ({
       ...item,
       rankingScore: Number(item.relevance || 0)

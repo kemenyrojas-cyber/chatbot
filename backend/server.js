@@ -1670,7 +1670,8 @@ const legalAreas = [
     keywords: [
       'penal', 'delito', 'denuncia', 'fiscalia', 'fiscalía', 'pena', 'prision', 'prisión',
       'extorsion', 'extorsión', 'robo', 'hurto', 'estafa', 'fraude', 'homicidio',
-      'lesiones', 'amenaza', 'amenazas', 'violencia', 'coaccion', 'coacción',
+      'lesiones', 'agresion', 'agresión', 'agredio', 'agredió', 'golpe', 'golpes', 'amenaza', 'amenazas', 'violencia', 'coaccion', 'coacción',
+      'pareja', 'conviviente', 'ex pareja', 'expareja', 'esposo', 'esposa', 'enamorado', 'enamorada',
       'abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual',
       'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada',
       'menor de edad', 'menores de edad', 'niño', 'niña', 'adolescente',
@@ -1679,6 +1680,7 @@ const legalAreas = [
     ],
     topics: [
       { id: 'extorsion', label: 'Extorsión', keywords: ['extorsion', 'extorsión', 'chantaje', 'amenaza para pagar', 'cobro de cupos'] },
+      { id: 'violencia_pareja', label: 'Agresión o violencia de pareja', keywords: ['agresion de pareja', 'agresión de pareja', 'mi pareja me agredio', 'mi pareja me agredió', 'pareja', 'conviviente', 'ex pareja', 'expareja', 'esposo', 'esposa', 'enamorado', 'enamorada', 'violencia familiar', 'violencia contra la mujer', 'lesiones', 'agresion', 'agresión', 'golpe', 'golpes', 'amenaza', 'amenazas'] },
       { id: 'abuso_sexual_menor', label: 'Abuso sexual contra menores', keywords: ['abuso', 'abusado', 'abusada', 'abuso sexual', 'violacion sexual', 'violación sexual', 'menor abusado', 'menor de edad abusado', 'niño abusado', 'niña abusada', 'menor de edad', 'menores de edad', 'niño', 'niña', 'adolescente', 'tocamientos', 'actos libidinosos'] },
       { id: 'robo', label: 'Robo', keywords: ['robo', 'asaltaron', 'asalto'] },
       { id: 'hurto', label: 'Hurto', keywords: ['hurto', 'sustraccion', 'sustracción'] },
@@ -1899,8 +1901,40 @@ function buildMissingInfoForInterpretation(normalizedText, typeId, areaId, topic
   return [...new Set(missing)].slice(0, 5);
 }
 
-function interpretLegalQuery(query, memoryMessages = []) {
+function getCaseContextFlags(text = '') {
+  const normalized = normalizeText(text);
+  return {
+    minorAbuse: /\b(menor|menores|niño|nino|niña|nina|adolescente|abuso sexual|violacion sexual|violación sexual|tocamientos|actos libidinosos|revictimizacion|revictimización)\b/.test(normalized),
+    partnerViolence: /\b(pareja|conviviente|ex pareja|expareja|esposo|esposa|enamorado|enamorada|violencia familiar|violencia contra la mujer|agresion|agresión|agredio|agredió|golpe|golpes|lesiones|amenaza|amenazas)\b/.test(normalized),
+    labor: /\b(trabajo|trabajador|empleador|despido|beneficios sociales|cts|gratificacion|gratificación|vacaciones|sueldo|salario)\b/.test(normalized),
+    consumer: /\b(consumidor|indecopi|universidad|servicio educativo|matricula|matrícula|pension|pensión|cobro|proveedor|reclamo)\b/.test(normalized),
+    property: /\b(terreno|predio|inmueble|posesion|posesión|propiedad|vecino|lindero|partida registral)\b/.test(normalized)
+  };
+}
+
+function shouldIgnoreMemoryForCurrentQuery(query, memoryMessages = []) {
+  const current = getCaseContextFlags(query);
   const memoryText = normalizeMemoryMessages(memoryMessages)
+    .filter(message => message.role === 'user')
+    .map(message => message.content)
+    .join(' ');
+  const previous = getCaseContextFlags(memoryText);
+  const currentHasCaseSignal = current.minorAbuse || current.partnerViolence || current.labor || current.consumer || current.property;
+  if (!currentHasCaseSignal || !memoryText) return false;
+
+  if (current.partnerViolence && previous.minorAbuse && !current.minorAbuse) return true;
+  if (current.minorAbuse && previous.partnerViolence && !current.partnerViolence) return true;
+  if (current.labor && (previous.minorAbuse || previous.partnerViolence || previous.consumer || previous.property)) return true;
+  if (current.consumer && (previous.minorAbuse || previous.partnerViolence || previous.labor || previous.property)) return true;
+  if (current.property && (previous.minorAbuse || previous.partnerViolence || previous.labor || previous.consumer)) return true;
+
+  return false;
+}
+
+function interpretLegalQuery(query, memoryMessages = []) {
+  const ignoreMemory = shouldIgnoreMemoryForCurrentQuery(query, memoryMessages);
+  const effectiveMemoryMessages = ignoreMemory ? [] : memoryMessages;
+  const memoryText = normalizeMemoryMessages(effectiveMemoryMessages)
     .filter(message => message.role === 'user')
     .slice(-4)
     .map(message => message.content)
@@ -1908,7 +1942,7 @@ function interpretLegalQuery(query, memoryMessages = []) {
   const fullText = [memoryText, query].filter(Boolean).join(' ');
   const currentNormalized = normalizeText(query);
   const normalized = normalizeText(fullText);
-  const conversationMode = classifyConversationMode(query, memoryMessages);
+  const conversationMode = classifyConversationMode(query, effectiveMemoryMessages);
   const terms = getQueryTerms(query);
   const typeScores = legalIntentTypes
     .map(type => ({ ...type, score: countPatternScore(normalized, type.patterns, 4) }))
@@ -1943,7 +1977,6 @@ function interpretLegalQuery(query, memoryMessages = []) {
   const typeConfidence = confidenceFromScore(matchedType?.score || 0, 6, 3);
   const objective = inferLegalObjective(normalized);
   const concepts = [
-    ...(matchedArea?.keywords || []),
     ...(matchedTopic?.keywords || []),
     ...terms
   ].map(item => normalizeText(item)).filter(Boolean);
@@ -1982,7 +2015,8 @@ function interpretLegalQuery(query, memoryMessages = []) {
       usedMemory: Boolean(memoryText),
       currentAreaScore: currentAreaScores[0]?.score || 0,
       currentAreaId: currentAreaScores[0]?.score > 0 ? currentAreaScores[0].id : '',
-      currentTopicScore: topicScores[0]?.score || 0
+      currentTopicScore: topicScores[0]?.score || 0,
+      ignoredMemory: ignoreMemory
     },
     originalQuery: String(query || '').trim(),
     needsMoreFacts: typeId !== 'consulta_normativa' && (!matchedArea || !matchedTopic)
@@ -2939,6 +2973,45 @@ function selectBestLegalResult(results = [], intent = null) {
   })[0];
 }
 
+function isMinorAbuseLegalResult(item) {
+  const text = normalizeText([
+    getResultTitle(item),
+    getResultSource(item),
+    item?.materia,
+    item?.matter,
+    item?.resumen,
+    item?.excerpt,
+    getFullResultText(item)
+  ].join(' '));
+  return text.includes('abuso sexual contra menores')
+    || text.includes('menor de edad')
+    || text.includes('menores')
+    || text.includes('menores de edad')
+    || text.includes('niño')
+    || text.includes('niña')
+    || text.includes('adolescente')
+    || text.includes('tocamientos')
+    || text.includes('actos libidinosos')
+    || text.includes('art. 173')
+    || text.includes('articulo 173')
+    || text.includes('artículo 173')
+    || text.includes('176-a')
+    || text.includes('ley 30403');
+}
+
+function filterResultsForCurrentIntent(query, intent, results = []) {
+  const flags = getCaseContextFlags([
+    query,
+    intent?.topic?.label,
+    intent?.topic?.id,
+    intent?.area?.label
+  ].filter(Boolean).join(' '));
+  if (flags.partnerViolence && !flags.minorAbuse) {
+    return (Array.isArray(results) ? results : []).filter(item => !isMinorAbuseLegalResult(item));
+  }
+  return Array.isArray(results) ? results : [];
+}
+
 function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_request') {
   const primary = selectBestLegalResult(results, intent);
   let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 4);
@@ -3248,34 +3321,36 @@ function buildActionAnswer(query, intent, results = [], reasoningProfile = null)
 
 function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = null, graphReasoning = null, memoryMessages = []) {
   const modeId = intent?.conversationMode?.id || 'case_start';
+  const scopedResults = filterResultsForCurrentIntent(query, intent, results);
   if (modeId === 'source_request' || modeId === 'norm_request') {
-    return buildSourceOrNormAnswer(query, intent, results, modeId);
+    return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
   }
   if (modeId === 'definition_request') {
-    return buildDefinitionAnswer(query, intent, results, reasoningProfile);
+    return buildDefinitionAnswer(query, intent, scopedResults, reasoningProfile);
   }
   if (modeId === 'confusion') {
-    return buildConfusionAnswer(query, intent, results, reasoningProfile);
+    return buildConfusionAnswer(query, intent, scopedResults, reasoningProfile);
   }
   if (modeId === 'correction') {
-    return buildCorrectionAnswer(query, intent, results, memoryMessages);
+    return buildCorrectionAnswer(query, intent, scopedResults, memoryMessages);
   }
   if (modeId === 'verification_request') {
-    return buildVerificationAnswer(query, intent, results, memoryMessages);
+    return buildVerificationAnswer(query, intent, scopedResults, memoryMessages);
   }
   if (modeId === 'status_answer') {
-    return buildStatusAnswer(query, intent, results, reasoningProfile, memoryMessages);
+    return buildStatusAnswer(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (modeId === 'new_fact') {
-    return buildNewFactAnswer(query, intent, results, reasoningProfile);
+    return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile);
   }
   if (modeId === 'action_request') {
-    return buildActionAnswer(query, intent, results, reasoningProfile);
+    return buildActionAnswer(query, intent, scopedResults, reasoningProfile);
   }
   return '';
 }
 
 function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
+  results = filterResultsForCurrentIntent(query, intent, results);
   const lines = [];
   const shortInput = isShortUserInput(query);
   const normalizedQuery = normalizeText(query);
@@ -3344,6 +3419,7 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
 }
 
 function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, graphReasoning, memoryMessages = []) {
+  results = filterResultsForCurrentIntent(query, intent, results);
   const normalizedMemory = normalizeMemoryMessages(memoryMessages);
   const recentUserMessages = normalizedMemory.filter(message => message.role === 'user').slice(-3);
   const modeAnswer = buildModeAwareAnswer(query, intent, results, reasoningProfile, graphReasoning, normalizedMemory);

@@ -184,6 +184,25 @@
       }
     },
     {
+      "id": "normativa-penal-violencia-pareja-001",
+      "titulo": "Agresión o violencia de pareja: protección, denuncia y prueba",
+      "materia": "Derecho Penal",
+      "fecha": "",
+      "fuente": "Base jurídica interna LEXIA",
+      "url": "",
+      "contenido": "Cuando una persona indica agresión de su pareja, conviviente, ex pareja, esposo, esposa, enamorado o enamorada, el análisis debe centrarse en hechos de violencia familiar, lesiones, amenazas, coacción, riesgo actual y medidas de protección. No debe tratarse como abuso sexual contra menores salvo que el usuario indique expresamente que hay un menor involucrado. Lo primero es verificar si la víctima está a salvo, preservar pruebas como fotos, certificados médicos, chats, audios, videos, testigos o denuncias previas, y evaluar acudir a Policía, Fiscalía, juzgado de familia o Centro de Emergencia Mujer según urgencia. Si existe peligro actual, la prioridad práctica es protección inmediata y medidas de protección.",
+      "resumen": "Ruta inicial para agresión, amenazas o violencia de pareja entre adultos.",
+      "inteligencia": {
+        "hechos_clave": ["relación con la persona agresora", "tipo de agresión", "fecha y lugar", "lesiones o amenazas", "riesgo actual", "prueba disponible"],
+        "problemas_juridicos": ["proteger a la víctima", "determinar si hay lesiones, amenazas o violencia familiar", "preservar prueba", "evaluar medidas de protección", "definir autoridad competente"],
+        "reglas_practicas": ["no mezclar el caso con abuso de menores si el usuario no mencionó menor", "priorizar seguridad si hay riesgo actual", "guardar evidencia sin editarla", "buscar atención médica si hubo lesión", "dejar constancia de amenazas o agresiones"],
+        "riesgos": ["nueva agresión", "pérdida de prueba", "normalizar amenazas", "contacto forzado con la persona agresora", "demora en medidas de protección"],
+        "documentos": ["DNI", "fotos de lesiones", "certificado médico legal si existe", "capturas de mensajes", "audios o videos", "datos de testigos", "denuncias previas"],
+        "pasos": ["poner a la víctima a salvo", "guardar pruebas", "buscar atención médica si corresponde", "presentar denuncia o pedir orientación urgente", "solicitar medidas de protección si hay riesgo"],
+        "preguntas": ["¿La víctima está a salvo ahora?", "¿Hubo golpes, amenazas o lesiones visibles?", "¿Tienes fotos, chats, audios o testigos?"]
+      }
+    },
+    {
       "id": "normativa-penal-abuso-sexual-menor-001",
       "titulo": "Abuso sexual contra menores: protección penal y actuación urgente",
       "materia": "Derecho Penal",
