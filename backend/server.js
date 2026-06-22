@@ -1614,11 +1614,15 @@ function classifyConversationMode(query, memoryMessages = []) {
   const userTerms = getQueryTerms(query);
 
   const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
+  const verificationRequest = /\b(como sabes|cómo sabes|como sabes si|cómo sabes si|por que dices|por qué dices|porque dices|de donde sale que|de dónde sale que|como concluyes|cómo concluyes|como determinas|cómo determinas|en que te basas para decir|en qué te basas para decir)\b/.test(normalized);
   const normRequest = /\b(dame|dime|busca|muestrame|muéstrame|necesito)\b.*\b(ley|leyes|articulo|artículo|articulos|artículos|norma|codigo|código)\b/.test(normalized)
     || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized);
   const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
   const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
   const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste)\b/.test(normalized);
+  const denouncedStatus = /\b(si ya denuncie|sí ya denuncié|ya denuncie|ya denuncié|ya hice denuncia|hice denuncia|puse denuncia|ya puse denuncia|ya denuncio|ya denunció|ya fui a la policia|ya fui a la policía|ya fui a fiscalia|ya fui a fiscalía|ya esta denunciado|ya está denunciado)\b/.test(normalized);
+  const evaluatingStatus = /\b(estoy evaluando denunciar|evaluando denunciar|todavia estoy evaluando|todavía estoy evaluando|aun estoy evaluando|aún estoy evaluando|todavia no denuncie|todavía no denuncié|aun no denuncie|aún no denuncié|no denuncie|no denuncié|no he denunciado|todavia no|todavía no|aun no|aún no)\b/.test(normalized);
+  const statusAnswer = denouncedStatus || evaluatingStatus;
   const actionRequest = /\b(que hago|qué hago|que puedo hacer|qué puedo hacer|como procedo|cómo procedo|que sigue|qué sigue|siguiente paso|pasos|denuncio|demando|respondo)\b/.test(normalized);
   const topicShift = /\b(otro caso|otra consulta|cambiando de tema|ahora quiero saber sobre|nuevo caso)\b/.test(normalized);
   const asksQuestion = /[?¿]/.test(String(query || '')) || /\b(que|qué|como|cómo|cuando|cuándo|donde|dónde|cual|cuál|por que|por qué)\b/.test(normalized);
@@ -1630,6 +1634,8 @@ function classifyConversationMode(query, memoryMessages = []) {
     && !definitionRequest
     && !confusion
     && !correction
+    && !verificationRequest
+    && !statusAnswer
     && !actionRequest
     && !topicShift
     && (hasLegalSignal || looksLikeCaseFact || (!asksQuestion && userTerms.length >= 2));
@@ -1637,31 +1643,36 @@ function classifyConversationMode(query, memoryMessages = []) {
   let id = 'case_start';
   if (topicShift) id = 'topic_shift';
   else if (sourceRequest) id = 'source_request';
+  else if (verificationRequest) id = 'verification_request';
   else if (normRequest) id = 'norm_request';
   else if (definitionRequest) id = 'definition_request';
   else if (confusion) id = 'confusion';
   else if (correction) id = 'correction';
+  else if (statusAnswer) id = 'status_answer';
   else if (actionRequest) id = 'action_request';
   else if (newFact) id = 'new_fact';
   else if (hasMemory && isConversationalFollowUp(query)) id = 'follow_up';
   else if (hasMemory && userTerms.length <= 3) id = 'follow_up';
 
-  const deterministic = ['source_request', 'norm_request', 'definition_request', 'confusion', 'correction', 'action_request', 'new_fact'].includes(id);
+  const deterministic = ['source_request', 'verification_request', 'norm_request', 'definition_request', 'confusion', 'correction', 'status_answer', 'action_request', 'new_fact'].includes(id);
   return {
     id,
     label: {
       case_start: 'Nuevo caso o consulta',
       topic_shift: 'Cambio de tema',
       source_request: 'Pedido de fuente o base legal',
+      verification_request: 'Pedido de verificación de inferencia',
       norm_request: 'Pedido de norma o artículo',
       definition_request: 'Pregunta de definición o explicación',
       confusion: 'Usuario confundido',
       correction: 'Corrección del usuario',
+      status_answer: 'Respuesta sobre estado del trámite',
       action_request: 'Pedido de próximos pasos',
       new_fact: 'Dato nuevo del caso',
       follow_up: 'Seguimiento conversacional'
     }[id] || 'Mensaje conversacional',
     hasMemory,
+    status: denouncedStatus ? 'denounced' : (evaluatingStatus ? 'evaluating' : null),
     deterministic
   };
 }
@@ -1793,8 +1804,7 @@ function classifyLegalIntent(query) {
 function mergeConversationIntent(currentIntent, memoryIntent) {
   const currentIsFollowUp = isConversationalFollowUp(currentIntent?.originalQuery || '');
   const currentHasLegalSignal = !currentIsFollowUp && ((currentIntent?.interpretation?.currentAreaScore || 0) > 0
-    || currentIntent?.topic?.confidence === 'media'
-    || currentIntent?.topic?.confidence === 'alta');
+    || (currentIntent?.interpretation?.currentTopicScore || 0) > 0);
   const areaConflict = currentIntent?.area?.id
     && memoryIntent?.area?.id
     && currentIntent.area.id !== 'area_no_determinada'
@@ -1802,6 +1812,8 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
     && currentIntent.area.id !== memoryIntent.area.id;
   const topicConflict = currentIntent?.topic?.id
     && memoryIntent?.topic?.id
+    && (currentIntent?.interpretation?.currentTopicScore || 0) > 0
+    && (memoryIntent?.interpretation?.currentTopicScore || memoryIntent?.interpretation?.topicScore || 0) > 0
     && currentIntent.topic.id !== 'tema_no_determinado'
     && memoryIntent.topic.id !== 'tema_no_determinado'
     && currentIntent.topic.id !== memoryIntent.topic.id;
@@ -2883,6 +2895,109 @@ function buildCorrectionAnswer(query, intent, results = [], memoryMessages = [])
   ].join('\n');
 }
 
+function buildVerificationAnswer(query, intent, results = [], memoryMessages = []) {
+  const memoryState = buildConversationMemoryState(memoryMessages);
+  const lastFact = memoryState.lastUserFact || memoryState.userFacts[memoryState.userFacts.length - 1] || '';
+  const legalBadges = collectLegalCitationBadges(results, 2);
+  const lines = [
+    'No debo presentarlo como certeza si tú no lo dijiste claramente.',
+    '',
+    'LEXIA solo puede trabajar con dos cosas: **los hechos que el usuario contó** y **las normas que encontró en la base legal**. Si una frase mía sonó como conclusión cerrada, la corrijo: debe tratarse como una hipótesis para confirmar.'
+  ];
+
+  if (lastFact) {
+    lines.push('');
+    lines.push(`Hecho del usuario que tengo como base: **${truncateForRag(lastFact, 220)}**.`);
+  }
+
+  if (legalBadges.length) {
+    lines.push('');
+    lines.push(`Base normativa relacionada, no prueba del hecho: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+
+  lines.push('');
+  lines.push('Para seguir bien, necesito confirmar el dato concreto: ¿el caso involucra a un menor, o LEXIA arrastró una inferencia que no corresponde?');
+  return lines.join('\n');
+}
+
+function buildStatusAnswer(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
+  const status = intent?.conversationMode?.status;
+  const memoryState = buildConversationMemoryState(memoryMessages);
+  const rawMemoryText = normalizeMemoryMessages(memoryMessages)
+    .map(message => message.content)
+    .join(' ');
+  const memoryText = normalizeText([memoryState.userFactText, rawMemoryText, query, intent?.topic?.label].filter(Boolean).join(' '));
+  const hasMinorContext = /\b(menor|niño|nino|niña|nina|adolescente|abuso sexual|violacion sexual|violación sexual|revictimizacion|revictimización)\b/.test(memoryText);
+  let scopedResults = Array.isArray(results) ? results : [];
+
+  if (hasMinorContext && typeof searchLegalKnowledgeBase === 'function') {
+    const contextResults = searchLegalKnowledgeBase('abuso sexual menor codigo penal articulo 173 176-A ley 30403 denuncia fiscalia menor') || [];
+    scopedResults = [...contextResults, ...scopedResults].filter(item => {
+      const text = normalizeText([
+        getResultTitle(item),
+        getResultSource(item),
+        item?.module,
+        item?.modulo,
+        item?.matter,
+        item?.materia,
+        getFullResultText(item)
+      ].join(' '));
+      return /\b(menor|niño|nino|niña|nina|adolescente|codigo penal|código penal|articulo 173|artículo 173|176-a|ley 30403|abuso sexual|violacion sexual|violación sexual)\b/.test(text);
+    });
+  }
+
+  const primary = selectBestLegalResult(scopedResults, intent);
+  scopedResults = primary ? [primary, ...scopedResults.filter(item => item !== primary)] : scopedResults;
+  let legalBadges = collectLegalCitationBadges(scopedResults, 2);
+  if (!legalBadges.length && !hasMinorContext) legalBadges = collectLegalCitationBadges(results, 2);
+  const documents = collectIntelligenceItems(scopedResults, 'documentos', 4);
+  const risks = collectIntelligenceItems(scopedResults, 'riesgos', 1);
+
+  if (status === 'denounced') {
+    const lines = [
+      'Perfecto, entonces ya no estamos en “si denuncias o no”.',
+      '',
+      'Ahora el foco es **seguimiento, protección y pruebas**: conservar la constancia o número de denuncia, no manipular evidencias, ampliar información si aparecen nuevos datos y pedir medidas de protección si hay riesgo actual.'
+    ];
+    if (legalBadges.length) {
+      lines.push('');
+      lines.push(`Base legal relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+    }
+    if (documents.length) {
+      lines.push('');
+      lines.push(`Ten a la mano: **${documents.slice(0, 4).join(', ')}**.`);
+    }
+    if (risks.length) {
+      lines.push('');
+      lines.push(`Cuidado principal: **${risks[0]}**.`);
+    }
+    lines.push('');
+    lines.push('¿Tienes constancia o número de denuncia, y ante qué entidad la presentaste?');
+    return lines.join('\n');
+  }
+
+  const lines = [
+    'Entiendo: todavía estás evaluando denunciar.',
+    '',
+    'Entonces no repito la pregunta anterior. Primero hay que ordenar **hechos, fechas, personas involucradas y pruebas**; si hay riesgo actual para alguien, la prioridad práctica es protección inmediata y autoridad competente.'
+  ];
+  if (legalBadges.length) {
+    lines.push('');
+    lines.push(`Base legal relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+  if (documents.length) {
+    lines.push('');
+    lines.push(`Para decidir mejor, revisa qué tienes: **${documents.slice(0, 4).join(', ')}**.`);
+  }
+  if (risks.length) {
+    lines.push('');
+    lines.push(`Cuidado principal: **${risks[0]}**.`);
+  }
+  lines.push('');
+  lines.push('¿Qué prueba o dato concreto tienes ahora mismo: mensaje, audio, testigo, fecha o identificación de la persona?');
+  return lines.join('\n');
+}
+
 function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null) {
   const primary = selectBestLegalResult(results, intent);
   let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 3);
@@ -2952,6 +3067,12 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   }
   if (modeId === 'correction') {
     return buildCorrectionAnswer(query, intent, results, memoryMessages);
+  }
+  if (modeId === 'verification_request') {
+    return buildVerificationAnswer(query, intent, results, memoryMessages);
+  }
+  if (modeId === 'status_answer') {
+    return buildStatusAnswer(query, intent, results, reasoningProfile, memoryMessages);
   }
   if (modeId === 'new_fact') {
     return buildNewFactAnswer(query, intent, results, reasoningProfile);
