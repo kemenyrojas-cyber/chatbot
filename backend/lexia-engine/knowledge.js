@@ -776,14 +776,12 @@ function buildSourceSummary(results, intent, limit = 3) {
   const rankedSources = filterSourcesForIntent(results, intent)
     .filter(item => Number(item.relevance || 0) >= 10)
     .sort((a, b) => {
-      const aHasUrl = itemHasExternalUrl(a) ? 1 : 0;
-      const bHasUrl = itemHasExternalUrl(b) ? 1 : 0;
-      const aGeneric = isGenericSourceResult(a) ? 1 : 0;
-      const bGeneric = isGenericSourceResult(b) ? 1 : 0;
-      return (bHasUrl - aHasUrl) || (aGeneric - bGeneric) || Number(b.relevance || 0) - Number(a.relevance || 0);
+      return scoreSourceQuality(b) - scoreSourceQuality(a)
+        || Number(b.relevance || 0) - Number(a.relevance || 0);
     });
   const specificSources = rankedSources.filter(item => !isGenericSourceResult(item));
-  const relevantSources = specificSources.length ? specificSources : rankedSources;
+  const officialSources = specificSources.filter(isOfficialLegalSource);
+  const relevantSources = officialSources.length ? officialSources : (specificSources.length ? specificSources : rankedSources);
 
   if (!relevantSources.length) {
     return [
@@ -796,15 +794,73 @@ function buildSourceSummary(results, intent, limit = 3) {
   relevantSources.slice(0, limit).forEach((item, index) => {
     const title = item.titulo || item.title || 'Referencia jurídica';
     const source = item.fuente || item.source || 'Base jurídica local LEXIA';
+    const sourceType = isOfficialLegalSource(item) ? 'oficial' : 'referencia secundaria';
     const matter = item.materia ? ` | Materia: ${item.materia}` : '';
     const url = item.url ? `\nURL: ${item.url}` : '';
-    lines.push(`${index + 1}. ${title} | Fuente: ${source}${matter}${url}`);
+    lines.push(`${index + 1}. ${title} | Fuente ${sourceType}: ${source}${matter}${url}`);
   });
+  if (!officialSources.length && relevantSources.some(isSecondaryLegalSource)) {
+    lines.push('', 'Nota: esta referencia ayuda a ubicar el tema, pero conviene contrastar el texto vigente en El Peruano, SPIJ o la entidad oficial competente.');
+  }
   return lines.join('\n');
 }
 
 function itemHasExternalUrl(item) {
   return /^https?:\/\//i.test(String(item?.url || ''));
+}
+
+function getSourceHost(item) {
+  try {
+    return new URL(String(item?.url || '')).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isOfficialLegalSource(item) {
+  const host = getSourceHost(item);
+  const source = normalizeText(`${item?.fuente || item?.source || ''} ${item?.titulo || item?.title || ''}`);
+  const officialHosts = [
+    'elperuano.pe',
+    'spij.minjus.gob.pe',
+    'spijweb.minjus.gob.pe',
+    'congreso.gob.pe',
+    'leyes.congreso.gob.pe',
+    'tc.gob.pe',
+    'pj.gob.pe',
+    'poderjudicial.gob.pe',
+    'mpfn.gob.pe',
+    'gob.pe',
+    'minjus.gob.pe',
+    'sunat.gob.pe',
+    'sunarp.gob.pe',
+    'indecopi.gob.pe',
+    'servir.gob.pe',
+    'mimp.gob.pe'
+  ];
+  return officialHosts.some(officialHost => host === officialHost || host.endsWith(`.${officialHost}`))
+    || /\b(diario oficial|el peruano|spij|congreso de la republica|tribunal constitucional|poder judicial|ministerio publico|sunat|sunarp|indecopi|servir|mimp)\b/.test(source);
+}
+
+function isSecondaryLegalSource(item) {
+  const host = getSourceHost(item);
+  const source = normalizeText(`${item?.fuente || item?.source || ''} ${item?.titulo || item?.title || ''}`);
+  return host.includes('lpderecho.pe')
+    || source.includes('lp derecho')
+    || source.includes('blog')
+    || source.includes('portal juridico');
+}
+
+function scoreSourceQuality(item) {
+  let score = Number(item?.relevance || 0);
+  if (itemHasExternalUrl(item)) score += 15;
+  if (isOfficialLegalSource(item)) score += 100;
+  if ((item?.module || item?.modulo) === 'normativa') score += 24;
+  if ((item?.module || item?.modulo) === 'sentencias_tc') score += 18;
+  if ((item?.module || item?.modulo) === 'casaciones') score += 14;
+  if (isSecondaryLegalSource(item)) score -= 35;
+  if (isGenericSourceResult(item)) score -= 50;
+  return score;
 }
 
 function isGenericSourceResult(item) {
@@ -1106,6 +1162,8 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
         + (item.module === 'normativa' ? 18 : 0)
         + (item.module === 'legal_article' ? 35 : 0)
         + (itemHasExternalUrl(item) ? 20 : 0)
+        + (isOfficialLegalSource(item) ? 80 : 0)
+        - (isSecondaryLegalSource(item) ? 30 : 0)
         - (isGenericSourceResult(item) ? 35 : 0)
     }))
     .sort((a, b) => b.rankingScore - a.rankingScore || b.relevance - a.relevance)
@@ -1207,6 +1265,9 @@ return {
   containsNormalizedTerm,
   buildSourceSummary,
   itemHasExternalUrl,
+  isOfficialLegalSource,
+  isSecondaryLegalSource,
+  scoreSourceQuality,
   isGenericSourceResult,
   buildLegalCollections,
   legalIndex,

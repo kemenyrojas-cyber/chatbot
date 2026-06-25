@@ -1818,12 +1818,12 @@ function classifyConversationMode(query, memoryMessages = []) {
   const normativeReference = extractNormativeReference(query);
 
   const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
-  const verificationRequest = /\b(como sabes|cómo sabes|como sabes si|cómo sabes si|por que dices|por qué dices|porque dices|de donde sale que|de dónde sale que|como concluyes|cómo concluyes|como determinas|cómo determinas|en que te basas para decir|en qué te basas para decir)\b/.test(normalized);
+  const verificationRequest = /\b(como sabes|cómo sabes|como sabes si|cómo sabes si|por que dices|por qué dices|porque dices|de donde sale que|de dónde sale que|como concluyes|cómo concluyes|como determinas|cómo determinas|en que te basas para decir|en qué te basas para decir|verifica|verificalo|verifícalo|revisa|revisalo|revísalo)\b/.test(normalized);
   const normRequest = /\b(dame|dime|busca|muestrame|muéstrame|necesito)\b.*\b(ley|leyes|articulo|artículo|articulos|artículos|norma|codigo|código)\b/.test(normalized)
     || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized);
   const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
   const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
-  const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste|te vengo diciendo|te estoy diciendo|te digo que|no estas tomando en cuenta|no estás tomando en cuenta|parece que no estas|parece que no estás)\b/.test(normalized);
+  const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste|te vengo diciendo|te estoy diciendo|te digo que|no estas tomando en cuenta|no estás tomando en cuenta|parece que no estas|parece que no estás|en internet dice|segun internet|según internet|la pagina dice|la página dice|la fuente dice|he visto que|dice que fue|fue promulgada|promulgada el|publicada el)\b/.test(normalized);
   const professionalRoleConflict = /\b(patrocinada|patrocinado|patrocinante|mi cliente|cliente|defendida|defendido)\b/.test(normalized)
     && /\b(denunciar|denuncio|denuncia|condena|condenaron|pena|penal|defender|defensa|proceso)\b/.test(normalized);
   const denouncedStatus = /\b(si ya denuncie|sí ya denuncié|ya denuncie|ya denuncié|ya hice denuncia|hice denuncia|puse denuncia|ya puse denuncia|ya denuncio|ya denunció|ya fui a la policia|ya fui a la policía|ya fui a fiscalia|ya fui a fiscalía|ya esta denunciado|ya está denunciado)\b/.test(normalized);
@@ -3254,6 +3254,35 @@ function buildDefinitionAnswer(query, intent, results = [], reasoningProfile = n
 function buildCorrectionAnswer(query, intent, results = [], memoryMessages = []) {
   const memoryState = buildConversationMemoryState(memoryMessages);
   const normalizedQuery = normalizeText(query);
+  const correctionFactMatch = String(query || '').match(/\b(?:en internet dice que|seg[uú]n internet|la p[aá]gina dice que|la fuente dice que|he visto que)?\s*(?:fue\s+)?(?:promulgada|publicada|emitida|aprobada)\s+(?:el\s+)?(.{6,80})/i);
+  if (correctionFactMatch || /\b(en internet dice|segun internet|según internet|la pagina dice|la página dice|la fuente dice|fue promulgada|promulgada el|publicada el)\b/.test(normalizedQuery)) {
+    const correctedFact = correctionFactMatch?.[1]
+      ? `que fue ${String(query).toLowerCase().includes('publicada') ? 'publicada' : 'promulgada'} el ${correctionFactMatch[1].replace(/[.。]+$/, '').trim()}`
+      : String(query || '').replace(/\s+/g, ' ').trim();
+    const legalBadges = collectLegalCitationBadges(results, 2);
+    const sourceSummary = buildSourceSummary(results, intent, 2);
+    const lines = [
+      'Tienes razón en corregirme. Disculpa: no debí responder como si ese dato ya estuviera cerrado sin verificarlo bien.',
+      '',
+      correctedFact
+        ? `Tomo tu precisión como dato a revisar: **${correctedFact}**.`
+        : 'Tomo tu precisión como dato a revisar.',
+      '',
+      'Cuando un dato es de fecha, promulgación o publicación de una ley, lo correcto es contrastarlo con una fuente oficial, no asumirlo por memoria.'
+    ];
+
+    if (legalBadges.length) {
+      lines.push('', `La referencia normativa que debo revisar es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+    }
+    if (sourceSummary && !sourceSummary.includes('No encontré una fuente específica')) {
+      lines.push('', sourceSummary);
+    } else {
+      lines.push('', 'Para darte la fecha correcta con seguridad, necesito contrastarla en **El Peruano, SPIJ o la ficha oficial de la norma**.');
+    }
+
+    lines.push('', 'Si me pasas el enlace donde viste esa fecha, lo tomo como fuente y corrijo la respuesta con base en ese texto.');
+    return lines.join('\n');
+  }
   if (/\b(condenen|condena|condenaron|sentencia|pise el penal|ingrese al penal|carcel|cárcel|prision|prisión)\b/.test(normalizedQuery)) {
     return [
       'Tienes razón. El punto no era “denunciar”.',
@@ -3297,9 +3326,9 @@ function buildVerificationAnswer(query, intent, results = [], memoryMessages = [
   const lastFact = memoryState.lastUserFact || memoryState.userFacts[memoryState.userFacts.length - 1] || '';
   const legalBadges = collectLegalCitationBadges(results, 2);
   const lines = [
-    'No debo presentarlo como certeza si tú no lo dijiste claramente.',
+    'Gracias por marcarlo. Disculpa: si di ese dato como seguro, debí verificarlo mejor antes de afirmarlo.',
     '',
-    'LEXIA solo puede trabajar con dos cosas: **los hechos que el usuario contó** y **las normas que encontró en la base legal**. Si una frase mía sonó como conclusión cerrada, la corrijo: debe tratarse como una hipótesis para confirmar.'
+    'LEXIA debe trabajar con dos bases: **lo que tú indicas** y **fuentes verificables**. Si una frase mía no está sostenida por una fuente clara, la corrijo y la trato como dato pendiente de verificación.'
   ];
 
   if (lastFact) {
@@ -3313,7 +3342,7 @@ function buildVerificationAnswer(query, intent, results = [], memoryMessages = [
   }
 
   lines.push('');
-  lines.push('Para seguir bien, necesito confirmar el dato concreto: ¿el caso involucra a un menor, o LEXIA arrastró una inferencia que no corresponde?');
+  lines.push('Pásame el enlace o el dato correcto, y rehago la respuesta con esa fuente como referencia.');
   return lines.join('\n');
 }
 
