@@ -1815,6 +1815,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   const memory = normalizeMemoryMessages(memoryMessages);
   const hasMemory = memory.length > 0;
   const userTerms = getQueryTerms(query);
+  const normativeReference = extractNormativeReference(query);
 
   const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
   const verificationRequest = /\b(como sabes|cómo sabes|como sabes si|cómo sabes si|por que dices|por qué dices|porque dices|de donde sale que|de dónde sale que|como concluyes|cómo concluyes|como determinas|cómo determinas|en que te basas para decir|en qué te basas para decir)\b/.test(normalized);
@@ -1847,7 +1848,8 @@ function classifyConversationMode(query, memoryMessages = []) {
     && (hasLegalSignal || looksLikeCaseFact || (!asksQuestion && userTerms.length >= 2));
 
   let id = 'case_start';
-  if (topicShift) id = 'topic_shift';
+  if (normativeReference?.onlyReference) id = 'norm_request';
+  else if (topicShift) id = 'topic_shift';
   else if (sourceRequest) id = 'source_request';
   else if (verificationRequest) id = 'verification_request';
   else if (normRequest) id = 'norm_request';
@@ -1971,6 +1973,8 @@ function interpretLegalQuery(query, memoryMessages = []) {
   const fullText = [memoryText, query].filter(Boolean).join(' ');
   const currentNormalized = normalizeText(query);
   const normalized = normalizeText(fullText);
+  const normativeReference = extractNormativeReference(query);
+  const knownLaw = getKnownPeruvianLaw(normativeReference);
   const conversationMode = classifyConversationMode(query, effectiveMemoryMessages);
   const terms = getQueryTerms(query);
   const typeScores = legalIntentTypes
@@ -2010,10 +2014,12 @@ function interpretLegalQuery(query, memoryMessages = []) {
     ...terms
   ].map(item => normalizeText(item)).filter(Boolean);
   const uniqueConcepts = [...new Set(concepts)].slice(0, 12);
-  const typeId = matchedType?.id || (objective.id === 'ubicar_norma' ? 'consulta_normativa' : 'consulta_general');
-  const typeLabel = matchedType?.label || (objective.id === 'ubicar_norma' ? 'Consulta normativa' : 'Consulta general');
+  const typeId = normativeReference ? 'consulta_normativa' : (matchedType?.id || (objective.id === 'ubicar_norma' ? 'consulta_normativa' : 'consulta_general'));
+  const typeLabel = normativeReference ? 'Consulta normativa' : (matchedType?.label || (objective.id === 'ubicar_norma' ? 'Consulta normativa' : 'Consulta general'));
   const areaId = matchedArea?.id || 'area_no_determinada';
-  const topicId = matchedTopic?.id || (fallbackTopic ? fallbackTopic.replace(/\s+/g, '_') : 'tema_no_determinado');
+  const topicId = knownLaw
+    ? `ley_${knownLaw.number}`
+    : (normativeReference ? `referencia_${normativeReference.number}` : (matchedTopic?.id || (fallbackTopic ? fallbackTopic.replace(/\s+/g, '_') : 'tema_no_determinado')));
 
   return {
     type: {
@@ -2028,12 +2034,16 @@ function interpretLegalQuery(query, memoryMessages = []) {
     },
     topic: {
       id: topicId,
-      label: matchedTopic?.label || fallbackTopic || 'Tema no determinado',
-      confidence: matchedTopic ? topicConfidence : (fallbackTopic ? 'media' : 'baja')
+      label: knownLaw?.title || (normativeReference ? `Ley o referencia N.° ${normativeReference.number}` : (matchedTopic?.label || fallbackTopic || 'Tema no determinado')),
+      confidence: knownLaw ? 'alta' : (normativeReference ? 'media' : (matchedTopic ? topicConfidence : (fallbackTopic ? 'media' : 'baja')))
     },
-    objective,
+    objective: normativeReference
+      ? { id: 'ubicar_norma', label: 'Ubicar norma o artículo', confidence: knownLaw ? 'alta' : 'media' }
+      : objective,
     conversationMode,
-    concepts: uniqueConcepts,
+    concepts: normativeReference
+      ? [...new Set([`ley ${normativeReference.number}`, knownLaw?.label, knownLaw?.title, knownLaw?.matter, ...uniqueConcepts].filter(Boolean))].slice(0, 12)
+      : uniqueConcepts,
     complexity: inferComplexity(normalized, query, areaConfidence, topicConfidence),
     missingInfo: buildMissingInfoForInterpretation(normalized, typeId, areaId, topicId),
     interpretation: {
@@ -2046,7 +2056,9 @@ function interpretLegalQuery(query, memoryMessages = []) {
       currentAreaId: currentAreaScores[0]?.score > 0 ? currentAreaScores[0].id : '',
       currentTopicScore: topicScores[0]?.score || 0,
       ignoredMemory: ignoreMemory,
-      caseScopes: detectLegalCaseScopes(query)
+      caseScopes: detectLegalCaseScopes(query),
+      normativeReference,
+      knownLaw: knownLaw ? { number: knownLaw.number, title: knownLaw.title, label: knownLaw.label } : null
     },
     originalQuery: String(query || '').trim(),
     needsMoreFacts: typeId !== 'consulta_normativa' && (!matchedArea || !matchedTopic)
@@ -2105,9 +2117,10 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
 }
 
 function buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery) {
+  const lawReferenceQuery = buildLawReferenceSearchQuery(userQuery);
   if (intent?.type?.id === 'consulta_normativa') {
     const memoryAwareNormativeQuery = [
-      userQuery,
+      lawReferenceQuery,
       intent?.area?.label,
       intent?.topic?.label,
       intent?.objective?.label,
@@ -2118,7 +2131,7 @@ function buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery) {
   }
 
   const enriched = [
-    userQuery,
+    lawReferenceQuery,
     intent?.area?.label,
     intent?.topic?.label,
     intent?.objective?.label,
@@ -2268,6 +2281,7 @@ function buildFollowUpClarificationAnswer() {
 
 function shouldSearchLegalEngine(query) {
   if (isGreetingOnly(query) || isConversationalFollowUp(query)) return false;
+  if (extractNormativeReference(query)) return true;
   const terms = getQueryTerms(query);
   return isLegalQuery(query) || terms.length >= 2;
 }
@@ -2934,6 +2948,9 @@ function isUsefulNormativeResult(item) {
 }
 
 function buildNormativeLegalAnswer(query, intent, results = []) {
+  const lawReferenceAnswer = buildKnownLawReferenceAnswer(query, results);
+  if (lawReferenceAnswer) return lawReferenceAnswer;
+
   const usefulResults = (Array.isArray(results) ? results : [])
     .filter(isUsefulNormativeResult)
     .sort((a, b) => {
@@ -3097,6 +3114,9 @@ function filterResultsForCurrentIntent(query, intent, results = []) {
 }
 
 function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_request') {
+  const lawReferenceAnswer = buildKnownLawReferenceAnswer(query, results);
+  if (lawReferenceAnswer) return lawReferenceAnswer;
+
   const primary = selectBestLegalResult(results, intent);
   let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 4);
   if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 4);
@@ -4154,6 +4174,7 @@ No uses un formato rígido si la consulta es simple. La respuesta debe sentirse 
 REGLAS:
 - Siempre responde en español, con tono profesional, cercano y claro.
 - Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
+- Si el usuario escribe solo una ley, por ejemplo "Ley 29973", o solo una secuencia numérica, por ejemplo "29973", interpreta primero si puede ser una referencia normativa peruana. Identifica la ley si hay coincidencia, explica en lenguaje simple qué quiere decir y pregunta qué aspecto desea revisar. Si no hay coincidencia segura, no inventes: indica que debe verificarse en El Peruano, SPIJ o fuente oficial.
 - Si falta información clave, responde con supuestos explícitos y preguntas concretas.
 - Advierte cuando sea necesaria revisión de un abogado o documento real.
 - No presentes orientación general como asesoría legal definitiva.
@@ -4220,6 +4241,7 @@ async function runLegalIntelligence(options = {}) {
 // Detector robusto de consultas jurídicas
 function isLegalQuery(text) {
   if (!text) return false;
+  if (extractNormativeReference(text)) return true;
   const keywords = [
     'contrato','compraventa','derecho','juzgado','demanda','abogado','inmueble','despido','despide','despiden','despedido','salario','laboral',
     'tribut','penal','delito','fiscal','familia','alimentos','divorcio','custodia','herencia','testamento',
@@ -4235,6 +4257,167 @@ function isLegalQuery(text) {
     ,'constitución','constitucion','terreno','predio','lindero','linderos','vecino','empleador','trabajador'
   ];
   return keywords.some(k => text.toLowerCase().includes(k));
+}
+
+const knownPeruvianLawsByNumber = {
+  '29973': {
+    number: '29973',
+    label: 'Ley N.° 29973',
+    title: 'Ley General de la Persona con Discapacidad',
+    matter: 'Derechos de las personas con discapacidad',
+    plainMeaning: 'reconoce derechos, medidas de accesibilidad, ajustes razonables, inclusión, no discriminación y obligaciones del Estado y de privados frente a las personas con discapacidad.',
+    practicalUse: 'Sirve para sustentar pedidos de accesibilidad, trato igualitario, ajustes razonables, atención preferente, inclusión educativa, laboral o administrativa, y eliminación de barreras.',
+    verification: 'Verifica siempre el texto vigente y su reglamento en El Peruano, SPIJ, CONADIS o la entidad competente.'
+  },
+  '30403': {
+    number: '30403',
+    label: 'Ley N.° 30403',
+    title: 'Ley que prohíbe el uso del castigo físico y humillante contra los niños, niñas y adolescentes',
+    matter: 'Protección de niños, niñas y adolescentes',
+    plainMeaning: 'prohíbe formas de corrección basadas en castigo físico o trato humillante y refuerza el deber de protección frente a violencia contra menores.',
+    practicalUse: 'Sirve para sustentar protección de menores, medidas preventivas, intervención familiar, educativa o administrativa y análisis de violencia contra niños, niñas y adolescentes.',
+    verification: 'Verifica el texto vigente en El Peruano, SPIJ, MIMP o la entidad competente.'
+  },
+  '29733': {
+    number: '29733',
+    label: 'Ley N.° 29733',
+    title: 'Ley de Protección de Datos Personales',
+    matter: 'Protección de datos personales',
+    plainMeaning: 'regula el tratamiento de datos personales y exige consentimiento, finalidad legítima, seguridad y respeto de los derechos del titular de los datos.',
+    practicalUse: 'Sirve para evaluar uso indebido de datos, consentimientos, bancos de datos, derechos ARCO, reclamos ante la autoridad y obligaciones de empresas o entidades.',
+    verification: 'Verifica el texto vigente y su reglamento en El Peruano, SPIJ o la Autoridad Nacional de Protección de Datos Personales.'
+  },
+  '27444': {
+    number: '27444',
+    label: 'Ley N.° 27444',
+    title: 'Ley del Procedimiento Administrativo General',
+    matter: 'Derecho administrativo',
+    plainMeaning: 'ordena cómo deben actuar las entidades públicas en procedimientos administrativos, incluyendo derechos del administrado, notificación, plazos, recursos y validez de actos administrativos.',
+    practicalUse: 'Sirve para revisar multas, trámites, recursos administrativos, nulidades, descargos, silencio administrativo y debido procedimiento ante entidades públicas.',
+    verification: 'Verifica el TUO vigente de la Ley 27444 en El Peruano, SPIJ o la entidad pública competente.'
+  },
+  '30364': {
+    number: '30364',
+    label: 'Ley N.° 30364',
+    title: 'Ley para prevenir, sancionar y erradicar la violencia contra las mujeres y los integrantes del grupo familiar',
+    matter: 'Violencia familiar y protección',
+    plainMeaning: 'establece medidas de protección, rutas de atención y obligaciones estatales frente a violencia contra mujeres e integrantes del grupo familiar.',
+    practicalUse: 'Sirve para sustentar denuncias, medidas de protección, evaluación de riesgo, atención fiscal, policial o judicial y protección urgente de víctimas.',
+    verification: 'Verifica el texto vigente en El Peruano, SPIJ, MIMP, Ministerio Público o Poder Judicial.'
+  },
+  '30220': {
+    number: '30220',
+    label: 'Ley N.° 30220',
+    title: 'Ley Universitaria',
+    matter: 'Educación universitaria',
+    plainMeaning: 'regula el sistema universitario peruano, licenciamiento, calidad educativa, organización universitaria, derechos y deberes en el ámbito universitario.',
+    practicalUse: 'Sirve para analizar asuntos universitarios, deberes de universidades, derechos estudiantiles, procedimientos internos y supervisión por SUNEDU.',
+    verification: 'Verifica el texto vigente en El Peruano, SPIJ o SUNEDU.'
+  },
+  '30057': {
+    number: '30057',
+    label: 'Ley N.° 30057',
+    title: 'Ley del Servicio Civil',
+    matter: 'Empleo público',
+    plainMeaning: 'regula el régimen del servicio civil y busca ordenar la gestión de servidores públicos, derechos, obligaciones, evaluación y régimen disciplinario.',
+    practicalUse: 'Sirve para revisar situaciones de empleo público, procedimientos disciplinarios, derechos laborales públicos y gestión de personal estatal.',
+    verification: 'Verifica el texto vigente en El Peruano, SPIJ o SERVIR.'
+  }
+};
+
+function extractNormativeReference(query = '') {
+  const raw = String(query || '').trim();
+  const normalized = normalizeText(raw);
+  if (!normalized) return null;
+
+  const lawMatch = normalized.match(/\b(?:ley|leyes|ley n|ley no|ley nro|ley numero|ley número)\s*(\d{3,6})\b/);
+  if (lawMatch) {
+    return {
+      kind: 'law',
+      number: lawMatch[1],
+      explicitLaw: true,
+      onlyReference: /^(?:ley|leyes|ley n|ley no|ley nro|ley numero|ley número)?\s*\d{3,6}$/.test(normalized)
+    };
+  }
+
+  const numberOnlyMatch = normalized.match(/^\d{3,6}$/);
+  if (numberOnlyMatch) {
+    return {
+      kind: 'number',
+      number: numberOnlyMatch[0],
+      explicitLaw: false,
+      onlyReference: true
+    };
+  }
+
+  return null;
+}
+
+function getKnownPeruvianLaw(referenceOrQuery) {
+  const reference = typeof referenceOrQuery === 'string'
+    ? extractNormativeReference(referenceOrQuery)
+    : referenceOrQuery;
+  if (!reference?.number) return null;
+  return knownPeruvianLawsByNumber[reference.number] || null;
+}
+
+function buildLawReferenceSearchQuery(query) {
+  const reference = extractNormativeReference(query);
+  if (!reference) return query;
+  const law = getKnownPeruvianLaw(reference);
+  if (!law) {
+    return `Ley ${reference.number} norma peruana texto vigente significado alcance ${query}`;
+  }
+  return [
+    law.label,
+    law.title,
+    law.matter,
+    law.plainMeaning,
+    query
+  ].join(' ');
+}
+
+function buildKnownLawReferenceAnswer(query, results = []) {
+  const reference = extractNormativeReference(query);
+  if (!reference?.onlyReference) return '';
+
+  const law = getKnownPeruvianLaw(reference);
+  if (!law) {
+    return [
+      `El número **${reference.number}** parece una referencia normativa, pero no tengo una coincidencia segura en el catálogo local para decirte exactamente a qué ley corresponde sin verificar.`,
+      '',
+      `Puede tratarse de una **Ley N.° ${reference.number}**, un expediente, una resolución, una casación u otro identificador jurídico. Para no inventar, lo correcto es contrastarlo en El Peruano, SPIJ o la entidad que emitió la norma.`,
+      '',
+      `Si quieres, escríbeme “ley ${reference.number}” con el tema o país, y lo analizo como referencia normativa.`
+    ].join('\n');
+  }
+
+  const usefulResults = (Array.isArray(results) ? results : []).filter(isUsefulNormativeResult);
+  const sourceSummary = usefulResults.length ? buildSourceSummary(usefulResults, {
+    topic: { label: law.title },
+    area: { label: law.matter }
+  }, 2) : '';
+  const lines = [
+    `La **${law.label}** se refiere a la **${law.title}**.`,
+    '',
+    `En palabras sencillas, esta ley **${law.plainMeaning}**`,
+    '',
+    `En la práctica, **${law.practicalUse}**`
+  ];
+
+  if (reference.kind === 'number' && !reference.explicitLaw) {
+    lines.unshift(`Identifiqué el número **${reference.number}** como una posible referencia a la **${law.label}**.`);
+    lines.splice(1, 0, '');
+  }
+
+  lines.push('', law.verification);
+
+  if (sourceSummary && !sourceSummary.includes('No encontré una fuente específica')) {
+    lines.push('', sourceSummary);
+  }
+
+  lines.push('', '¿Quieres que te explique sus derechos principales, sus obligaciones o cómo usarla en un caso concreto?');
+  return lines.join('\n');
 }
 
 app.post('/api/legal-intent', (req, res) => {
