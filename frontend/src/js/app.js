@@ -575,6 +575,15 @@ document.addEventListener("DOMContentLoaded", () => {
     function speakFocusedControl(element, force = false) {
         const control = element?.closest?.("button, a, input, textarea, select, summary, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])");
         if (!control || control.closest("[hidden]")) return;
+        const voiceIntro = control.closest("[data-voice-intro]")?.getAttribute("data-voice-intro");
+        if (voiceIntro) {
+            const now = Date.now();
+            if (!force && voiceIntro === lastSpokenLabel && now - lastSpokenAt < 1800) return;
+            lastSpokenLabel = voiceIntro;
+            lastSpokenAt = now;
+            speak(voiceIntro, { force: true });
+            return;
+        }
         const label = describeControl(control);
         if (!label) return;
 

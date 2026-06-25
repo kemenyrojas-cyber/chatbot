@@ -62,7 +62,7 @@
                         </div>
 
                         <div class="flex items-center gap-4">
-                            <label class="landing-voice-toggle inline-flex min-h-[46px] cursor-pointer select-none items-center gap-2 rounded-md border border-soft/60 bg-white/5 px-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/10" for="landingVoiceAssistToggle">
+                            <label class="landing-voice-toggle inline-flex min-h-[46px] cursor-pointer select-none items-center gap-2 rounded-md border border-soft/60 bg-white/5 px-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/10" for="landingVoiceAssistToggle" data-voice-intro="si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback">
                                 <input id="landingVoiceAssistToggle" class="peer sr-only" type="checkbox" role="switch" aria-label="Activar asistencia por voz">
                                 <span class="landing-voice-track flex h-6 w-11 items-center rounded-full bg-slate-500 p-0.5 transition peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white" aria-hidden="true">
                                     <span class="landing-voice-thumb h-5 w-5 rounded-full bg-white shadow transition"></span>
@@ -271,6 +271,15 @@
             function speakControl(target, force = false) {
                 const control = target?.closest?.("button, a, input, textarea, select, [role='button'], [role='switch']");
                 if (!control) return;
+                const voiceIntro = control.closest("[data-voice-intro]")?.getAttribute("data-voice-intro");
+                if (voiceIntro) {
+                    const now = Date.now();
+                    if (!force && voiceIntro === lastLabel && now - lastAt < 1800) return;
+                    lastLabel = voiceIntro;
+                    lastAt = now;
+                    speak(voiceIntro, true);
+                    return;
+                }
                 const label = describeControl(control);
                 const now = Date.now();
                 if (!label || (!force && label === lastLabel && now - lastAt < 900)) return;
