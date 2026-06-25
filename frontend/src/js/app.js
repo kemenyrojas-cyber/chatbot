@@ -250,6 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let voiceAssistEnabled = localStorage.getItem("lexiaVoiceAssist") === "true";
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
+    const voiceIntroMessage = "si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback";
 
     function loadList(key) {
         try {
@@ -573,7 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function speakFocusedControl(element, force = false) {
-        const control = element?.closest?.("button, a, input, textarea, select, summary, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])");
+        const control = element?.closest?.("[data-voice-intro], label[for], button, a, input, textarea, select, summary, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])");
         if (!control || control.closest("[hidden]")) return;
         const voiceIntro = control.closest("[data-voice-intro]")?.getAttribute("data-voice-intro");
         if (voiceIntro) {
@@ -592,6 +593,17 @@ document.addEventListener("DOMContentLoaded", () => {
         lastSpokenLabel = label;
         lastSpokenAt = now;
         speak(label);
+    }
+
+    function speakVoiceIntroFromTarget(target) {
+        const voiceToggle = target?.closest?.("[data-voice-intro]");
+        if (!voiceToggle) return false;
+        const now = Date.now();
+        if (voiceIntroMessage === lastSpokenLabel && now - lastSpokenAt < 1800) return true;
+        lastSpokenLabel = voiceIntroMessage;
+        lastSpokenAt = now;
+        speak(voiceIntroMessage, { force: true });
+        return true;
     }
 
     function setVoiceAssistEnabled(enabled, shouldSpeak = true) {
@@ -1708,6 +1720,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     document.addEventListener("mouseover", event => {
+        if (speakVoiceIntroFromTarget(event.target)) return;
+        speakFocusedControl(event.target);
+    });
+
+    document.addEventListener("pointerover", event => {
+        if (speakVoiceIntroFromTarget(event.target)) return;
         speakFocusedControl(event.target);
     });
 
@@ -1716,6 +1734,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     document.addEventListener("touchstart", event => {
+        if (speakVoiceIntroFromTarget(event.target)) return;
         speakFocusedControl(event.target);
     }, { passive: true });
 

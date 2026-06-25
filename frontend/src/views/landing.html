@@ -191,6 +191,7 @@
             let enabled = localStorage.getItem("lexiaVoiceAssist") === "true";
             let lastLabel = "";
             let lastAt = 0;
+            const voiceIntroMessage = "si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback";
 
             function announce(message) {
                 if (!status || !message) return;
@@ -269,7 +270,7 @@
             }
 
             function speakControl(target, force = false) {
-                const control = target?.closest?.("button, a, input, textarea, select, [role='button'], [role='switch']");
+                const control = target?.closest?.("[data-voice-intro], label[for], button, a, input, textarea, select, [role='button'], [role='switch']");
                 if (!control) return;
                 const voiceIntro = control.closest("[data-voice-intro]")?.getAttribute("data-voice-intro");
                 if (voiceIntro) {
@@ -288,6 +289,17 @@
                 speak(label);
             }
 
+            function speakVoiceIntroFromTarget(target) {
+                const voiceToggle = target?.closest?.("[data-voice-intro]");
+                if (!voiceToggle) return false;
+                const now = Date.now();
+                if (voiceIntroMessage === lastLabel && now - lastAt < 1800) return true;
+                lastLabel = voiceIntroMessage;
+                lastAt = now;
+                speak(voiceIntroMessage, true);
+                return true;
+            }
+
             function setEnabled(nextEnabled, shouldSpeak = true) {
                 enabled = Boolean(nextEnabled);
                 localStorage.setItem("lexiaVoiceAssist", String(enabled));
@@ -304,9 +316,19 @@
 
             setEnabled(enabled, false);
             toggle?.addEventListener("change", () => setEnabled(toggle.checked));
-            document.addEventListener("mouseover", event => speakControl(event.target));
+            document.addEventListener("mouseover", event => {
+                if (speakVoiceIntroFromTarget(event.target)) return;
+                speakControl(event.target);
+            });
+            document.addEventListener("pointerover", event => {
+                if (speakVoiceIntroFromTarget(event.target)) return;
+                speakControl(event.target);
+            });
             document.addEventListener("focusin", event => speakControl(event.target, true));
-            document.addEventListener("touchstart", event => speakControl(event.target), { passive: true });
+            document.addEventListener("touchstart", event => {
+                if (speakVoiceIntroFromTarget(event.target)) return;
+                speakControl(event.target);
+            }, { passive: true });
         })();
     </script>
 </body>
