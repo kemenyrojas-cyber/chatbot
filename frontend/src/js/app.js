@@ -569,7 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (element.matches("select")) type = "Lista desplegable";
         if (element.matches("summary")) type = "Sección desplegable";
 
-        return normalizeSpeechText(`${type ? `${type}. ` : ""}${label}`);
+        return normalizeSpeechText(`${label}${type ? `, ${type.toLowerCase()}` : ""}`);
     }
 
     function speakFocusedControl(element, force = false) {

@@ -265,7 +265,7 @@
                 if (element.matches("input[type='checkbox'], [role='switch']")) {
                     type = element.checked ? "Interruptor activado" : "Interruptor desactivado";
                 }
-                return normalizeSpeechText(`${type ? `${type}. ` : ""}${label}`);
+                return normalizeSpeechText(`${label}${type ? `, ${type.toLowerCase()}` : ""}`);
             }
 
             function speakControl(target, force = false) {
