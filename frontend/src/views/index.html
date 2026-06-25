@@ -13,8 +13,10 @@
     </script>
 </head>
 <body>
+    <a class="skip-link" href="#mainPanel">Saltar al contenido principal</a>
+    <div class="sr-only" id="screenReaderStatus" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="dashboard-shell">
-        <aside class="sidebar">
+        <aside class="sidebar" aria-label="Barra lateral">
             <div class="brand">
                 <span class="brand-avatar-frame">
                     <img src="/img/lexia-avatar.png" alt="LEXIA" class="brand-avatar">
@@ -53,14 +55,14 @@
                 <a class="nav-item" href="#preferencias" data-action="settings"><span><i class="fa-solid fa-gear icon" aria-hidden="true"></i></span> Preferencias</a>
             </div>
 
-            <button class="theme-toggle" type="button">
+            <button class="theme-toggle" type="button" aria-label="Cambiar a modo claro">
                 <span><i class="fa-regular fa-sun icon" aria-hidden="true"></i></span>
                 Modo claro
                 <span><i class="fa-regular fa-moon icon" aria-hidden="true"></i></span>
             </button>
         </aside>
 
-        <main class="main-panel" id="mainPanel">
+        <main class="main-panel" id="mainPanel" tabindex="-1">
             <header class="topbar">
                 <div>
                     <h2 id="dashboardGreeting">¡Hola!</h2>
@@ -69,20 +71,21 @@
 
                 <div class="topbar-actions">
                     <label class="search-box">
-                        <input type="search" placeholder="Buscar en Lexia...">
+                        <span class="sr-only">Buscar en LEXIA</span>
+                        <input type="search" placeholder="Buscar en Lexia..." aria-label="Buscar en LEXIA">
                         <span><i class="fa-solid fa-magnifying-glass icon" aria-hidden="true"></i></span>
                     </label>
                     <div class="notification-wrap">
-                        <button class="icon-button" id="notificationButton" type="button" title="Notificaciones" aria-expanded="false" aria-controls="notificationPanel">
+                        <button class="icon-button" id="notificationButton" type="button" title="Notificaciones" aria-label="Abrir notificaciones" aria-haspopup="dialog" aria-expanded="false" aria-controls="notificationPanel">
                             <i class="fa-regular fa-bell icon" aria-hidden="true"></i>
                             <strong id="notificationBadge" hidden>0</strong>
                         </button>
-                        <div class="notification-panel" id="notificationPanel" hidden>
+                        <div class="notification-panel" id="notificationPanel" role="dialog" aria-labelledby="notificationPanelTitle" tabindex="-1" hidden>
                             <div class="notification-head">
-                                <h3>Notificaciones</h3>
+                                <h3 id="notificationPanelTitle">Notificaciones</h3>
                                 <button type="button" id="markNotificationsRead">Marcar leídas</button>
                             </div>
-                            <div class="notification-list" id="notificationList"></div>
+                            <div class="notification-list" id="notificationList" role="list"></div>
                         </div>
                     </div>
                     <div class="account-wrap">
@@ -111,11 +114,13 @@
                                 type="text"
                                 id="messageInput"
                                 placeholder="Busca una norma, consulta un caso o prepara un documento..."
+                                aria-label="Consulta jurídica inicial"
+                                aria-describedby="heroSubtitle"
                                 autocomplete="off"
                             >
-                            <button id="sendBtn" type="button">Consultar <i class="fa-solid fa-arrow-right icon" aria-hidden="true"></i></button>
+                            <button id="sendBtn" type="button" aria-label="Enviar consulta jurídica inicial">Consultar <i class="fa-solid fa-arrow-right icon" aria-hidden="true"></i></button>
                         </div>
-                        <div class="quick-actions">
+                        <div class="quick-actions" aria-label="Consultas rápidas por materia">
                             <button class="quick-btn" type="button"><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i> Civil</button>
                             <button class="quick-btn" type="button"><i class="fa-solid fa-landmark icon" aria-hidden="true"></i> Penal</button>
                             <button class="quick-btn" type="button"><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i> Laboral</button>
@@ -135,8 +140,8 @@
                         <button type="button" data-action="settings">Personalizar <i class="fa-solid fa-gear icon" aria-hidden="true"></i></button>
                     </div>
 
-                    <div class="quick-grid" id="roleQuickGrid">
-                        <article class="quick-card"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span><strong>Consulta jurídica</strong><small>Pregunta, analiza y decide</small></article>
+                    <div class="quick-grid" id="roleQuickGrid" role="list">
+                        <article class="quick-card" role="button" tabindex="0" aria-label="Consulta jurídica. Pregunta, analiza y decide. Abrir consulta jurídica"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span><strong>Consulta jurídica</strong><small>Pregunta, analiza y decide</small></article>
                     </div>
 
                     <div class="content-grid">
@@ -145,7 +150,7 @@
                                 <h3 id="activityTitle">Actividad reciente</h3>
                                 <button type="button" id="clearHistoryButton">Limpiar</button>
                             </div>
-                            <div class="recent-list" id="chatMessages"></div>
+                            <div class="recent-list" id="chatMessages" role="list"></div>
                         </section>
 
                         <section class="panel-card" id="jurisprudencia">
@@ -153,7 +158,7 @@
                                 <h3 id="resourceTitle">Recursos destacados</h3>
                                 <button type="button">Ver todas</button>
                             </div>
-                            <div class="law-list" id="roleResourceList">
+                            <div class="law-list" id="roleResourceList" role="list">
                                 <article><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span><strong>Código Civil</strong><small>Actualizado</small></article>
                             </div>
                         </section>
@@ -181,7 +186,7 @@
 
                         <section class="panel-card tools-panel" id="herramientas">
                             <h3>Herramientas populares</h3>
-                            <div class="tools-grid" id="roleToolsGrid">
+                            <div class="tools-grid" id="roleToolsGrid" role="list">
                                 <article><span><i class="fa-solid fa-calculator icon" aria-hidden="true"></i></span><strong>Calculadora de Intereses</strong><small>Intereses legales y moratorios</small></article>
                             </div>
                         </section>
@@ -189,7 +194,7 @@
                 </section>
             </div>
 
-            <section class="brain-view" id="brainView" hidden>
+            <section class="brain-view" id="brainView" tabindex="-1" hidden>
                 <div class="brain-header">
                     <div>
                         <h2>Laboratorio de Inteligencia Legal</h2>
@@ -250,7 +255,7 @@
                             <h3>Fuentes en verificación</h3>
                             <span class="brain-counter" id="brainSourceCounter">0</span>
                         </div>
-                        <div class="brain-source-list" id="brainSourceList">
+                        <div class="brain-source-list" id="brainSourceList" role="list">
                             <div class="empty-state compact">
                                 <strong>Sin fuentes propuestas.</strong>
                                 <span>Agrega una URL jurídica para que LEXIA la evalúe.</span>
@@ -272,7 +277,7 @@
                             Nueva
                         </button>
                     </div>
-                    <div class="chat-session-list" id="chatSessionList"></div>
+                    <div class="chat-session-list" id="chatSessionList" role="list" aria-label="Historial de consultas jurídicas"></div>
                 </aside>
 
                 <section class="chat-thread-panel">
@@ -283,11 +288,12 @@
                         </div>
                     </div>
 
-                    <div class="chat-thread" id="chatThread"></div>
+                    <div class="chat-thread" id="chatThread" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Mensajes de la consulta" tabindex="-1"></div>
 
                     <div class="chat-composer">
-                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta, caso, norma, documento o tarea legal..."></textarea>
-                        <button id="chatComposerSend" type="button">
+                        <label class="sr-only" for="chatComposerInput">Escribe tu consulta jurídica</label>
+                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta, caso, norma, documento o tarea legal..." aria-describedby="chatViewSubtitle"></textarea>
+                        <button id="chatComposerSend" type="button" aria-label="Enviar consulta a LEXIA">
                             Enviar
                             <i class="fa-solid fa-arrow-up icon" aria-hidden="true"></i>
                         </button>

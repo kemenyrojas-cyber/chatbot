@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const brainSourceCounter = document.getElementById("brainSourceCounter");
     const refreshBrainSources = document.getElementById("refreshBrainSources");
     const brainNavItems = document.querySelectorAll('[data-action="brain"]');
+    const screenReaderStatus = document.getElementById("screenReaderStatus");
 
     const roleAliases = {
         "abogado independiente": "abogado-independiente",
@@ -476,6 +477,21 @@ document.addEventListener("DOMContentLoaded", () => {
         return tmp.innerHTML;
     }
 
+    function announce(message) {
+        if (!screenReaderStatus || !message) return;
+        screenReaderStatus.textContent = "";
+        window.setTimeout(() => {
+            screenReaderStatus.textContent = message;
+        }, 30);
+    }
+
+    function focusRegion(element) {
+        if (!element) return;
+        requestAnimationFrame(() => {
+            element.focus({ preventScroll: true });
+        });
+    }
+
     function createId() {
         return window.crypto?.randomUUID ? window.crypto.randomUUID() : String(Date.now() + Math.random());
     }
@@ -487,7 +503,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderIconArticle(item, className) {
         const [icon, title, text] = item;
-        return `<article class="${className}"><span><i class="${icon} icon" aria-hidden="true"></i></span><strong>${title}</strong><small>${text}</small></article>`;
+        const isActionCard = className === "quick-card" && title.toLowerCase().includes("consulta");
+        const actionAttributes = isActionCard
+            ? ` role="button" tabindex="0" aria-label="${escapeHtml(`${title}. ${text}. Abrir consulta jurídica`)}"`
+            : ` role="listitem"`;
+        return `<article class="${className}"${actionAttributes}><span><i class="${icon} icon" aria-hidden="true"></i></span><strong>${title}</strong><small>${text}</small></article>`;
     }
 
     function getChatSessions() {
@@ -579,6 +599,7 @@ document.addEventListener("DOMContentLoaded", () => {
         void saveNotificationToApi(notification).catch(error => {
             console.warn("No se pudo sincronizar la notificación remota:", error.message);
         });
+        announce(`${title}. ${detail}`);
     }
 
     function renderHistory() {
@@ -590,16 +611,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         messages.innerHTML = history.slice(0, 8).map(item => `
-            <article class="history-item">
+            <article class="history-item" role="listitem">
                 <span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span>
                 <details ${item.id === history[0].id ? "open" : ""}>
-                    <summary>
+                    <summary aria-label="Consulta: ${escapeHtml(item.question)}">
                         <strong>${escapeHtml(item.question)}</strong>
                         <small>${escapeHtml(item.answerPreview)}</small>
                     </summary>
                     <div class="history-answer">${item.answer}</div>
                 </details>
-                <time>${formatDate(item.createdAt)}</time>
+                <time datetime="${escapeHtml(item.createdAt)}">${formatDate(item.createdAt)}</time>
             </article>
         `).join("");
     }
@@ -617,10 +638,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         notificationList.innerHTML = notifications.slice(0, 10).map(item => `
-            <article class="${item.read ? "" : "unread"}">
+            <article class="${item.read ? "" : "unread"}" role="listitem" aria-label="${escapeHtml(`${item.read ? "" : "No leída. "}${item.title}. ${item.detail}`)}">
                 <strong>${escapeHtml(item.title)}</strong>
                 <span>${escapeHtml(item.detail)}</span>
-                <time>${formatDate(item.createdAt)}</time>
+                <time datetime="${escapeHtml(item.createdAt)}">${formatDate(item.createdAt)}</time>
             </article>
         `).join("");
     }
@@ -647,7 +668,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function updateNav(activeAction) {
         document.querySelectorAll(".nav-item").forEach(item => {
-            item.classList.toggle("active", item.dataset.action === activeAction);
+            const isActive = item.dataset.action === activeAction;
+            item.classList.toggle("active", isActive);
+            if (isActive) {
+                item.setAttribute("aria-current", "page");
+            } else {
+                item.removeAttribute("aria-current");
+            }
         });
     }
 
@@ -706,6 +733,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (showBrain) {
             void loadBrainSources();
         }
+        announce(showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : "Panel principal abierto.");
+        focusRegion(showChat ? chatThread : showBrain ? brainView : mainPanel);
     }
 
     function setBrainStatus(message, type = "info") {
@@ -917,14 +946,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         chatSessionList.innerHTML = sessions.map(item => `
-            <article class="chat-session-item ${item.id === activeChatSessionId ? "active" : ""}" role="button" tabindex="0" data-session-id="${item.id}">
+            <article class="chat-session-item ${item.id === activeChatSessionId ? "active" : ""}" role="button" tabindex="0" aria-pressed="${item.id === activeChatSessionId}" aria-label="Abrir consulta ${escapeHtml(item.title)}" data-session-id="${item.id}">
                 <div class="chat-session-main">
                     <strong>${escapeHtml(item.title)}</strong>
                     <span>${escapeHtml(textOnly(item.messages[item.messages.length - 1]?.content || "Pendiente de consulta")).slice(0, 88)}</span>
-                    <time>${formatDate(item.updatedAt)}</time>
+                    <time datetime="${escapeHtml(item.updatedAt)}">${formatDate(item.updatedAt)}</time>
                 </div>
                 <div class="chat-session-actions">
-                    <button class="chat-session-menu-button" type="button" aria-label="Opciones de consulta" aria-haspopup="menu" aria-expanded="false" data-session-menu-id="${item.id}">
+                    <button class="chat-session-menu-button" type="button" aria-label="Opciones de ${escapeHtml(item.title)}" aria-haspopup="menu" aria-expanded="false" data-session-menu-id="${item.id}">
                         <span aria-hidden="true">⋮</span>
                     </button>
                     <div class="chat-session-menu" role="menu" hidden data-session-menu>
@@ -943,7 +972,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!session || !session.messages.length) {
             chatThread.innerHTML = `
-                <div class="chat-empty">
+                <div class="chat-empty" role="status">
                     <strong>Conversa con LEXIA sobre tu caso</strong>
                     <p>Cuéntame qué pasó, qué documento tienes o qué duda legal te preocupa. Te responderé en lenguaje claro y te haré preguntas si falta información.</p>
                 </div>
@@ -952,10 +981,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         chatThread.innerHTML = session.messages.map(item => `
-            <article class="chat-message ${item.role}">
+            <article class="chat-message ${item.role}" aria-label="${item.role === "user" ? "Mensaje tuyo" : item.role === "system" ? "Estado de LEXIA" : "Respuesta de LEXIA"}">
                 <div class="chat-message-meta">
                     <strong>${item.role === "user" ? "Tú" : "LEXIA"}</strong>
-                    <span>${formatDate(item.createdAt)}</span>
+                    <time datetime="${escapeHtml(item.createdAt)}">${formatDate(item.createdAt)}</time>
                 </div>
                 <div class="chat-bubble"><p>${formatChatContent(item.content)}</p></div>
             </article>
@@ -1439,6 +1468,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         isSending = true;
         chatComposerSend.disabled = true;
+        chatComposerSend.setAttribute("aria-busy", "true");
+        announce("Consulta enviada. LEXIA está procesando la respuesta.");
 
         const session = ensureActiveSession(text);
         const createdAt = new Date().toISOString();
@@ -1503,6 +1534,7 @@ document.addEventListener("DOMContentLoaded", () => {
             upsertChatSession(session);
             addHistoryEntry(text, answer);
             addNotification("Nueva respuesta de LEXIA", text.slice(0, 96));
+            announce("LEXIA respondió. La respuesta está disponible en la conversación.");
         } catch (error) {
             session.messages = [
                 ...stableMessages,
@@ -1515,9 +1547,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             ];
             upsertChatSession(session);
+            announce("No se pudo completar la consulta. Revisa la conversación para ver el detalle.");
         } finally {
             isSending = false;
             chatComposerSend.disabled = false;
+            chatComposerSend.removeAttribute("aria-busy");
             renderChatSessions();
             renderChatThread();
             renderAppState();
@@ -1552,6 +1586,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (title.includes("consulta")) {
             openChatView();
         }
+    });
+
+    roleQuickGrid?.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const card = event.target.closest(".quick-card");
+        if (!card) return;
+        const title = card.querySelector("strong")?.textContent?.trim().toLowerCase() || "";
+        if (!title.includes("consulta")) return;
+        event.preventDefault();
+        openChatView();
     });
 
     chatComposerSend?.addEventListener("click", () => {
@@ -1600,6 +1644,7 @@ document.addEventListener("DOMContentLoaded", () => {
         activeChatSessionId = item.dataset.sessionId;
         renderChatSessions();
         renderChatThread();
+        announce("Consulta seleccionada.");
     });
 
     chatSessionList?.addEventListener("keydown", event => {
@@ -1611,6 +1656,7 @@ document.addEventListener("DOMContentLoaded", () => {
         activeChatSessionId = item.dataset.sessionId;
         renderChatSessions();
         renderChatThread();
+        announce("Consulta seleccionada.");
     });
 
     document.addEventListener("click", event => {
@@ -1624,6 +1670,10 @@ document.addEventListener("DOMContentLoaded", () => {
         notificationButton.setAttribute("aria-expanded", String(isHidden));
         accountMenu.hidden = true;
         accountButton?.setAttribute("aria-expanded", "false");
+        if (isHidden) {
+            announce("Panel de notificaciones abierto.");
+            focusRegion(notificationPanel);
+        }
     });
 
     accountButton?.addEventListener("click", () => {
@@ -1632,6 +1682,9 @@ document.addEventListener("DOMContentLoaded", () => {
         accountButton.setAttribute("aria-expanded", String(isHidden));
         notificationPanel.hidden = true;
         notificationButton.setAttribute("aria-expanded", "false");
+        if (isHidden) {
+            announce("Menú de cuenta abierto.");
+        }
     });
 
     logoutButton?.addEventListener("click", () => {
@@ -1654,6 +1707,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
         renderAppState();
+        announce("Notificaciones marcadas como leídas.");
     });
 
     clearHistoryButton.addEventListener("click", () => {
@@ -1663,6 +1717,7 @@ document.addEventListener("DOMContentLoaded", () => {
         saveList(storageKeys.history, remaining);
         addNotification("Historial limpiado", "Se eliminaron las consultas guardadas para este rol.");
         renderAppState();
+        announce("Historial de consultas limpiado.");
     });
 
     document.querySelectorAll("[data-action]").forEach(item => {
@@ -1691,6 +1746,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 event.preventDefault();
                 notificationPanel.hidden = false;
                 notificationButton.setAttribute("aria-expanded", "true");
+                focusRegion(notificationPanel);
             }
             if (["documents", "clients", "cases", "agenda", "favorites", "deadlines", "profile", "settings"].includes(action)) {
                 event.preventDefault();
