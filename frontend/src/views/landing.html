@@ -28,8 +28,18 @@
             }
         };
     </script>
+    <style>
+        .landing-voice-toggle input:checked + .landing-voice-track {
+            background: #10b981;
+        }
+
+        .landing-voice-toggle input:checked + .landing-voice-track .landing-voice-thumb {
+            transform: translateX(20px);
+        }
+    </style>
 </head>
 <body class="font-sans text-[15px] antialiased">
+    <div id="landingVoiceStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <div id="root">
         <main class="min-h-screen bg-white text-slate-950">
             <section class="relative overflow-hidden bg-[radial-gradient(circle_at_68%_30%,rgba(50,103,255,.22),transparent_34%),linear-gradient(180deg,#020B22_0%,#071B4A_100%)] text-white">
@@ -52,6 +62,13 @@
                         </div>
 
                         <div class="flex items-center gap-4">
+                            <label class="landing-voice-toggle inline-flex min-h-[46px] cursor-pointer select-none items-center gap-2 rounded-md border border-soft/60 bg-white/5 px-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/10" for="landingVoiceAssistToggle">
+                                <input id="landingVoiceAssistToggle" class="peer sr-only" type="checkbox" role="switch" aria-label="Activar asistencia por voz">
+                                <span class="landing-voice-track flex h-6 w-11 items-center rounded-full bg-slate-500 p-0.5 transition peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white" aria-hidden="true">
+                                    <span class="landing-voice-thumb h-5 w-5 rounded-full bg-white shadow transition"></span>
+                                </span>
+                                <span>Voz</span>
+                            </label>
                             <a href="/login" class="hidden rounded-md border border-soft/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/8 sm:inline-flex">Iniciar sesión</a>
                             <a href="/registro" class="rounded-md bg-bluex px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:bg-blue-500">Registrarse</a>
                         </div>
@@ -70,8 +87,8 @@
                             </p>
 
                             <div class="mt-7 flex max-w-[560px] items-center rounded-md bg-white p-2 shadow-glow">
-                                <input class="min-h-12 flex-1 rounded-md px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400" placeholder="Busca una norma, caso, cliente o documento...">
-                                <button class="grid h-11 w-11 place-items-center rounded-full bg-[#0A1737] text-white transition hover:bg-bluex">
+                                <input class="min-h-12 flex-1 rounded-md px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400" placeholder="Busca una norma, caso, cliente o documento..." aria-label="Buscar una norma, caso, cliente o documento">
+                                <button class="grid h-11 w-11 place-items-center rounded-full bg-[#0A1737] text-white transition hover:bg-bluex" aria-label="Buscar en LEXIA">
                                     <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
                                 </button>
                             </div>
@@ -167,5 +184,121 @@
             </section>
         </main>
     </div>
+    <script>
+        (() => {
+            const toggle = document.getElementById("landingVoiceAssistToggle");
+            const status = document.getElementById("landingVoiceStatus");
+            let enabled = localStorage.getItem("lexiaVoiceAssist") === "true";
+            let lastLabel = "";
+            let lastAt = 0;
+
+            function announce(message) {
+                if (!status || !message) return;
+                status.textContent = "";
+                window.setTimeout(() => {
+                    status.textContent = message;
+                }, 30);
+            }
+
+            function getSpeechVoice() {
+                const voices = window.speechSynthesis?.getVoices?.() || [];
+                return voices.find(voice => voice.lang?.toLowerCase().startsWith("es-pe"))
+                    || voices.find(voice => voice.lang?.toLowerCase().startsWith("es"))
+                    || null;
+            }
+
+            function speak(message, force = false) {
+                const text = String(message || "").replace(/\s+/g, " ").trim();
+                if (!text || !("speechSynthesis" in window)) return;
+                if (!force && !enabled) return;
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                const voice = getSpeechVoice();
+                if (voice) utterance.voice = voice;
+                utterance.lang = voice?.lang || "es-PE";
+                utterance.rate = 0.95;
+                window.speechSynthesis.speak(utterance);
+            }
+
+            function normalizeSpeechText(value) {
+                return String(value || "").replace(/\s+/g, " ").trim();
+            }
+
+            function getVisibleText(element) {
+                if (!element) return "";
+                const clone = element.cloneNode(true);
+                clone.querySelectorAll("script, style, [aria-hidden='true'], svg, i").forEach(node => node.remove());
+                return normalizeSpeechText(clone.textContent);
+            }
+
+            function getControlLabel(element) {
+                const explicit = normalizeSpeechText(element.getAttribute("aria-label") || element.getAttribute("title"));
+                if (explicit) return explicit;
+                if (element.id) {
+                    const label = document.querySelector(`label[for="${CSS.escape(element.id)}"]`);
+                    const labelText = getVisibleText(label);
+                    if (labelText) return labelText;
+                }
+                const labelledBy = element.getAttribute("aria-labelledby");
+                if (labelledBy) {
+                    const labelText = labelledBy
+                        .split(/\s+/)
+                        .map(id => getVisibleText(document.getElementById(id)))
+                        .join(" ");
+                    if (normalizeSpeechText(labelText)) return normalizeSpeechText(labelText);
+                }
+                const visibleText = getVisibleText(element);
+                if (visibleText) return visibleText;
+                const imageAlt = element.querySelector?.("img[alt]")?.getAttribute("alt");
+                if (normalizeSpeechText(imageAlt)) return normalizeSpeechText(imageAlt);
+                if (element.matches("input, textarea")) return normalizeSpeechText(element.getAttribute("placeholder") || element.value || element.name || "");
+                return normalizeSpeechText(element.getAttribute("href") || "");
+            }
+
+            function describeControl(element) {
+                const label = getControlLabel(element);
+                if (!label) return "";
+                let type = "";
+                if (element.matches("button")) type = "Botón";
+                if (element.matches("a")) type = "Enlace";
+                if (element.matches("input[type='text'], input[type='search'], input:not([type])")) type = "Campo de texto";
+                if (element.matches("input[type='checkbox'], [role='switch']")) {
+                    type = element.checked ? "Interruptor activado" : "Interruptor desactivado";
+                }
+                return normalizeSpeechText(`${type ? `${type}. ` : ""}${label}`);
+            }
+
+            function speakControl(target, force = false) {
+                const control = target?.closest?.("button, a, input, textarea, select, [role='button'], [role='switch']");
+                if (!control) return;
+                const label = describeControl(control);
+                const now = Date.now();
+                if (!label || (!force && label === lastLabel && now - lastAt < 900)) return;
+                lastLabel = label;
+                lastAt = now;
+                speak(label);
+            }
+
+            function setEnabled(nextEnabled, shouldSpeak = true) {
+                enabled = Boolean(nextEnabled);
+                localStorage.setItem("lexiaVoiceAssist", String(enabled));
+                if (toggle) {
+                    toggle.checked = enabled;
+                    toggle.setAttribute("aria-checked", String(enabled));
+                    toggle.setAttribute("aria-label", enabled ? "Desactivar asistencia por voz" : "Activar asistencia por voz");
+                }
+                announce(enabled ? "Asistencia por voz activa." : "Asistencia por voz desactivada.");
+                if (shouldSpeak) {
+                    speak(enabled ? "Asistencia por voz activa. Te diré por qué botón o control estás pasando." : "Asistencia por voz desactivada.", true);
+                }
+            }
+
+            setEnabled(enabled, false);
+            toggle?.addEventListener("change", () => setEnabled(toggle.checked));
+            document.addEventListener("mouseover", event => speakControl(event.target));
+            document.addEventListener("focusin", event => speakControl(event.target, true));
+            document.addEventListener("touchstart", event => speakControl(event.target), { passive: true });
+        })();
+    </script>
 </body>
 </html>

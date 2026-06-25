@@ -510,29 +510,48 @@ document.addEventListener("DOMContentLoaded", () => {
         window.speechSynthesis.speak(utterance);
     }
 
+    function normalizeSpeechText(value) {
+        return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function getVisibleText(element) {
+        if (!element) return "";
+        const clone = element.cloneNode(true);
+        clone.querySelectorAll("script, style, [aria-hidden='true'], .icon").forEach(node => node.remove());
+        return normalizeSpeechText(clone.textContent);
+    }
+
     function getControlLabel(element) {
         if (!element) return "";
-        const explicitLabel = element.getAttribute("aria-label") || element.getAttribute("title");
+        const explicitLabel = normalizeSpeechText(element.getAttribute("aria-label") || element.getAttribute("title"));
         if (explicitLabel) return explicitLabel;
 
         if (element.id) {
             const label = document.querySelector(`label[for="${CSS.escape(element.id)}"]`);
-            if (label) return label.textContent;
+            const labelText = getVisibleText(label);
+            if (labelText) return labelText;
         }
 
         const labelledBy = element.getAttribute("aria-labelledby");
         if (labelledBy) {
-            return labelledBy
+            const labelText = labelledBy
                 .split(/\s+/)
-                .map(id => document.getElementById(id)?.textContent || "")
+                .map(id => getVisibleText(document.getElementById(id)))
                 .join(" ");
+            if (normalizeSpeechText(labelText)) return normalizeSpeechText(labelText);
         }
+
+        const visibleText = getVisibleText(element);
+        if (visibleText) return visibleText;
+
+        const imageAlt = element.querySelector?.("img[alt]")?.getAttribute("alt");
+        if (normalizeSpeechText(imageAlt)) return normalizeSpeechText(imageAlt);
 
         if (element.matches("input, textarea")) {
-            return element.getAttribute("placeholder") || "";
+            return normalizeSpeechText(element.getAttribute("placeholder") || element.value || element.name || "");
         }
 
-        return element.textContent || "";
+        return normalizeSpeechText(element.getAttribute("data-action") || element.getAttribute("href") || "");
     }
 
     function describeControl(element) {
@@ -550,7 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (element.matches("select")) type = "Lista desplegable";
         if (element.matches("summary")) type = "Sección desplegable";
 
-        return `${type ? `${type}. ` : ""}${label}`.replace(/\s+/g, " ").trim();
+        return normalizeSpeechText(`${type ? `${type}. ` : ""}${label}`);
     }
 
     function speakFocusedControl(element, force = false) {
