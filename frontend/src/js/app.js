@@ -501,6 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const text = String(message || "").replace(/\s+/g, " ").trim();
         if (!text || !("speechSynthesis" in window)) return;
         if (!options.force && !voiceAssistEnabled) return;
+        window.speechSynthesis.resume?.();
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         const voice = getSpeechVoice();
@@ -597,6 +598,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function speakVoiceIntroFromTarget(target) {
         const voiceToggle = target?.closest?.("[data-voice-intro]");
+        if (voiceAssistEnabled) return false;
         if (!voiceToggle) return false;
         const now = Date.now();
         if (voiceIntroMessage === lastSpokenLabel && now - lastSpokenAt < 1800) return true;
@@ -604,6 +606,17 @@ document.addEventListener("DOMContentLoaded", () => {
         lastSpokenAt = now;
         speak(voiceIntroMessage, { force: true });
         return true;
+    }
+
+    function bindVoiceIntroHover() {
+        document.querySelectorAll("[data-voice-intro]").forEach(element => {
+            ["mouseenter", "pointerenter", "mousemove"].forEach(eventName => {
+                element.addEventListener(eventName, event => {
+                    if (voiceAssistEnabled) return;
+                    speakVoiceIntroFromTarget(event.target);
+                });
+            });
+        });
     }
 
     function setVoiceAssistEnabled(enabled, shouldSpeak = true) {
@@ -707,6 +720,7 @@ document.addEventListener("DOMContentLoaded", () => {
         || authSession?.profile
     ) || savedRole || "abogado-independiente";
     setVoiceAssistEnabled(voiceAssistEnabled, false);
+    bindVoiceIntroHover();
     renderRole(initialRole);
     void initializeRemoteChats();
     void initializeRemoteNotifications();

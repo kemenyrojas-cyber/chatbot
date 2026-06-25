@@ -212,6 +212,7 @@
                 const text = String(message || "").replace(/\s+/g, " ").trim();
                 if (!text || !("speechSynthesis" in window)) return;
                 if (!force && !enabled) return;
+                window.speechSynthesis.resume?.();
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 const voice = getSpeechVoice();
@@ -291,6 +292,7 @@
 
             function speakVoiceIntroFromTarget(target) {
                 const voiceToggle = target?.closest?.("[data-voice-intro]");
+                if (enabled) return false;
                 if (!voiceToggle) return false;
                 const now = Date.now();
                 if (voiceIntroMessage === lastLabel && now - lastAt < 1800) return true;
@@ -298,6 +300,17 @@
                 lastAt = now;
                 speak(voiceIntroMessage, true);
                 return true;
+            }
+
+            function bindVoiceIntroHover() {
+                document.querySelectorAll("[data-voice-intro]").forEach(element => {
+                    ["mouseenter", "pointerenter", "mousemove"].forEach(eventName => {
+                        element.addEventListener(eventName, event => {
+                            if (enabled) return;
+                            speakVoiceIntroFromTarget(event.target);
+                        });
+                    });
+                });
             }
 
             function setEnabled(nextEnabled, shouldSpeak = true) {
@@ -315,6 +328,7 @@
             }
 
             setEnabled(enabled, false);
+            bindVoiceIntroHover();
             toggle?.addEventListener("change", () => setEnabled(toggle.checked));
             document.addEventListener("mouseover", event => {
                 if (speakVoiceIntroFromTarget(event.target)) return;
