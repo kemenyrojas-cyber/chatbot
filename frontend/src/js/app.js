@@ -49,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const refreshBrainSources = document.getElementById("refreshBrainSources");
     const brainNavItems = document.querySelectorAll('[data-action="brain"]');
     const screenReaderStatus = document.getElementById("screenReaderStatus");
+    const voiceAssistToggle = document.getElementById("voiceAssistToggle");
 
     const roleAliases = {
         "abogado independiente": "abogado-independiente",
@@ -246,6 +247,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let isSending = false;
     let canSuggestBrainSources = false;
     let canCurateBrainSources = false;
+    let voiceAssistEnabled = localStorage.getItem("lexiaVoiceAssist") === "true";
+    let lastSpokenLabel = "";
+    let lastSpokenAt = 0;
 
     function loadList(key) {
         try {
@@ -485,6 +489,97 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 30);
     }
 
+    function getSpeechVoice() {
+        const voices = window.speechSynthesis?.getVoices?.() || [];
+        return voices.find(voice => voice.lang?.toLowerCase().startsWith("es-pe"))
+            || voices.find(voice => voice.lang?.toLowerCase().startsWith("es"))
+            || null;
+    }
+
+    function speak(message, options = {}) {
+        const text = String(message || "").replace(/\s+/g, " ").trim();
+        if (!text || !("speechSynthesis" in window)) return;
+        if (!options.force && !voiceAssistEnabled) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voice = getSpeechVoice();
+        if (voice) utterance.voice = voice;
+        utterance.lang = voice?.lang || "es-PE";
+        utterance.rate = 0.95;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function getControlLabel(element) {
+        if (!element) return "";
+        const explicitLabel = element.getAttribute("aria-label") || element.getAttribute("title");
+        if (explicitLabel) return explicitLabel;
+
+        if (element.id) {
+            const label = document.querySelector(`label[for="${CSS.escape(element.id)}"]`);
+            if (label) return label.textContent;
+        }
+
+        const labelledBy = element.getAttribute("aria-labelledby");
+        if (labelledBy) {
+            return labelledBy
+                .split(/\s+/)
+                .map(id => document.getElementById(id)?.textContent || "")
+                .join(" ");
+        }
+
+        if (element.matches("input, textarea")) {
+            return element.getAttribute("placeholder") || "";
+        }
+
+        return element.textContent || "";
+    }
+
+    function describeControl(element) {
+        const label = getControlLabel(element);
+        if (!label) return "";
+
+        let type = "";
+        if (element.matches("button, [role='button']")) type = "Botón";
+        if (element.matches("a")) type = "Enlace";
+        if (element.matches("input[type='search'], input[type='text'], input:not([type]), textarea")) type = "Campo de texto";
+        if (element.matches("input[type='checkbox'], [role='switch']")) {
+            const checked = element.checked || element.getAttribute("aria-checked") === "true";
+            type = checked ? "Interruptor activado" : "Interruptor desactivado";
+        }
+        if (element.matches("select")) type = "Lista desplegable";
+        if (element.matches("summary")) type = "Sección desplegable";
+
+        return `${type ? `${type}. ` : ""}${label}`.replace(/\s+/g, " ").trim();
+    }
+
+    function speakFocusedControl(element, force = false) {
+        const control = element?.closest?.("button, a, input, textarea, select, summary, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])");
+        if (!control || control.closest("[hidden]")) return;
+        const label = describeControl(control);
+        if (!label) return;
+
+        const now = Date.now();
+        if (!force && label === lastSpokenLabel && now - lastSpokenAt < 900) return;
+        lastSpokenLabel = label;
+        lastSpokenAt = now;
+        speak(label);
+    }
+
+    function setVoiceAssistEnabled(enabled, shouldSpeak = true) {
+        voiceAssistEnabled = Boolean(enabled);
+        localStorage.setItem("lexiaVoiceAssist", String(voiceAssistEnabled));
+        if (voiceAssistToggle) {
+            voiceAssistToggle.checked = voiceAssistEnabled;
+            voiceAssistToggle.setAttribute("aria-checked", String(voiceAssistEnabled));
+            voiceAssistToggle.setAttribute("aria-label", voiceAssistEnabled ? "Desactivar asistencia por voz" : "Activar asistencia por voz");
+        }
+        announce(voiceAssistEnabled ? "Asistencia por voz activa." : "Asistencia por voz desactivada.");
+        if (shouldSpeak) {
+            speak(voiceAssistEnabled ? "Asistencia por voz activa. Te diré por qué botón o control estás pasando." : "Asistencia por voz desactivada.", { force: true });
+        }
+    }
+
     function focusRegion(element) {
         if (!element) return;
         requestAnimationFrame(() => {
@@ -571,6 +666,7 @@ document.addEventListener("DOMContentLoaded", () => {
         || currentAccount?.profile
         || authSession?.profile
     ) || savedRole || "abogado-independiente";
+    setVoiceAssistEnabled(voiceAssistEnabled, false);
     renderRole(initialRole);
     void initializeRemoteChats();
     void initializeRemoteNotifications();
@@ -1578,6 +1674,22 @@ document.addEventListener("DOMContentLoaded", () => {
             openChatView({ draft: `Explícame ${btn.textContent.trim()} en Derecho peruano.`, autoSend: true });
         });
     });
+
+    voiceAssistToggle?.addEventListener("change", () => {
+        setVoiceAssistEnabled(voiceAssistToggle.checked);
+    });
+
+    document.addEventListener("mouseover", event => {
+        speakFocusedControl(event.target);
+    });
+
+    document.addEventListener("focusin", event => {
+        speakFocusedControl(event.target, true);
+    });
+
+    document.addEventListener("touchstart", event => {
+        speakFocusedControl(event.target);
+    }, { passive: true });
 
     roleQuickGrid?.addEventListener("click", event => {
         const card = event.target.closest(".quick-card");
