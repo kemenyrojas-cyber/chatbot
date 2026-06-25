@@ -12,6 +12,7 @@
     "dev": "npm --prefix backend run dev",
     "build": "npm install --prefix backend",
     "ingest": "npm --prefix backend run ingest",
-    "ingest-lpderecho": "npm --prefix backend run ingest-lpderecho"
+    "ingest-lpderecho": "npm --prefix backend run ingest-lpderecho",
+    "feed-official-laws": "node ai-engine/scripts/feed-official-legal-sources.js"
   }
 }

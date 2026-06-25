@@ -1,0 +1,14 @@
+{
+  "description": "Lista de URLs oficiales para alimentar LEXIA por lotes. Usa preferentemente El Peruano, SPIJ, Congreso, TC, Poder Judicial, Ministerio Publico, SERVIR, SUNAT, SUNARP, INDECOPI, MIMP u otras entidades competentes.",
+  "seedUrls": [
+    {
+      "url": "https://elperuano.pe/suplemento/juridica",
+      "title": "Suplemento Juridica - Diario Oficial El Peruano",
+      "source": "Diario Oficial El Peruano",
+      "materia": "Derecho Peruano",
+      "modulo": "normativa"
+    }
+  ],
+  "sources": [
+  ]
+}

@@ -93,6 +93,60 @@ npm run ingest-lpderecho
 
 Despues de una nueva ingestion, reinicia el servidor para que cargue la base actualizada.
 
+### 4.1 Alimentar LEXIA con fuentes oficiales por lotes
+Para leyes, códigos, reglamentos y normas vigentes, prioriza fuentes oficiales como El Peruano, SPIJ, Congreso, Tribunal Constitucional, Poder Judicial, Ministerio Público, SUNAT, SUNARP, INDECOPI, SERVIR, MIMP u otra entidad competente.
+
+1. Agrega URLs oficiales en:
+```text
+ai-engine/kb/official_legal_sources.json
+```
+
+Formato:
+```json
+{
+  "seedUrls": [
+    {
+      "url": "https://elperuano.pe/suplemento/juridica",
+      "title": "Suplemento Juridica - Diario Oficial El Peruano",
+      "source": "Diario Oficial El Peruano",
+      "materia": "Derecho Peruano",
+      "modulo": "normativa"
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://...",
+      "title": "Nombre de la norma",
+      "source": "Fuente oficial",
+      "materia": "Derecho Peruano",
+      "modulo": "normativa"
+    }
+  ]
+}
+```
+
+Usa `seedUrls` para páginas índice que contienen enlaces a varias publicaciones. Usa `sources` para URLs directas a una ley, PDF, código, sentencia, resolución o documento jurídico concreto.
+
+2. Inicia el backend:
+```bash
+npm start
+```
+
+3. En otra terminal ejecuta:
+```bash
+npm run feed-official-laws
+```
+
+Variables utiles:
+```bash
+LEXIA_API_BASE=http://localhost:3002
+LEXIA_FEED_EMAIL=correo-curador@dominio.com
+LEXIA_FEED_FILE=ai-engine/kb/official_legal_sources.json
+LEXIA_FEED_LIMIT=10
+```
+
+En producción, configura `LEGAL_CURATOR_EMAILS` para permitir que solo usuarios autorizados alimenten el cerebro jurídico. Para una cobertura seria, no cargues "todas las leyes" sin control: trabaja por lotes, valida fuente, fecha, vigencia y materia, y reinicia el servidor cuando uses respaldo local.
+
 ### 5. Iniciar Servidor
 ```bash
 npm start

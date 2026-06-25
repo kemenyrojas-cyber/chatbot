@@ -7,6 +7,7 @@
     "start": "node server.js",
     "ingest": "node ../ai-engine/scripts/ingest.js",
     "ingest-lpderecho": "node ../ai-engine/scripts/ingest-lpderecho.js",
+    "feed-official-laws": "node ../ai-engine/scripts/feed-official-legal-sources.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
