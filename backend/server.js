@@ -1835,6 +1835,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   const hasLegalSignal = isLegalQuery(query) || userTerms.length >= 4;
   const looksLikeCaseFact = /\b(\d+|edad|años|ano|año|menor|niño|niña|adolescente|ayer|hoy|amenaza|mensaje|audio|captura|denuncia|policia|policía|fiscalia|fiscalía|contrato|carta|despido|deuda|pago)\b/.test(normalized);
   const newFact = hasMemory
+    && !normativeReference
     && !sourceRequest
     && !normRequest
     && !definitionRequest
@@ -1949,6 +1950,7 @@ function areLegalCaseScopesCompatible(currentScopes = [], previousScopes = []) {
 }
 
 function shouldIgnoreMemoryForCurrentQuery(query, memoryMessages = []) {
+  if (extractNormativeReference(query)?.onlyReference) return true;
   const explicitNewCase = /\b(otro caso|otra consulta|nuevo caso|cambiando de tema|ahora quiero saber sobre)\b/.test(normalizeText(query));
   if (explicitNewCase) return true;
 
@@ -2966,9 +2968,11 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
 
   if (!primary) {
     return [
-      'Sí, aquí lo importante es ubicar **la regla legal concreta** que sostiene tu posición.',
+      'Claro, estás consultando una norma.',
       '',
-      'No encontré una fuente específica en la base local para responder con seguridad. Lo correcto es verificar el texto vigente en una fuente oficial como El Peruano, SPIJ, el Tribunal Constitucional o la entidad competente.'
+      'No encontré una fuente específica en mi base local para explicarla con seguridad. Para no inventar, conviene verificar el texto vigente en **El Peruano, SPIJ o la entidad competente**.',
+      '',
+      'Si me escribes el nombre completo de la ley o pegas un fragmento, te digo en sencillo qué significa y para qué sirve.'
     ].join('\n');
   }
 
@@ -4331,12 +4335,21 @@ function extractNormativeReference(query = '') {
   if (!normalized) return null;
 
   const lawMatch = normalized.match(/\b(?:ley|leyes|ley n|ley no|ley nro|ley numero|ley número)\s*(\d{3,6})\b/);
+  const shortLawMatch = normalized.match(/\b(?:ley|leyes|ley n|ley no|ley nro|ley numero|ley número)\s*(\d{1,6})\b/);
   if (lawMatch) {
     return {
       kind: 'law',
       number: lawMatch[1],
       explicitLaw: true,
       onlyReference: /^(?:ley|leyes|ley n|ley no|ley nro|ley numero|ley número)?\s*\d{3,6}$/.test(normalized)
+    };
+  }
+  if (shortLawMatch) {
+    return {
+      kind: 'law',
+      number: shortLawMatch[1],
+      explicitLaw: true,
+      onlyReference: /^(?:ley|leyes|ley n|ley no|ley nro|ley numero|ley número)?\s*\d{1,6}$/.test(normalized)
     };
   }
 
@@ -4384,11 +4397,13 @@ function buildKnownLawReferenceAnswer(query, results = []) {
   const law = getKnownPeruvianLaw(reference);
   if (!law) {
     return [
-      `El número **${reference.number}** parece una referencia normativa, pero no tengo una coincidencia segura en el catálogo local para decirte exactamente a qué ley corresponde sin verificar.`,
+      reference.explicitLaw
+        ? `Te entiendo: estás preguntando por la **Ley N.° ${reference.number}**.`
+        : `Ese número, **${reference.number}**, parece que podría ser una referencia legal.`,
       '',
-      `Puede tratarse de una **Ley N.° ${reference.number}**, un expediente, una resolución, una casación u otro identificador jurídico. Para no inventar, lo correcto es contrastarlo en El Peruano, SPIJ o la entidad que emitió la norma.`,
+      'No tengo una coincidencia segura en mi catálogo local para decirte, sin riesgo de inventar, cuál es su nombre completo o qué regula exactamente.',
       '',
-      `Si quieres, escríbeme “ley ${reference.number}” con el tema o país, y lo analizo como referencia normativa.`
+      'Lo más responsable es verificarla en **El Peruano, SPIJ o la entidad que emitió la norma**. Si me das el nombre completo, una captura o el tema al que pertenece, te la explico en sencillo.'
     ].join('\n');
   }
 
@@ -4398,15 +4413,15 @@ function buildKnownLawReferenceAnswer(query, results = []) {
     area: { label: law.matter }
   }, 2) : '';
   const lines = [
-    `La **${law.label}** se refiere a la **${law.title}**.`,
+    `Claro. La **${law.label}** es la **${law.title}**.`,
     '',
-    `En palabras sencillas, esta ley **${law.plainMeaning}**`,
+    `En sencillo: esta ley **${law.plainMeaning}**`,
     '',
-    `En la práctica, **${law.practicalUse}**`
+    `¿Para qué sirve en la práctica? **${law.practicalUse}**`
   ];
 
   if (reference.kind === 'number' && !reference.explicitLaw) {
-    lines.unshift(`Identifiqué el número **${reference.number}** como una posible referencia a la **${law.label}**.`);
+    lines.unshift(`Creo que el número **${reference.number}** se refiere a la **${law.label}**.`);
     lines.splice(1, 0, '');
   }
 
@@ -4416,7 +4431,7 @@ function buildKnownLawReferenceAnswer(query, results = []) {
     lines.push('', sourceSummary);
   }
 
-  lines.push('', '¿Quieres que te explique sus derechos principales, sus obligaciones o cómo usarla en un caso concreto?');
+  lines.push('', '¿Quieres que te explique los puntos principales de esa ley o prefieres que la aterrice a una situación concreta?');
   return lines.join('\n');
 }
 
