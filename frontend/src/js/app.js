@@ -691,7 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
         accountPlan.textContent = config.plan;
         heroTitle.textContent = config.heroTitle;
         heroSubtitle.textContent = config.heroSubtitle;
-        activityTitle.textContent = config.activityTitle;
+        if (activityTitle) activityTitle.textContent = config.activityTitle;
         resourceTitle.textContent = config.resourceTitle;
         planTitle.textContent = `LEXIA ${config.label}`;
         planDescription.textContent = config.plan;
@@ -753,6 +753,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderHistory() {
+        if (!messages) return;
         const history = getHistory();
 
         if (!history.length) {
@@ -797,7 +798,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderStats() {
-        const history = getHistory();
+        const history = getChatSessions();
         const documents = loadList(storageKeys.documents).filter(item => item.role === currentRole);
         const deadlines = loadList(storageKeys.deadlines).filter(item => item.role === currentRole);
         const unreadNotifications = getNotifications().filter(item => !item.read);
@@ -811,7 +812,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderAppState() {
-        renderHistory();
         renderNotifications();
         renderStats();
     }
@@ -864,7 +864,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function showView(viewName) {
         currentView = viewName;
-        const showChat = viewName === "chat";
+        const showChat = viewName === "chat" || viewName === "history";
+        const showHistory = viewName === "history";
         const showBrain = viewName === "brain";
         if (showBrain && !canSuggestBrainSources) {
             currentView = "dashboard";
@@ -872,6 +873,7 @@ document.addEventListener("DOMContentLoaded", () => {
             legalChatView.hidden = true;
             if (brainView) brainView.hidden = true;
             mainPanel?.classList.toggle("chat-mode", false);
+            mainPanel?.classList.toggle("history-mode", false);
             updateNav("home");
             return;
         }
@@ -879,12 +881,19 @@ document.addEventListener("DOMContentLoaded", () => {
         legalChatView.hidden = !showChat;
         if (brainView) brainView.hidden = !showBrain;
         mainPanel?.classList.toggle("chat-mode", showChat);
-        updateNav(showChat ? "new-query" : showBrain ? "brain" : "home");
+        mainPanel?.classList.toggle("history-mode", showHistory);
+        updateNav(showHistory ? "history" : showChat ? "new-query" : showBrain ? "brain" : "home");
+        if (showChat) {
+            chatViewTitle.textContent = showHistory ? "Historial de consultas" : "Consulta jurídica LEXIA";
+            chatViewSubtitle.textContent = showHistory
+                ? "Revisa tus conversaciones anteriores con LEXIA por rol y fecha."
+                : "Consulta leyes, jurisprudencia, normativa, documentos y criterios aplicables.";
+        }
         if (showBrain) {
             void loadBrainSources();
         }
-        announce(showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : "Panel principal abierto.");
-        focusRegion(showChat ? chatThread : showBrain ? brainView : mainPanel);
+        announce(showHistory ? "Historial de consultas abierto." : showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : "Panel principal abierto.");
+        focusRegion(showHistory ? chatSessionList : showChat ? chatThread : showBrain ? brainView : mainPanel);
     }
 
     function setBrainStatus(message, type = "info") {
@@ -1161,9 +1170,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function openHistoryView() {
+        showView("history");
+        if (!activeChatSessionId) {
+            const existing = getChatSessions()[0];
+            activeChatSessionId = existing?.id || null;
+        }
+        renderChatSessions();
+        renderChatThread();
+    }
+
     function syncViewWithHash() {
         if (window.location.hash === "#consulta-ia" || window.location.hash === "#consulta") {
             openChatView();
+            return;
+        }
+        if (window.location.hash === "#historial") {
+            openHistoryView();
             return;
         }
         if (window.location.hash === "#cerebro") {
@@ -1174,6 +1197,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function addMessage(text, type) {
+        if (!messages) return;
         const msg = document.createElement("div");
         msg.className = `message ${type}`;
         msg.innerHTML = text;
@@ -1883,7 +1907,7 @@ document.addEventListener("DOMContentLoaded", () => {
         announce("Notificaciones marcadas como leídas.");
     });
 
-    clearHistoryButton.addEventListener("click", () => {
+    clearHistoryButton?.addEventListener("click", () => {
         const currentHistory = getHistory();
         if (!currentHistory.length) return;
         const remaining = loadList(storageKeys.history).filter(item => item.role !== currentRole);
@@ -1912,8 +1936,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (action === "history") {
                 event.preventDefault();
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}#historial`);
-                showView("dashboard");
-                document.getElementById("historial").scrollIntoView({ behavior: "smooth", block: "start" });
+                openHistoryView();
             }
             if (action === "notifications") {
                 event.preventDefault();

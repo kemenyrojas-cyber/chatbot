@@ -1261,6 +1261,15 @@ summary:focus-visible,
     height: calc(100vh - 36px);
 }
 
+.main-panel.history-mode #newChatSessionButton,
+.main-panel.history-mode .chat-composer {
+    display: none;
+}
+
+.main-panel.history-mode .chat-thread-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
 .chat-history-panel,
 .chat-thread-panel {
     border: 1px solid var(--line);
