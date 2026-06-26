@@ -3251,18 +3251,141 @@ function buildDefinitionAnswer(query, intent, results = [], reasoningProfile = n
   return lines.join('\n');
 }
 
+function findKnownLawInText(text = '') {
+  const reference = extractNormativeReference(text);
+  return getKnownPeruvianLaw(reference);
+}
+
+function findKnownLawForCorrection(query = '', intent = null, memoryMessages = []) {
+  const directLaw = findKnownLawInText(query);
+  if (directLaw) return directLaw;
+
+  const intentLawNumber = intent?.interpretation?.knownLaw?.number
+    || String(intent?.topic?.id || '').match(/\bley_(\d{3,6})\b/)?.[1];
+  if (intentLawNumber && knownPeruvianLawsByNumber[intentLawNumber]) {
+    return knownPeruvianLawsByNumber[intentLawNumber];
+  }
+
+  const memoryText = normalizeMemoryMessages(memoryMessages)
+    .slice(-8)
+    .map(message => message.content)
+    .join(' ');
+  return findKnownLawInText(memoryText);
+}
+
+function normalizeDateClaim(text = '') {
+  const months = {
+    enero: '01',
+    febrero: '02',
+    marzo: '03',
+    abril: '04',
+    mayo: '05',
+    junio: '06',
+    julio: '07',
+    agosto: '08',
+    septiembre: '09',
+    setiembre: '09',
+    octubre: '10',
+    noviembre: '11',
+    diciembre: '12'
+  };
+  const normalized = normalizeText(text);
+  const numeric = normalized.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/);
+  if (numeric) {
+    const year = numeric[3].length === 2 ? `20${numeric[3]}` : numeric[3];
+    return `${year}-${numeric[2].padStart(2, '0')}-${numeric[1].padStart(2, '0')}`;
+  }
+  const monthPattern = Object.keys(months).join('|');
+  const longDate = normalized.match(new RegExp(`\\b(\\d{1,2})\\s*(?:de\\s*)?(${monthPattern})\\s*(?:de|del)?\\s*(\\d{4})\\b`));
+  if (longDate) {
+    return `${longDate[3]}-${months[longDate[2]]}-${longDate[1].padStart(2, '0')}`;
+  }
+  return '';
+}
+
+function inferClaimedDateKind(query = '') {
+  const normalized = normalizeText(query);
+  if (/\b(publicada|publicacion|publicación)\b/.test(normalized)) return 'publicationDate';
+  if (/\b(vigente|vigencia|entro en vigencia|entró en vigencia|aplicarse|aplica)\b/.test(normalized)) return 'effectiveDate';
+  if (/\b(promulgada|promulgacion|promulgación)\b/.test(normalized)) return 'promulgationDate';
+  if (/\b(emitida|aprobada)\b/.test(normalized)) return 'promulgationDate';
+  return '';
+}
+
+function describeLawDateKind(kind) {
+  return {
+    promulgationDate: 'promulgación',
+    publicationDate: 'publicación',
+    effectiveDate: 'vigencia'
+  }[kind] || 'fecha';
+}
+
+function buildKnownLawDateCorrectionAnswer(query = '', law = null) {
+  if (!law) return '';
+  const claimedDate = normalizeDateClaim(query);
+  const claimedKind = inferClaimedDateKind(query);
+  if (!claimedDate || !claimedKind || !law[claimedKind]) return '';
+
+  const knownDates = [
+    ['promulgationDate', law.promulgationDate],
+    ['publicationDate', law.publicationDate],
+    ['effectiveDate', law.effectiveDate]
+  ].filter(([, value]) => value);
+  const expectedDate = normalizeDateClaim(law[claimedKind]);
+  const matchingDifferentKind = knownDates.find(([kind, value]) => kind !== claimedKind && normalizeDateClaim(value) === claimedDate);
+  const legalBadges = `[${law.label}]`;
+  const source = law.officialSource || law.verification || 'fuente oficial normativa';
+
+  if (expectedDate === claimedDate) {
+    return [
+      'Tienes razón: esa corrección coincide con la fuente que tengo verificada.',
+      '',
+      `Para la **${law.title}** ${legalBadges}, la fecha de **${describeLawDateKind(claimedKind)}** es **${law[claimedKind]}**.`,
+      '',
+      `Fuente usada por LEXIA: **${source}**.`
+    ].join('\n');
+  }
+
+  const lines = [
+    'Entiendo la corrección, pero al verificarla hay una diferencia importante.',
+    '',
+    `Según la fuente que usa LEXIA, la **${law.title}** ${legalBadges} tiene como fecha de **${describeLawDateKind(claimedKind)}** el **${law[claimedKind]}**.`
+  ];
+
+  if (matchingDifferentKind) {
+    lines.push(
+      '',
+      `El **${law[matchingDifferentKind[0]]}** sí corresponde a la **${describeLawDateKind(matchingDifferentKind[0])}**, no a la **${describeLawDateKind(claimedKind)}**.`
+    );
+  }
+
+  lines.push(
+    '',
+    `Fuente usada por LEXIA: **${source}**.`,
+    '',
+    'Por eso, dicho con cuidado: tu dato apunta a una fecha real, pero no corresponde al concepto indicado. Si quieres, seguimos usando la distinción correcta entre promulgación, publicación y vigencia.'
+  );
+  return lines.join('\n');
+}
+
 function buildCorrectionAnswer(query, intent, results = [], memoryMessages = []) {
   const memoryState = buildConversationMemoryState(memoryMessages);
   const normalizedQuery = normalizeText(query);
   const correctionFactMatch = String(query || '').match(/\b(?:en internet dice que|seg[uú]n internet|la p[aá]gina dice que|la fuente dice que|he visto que)?\s*(?:fue\s+)?(?:promulgada|publicada|emitida|aprobada)\s+(?:el\s+)?(.{6,80})/i);
   if (correctionFactMatch || /\b(en internet dice|segun internet|según internet|la pagina dice|la página dice|la fuente dice|fue promulgada|promulgada el|publicada el)\b/.test(normalizedQuery)) {
+    const lawDateCorrection = buildKnownLawDateCorrectionAnswer(
+      query,
+      findKnownLawForCorrection(query, intent, memoryMessages)
+    );
+    if (lawDateCorrection) return lawDateCorrection;
+
     const correctedFact = correctionFactMatch?.[1]
       ? `que fue ${String(query).toLowerCase().includes('publicada') ? 'publicada' : 'promulgada'} el ${correctionFactMatch[1].replace(/[.。]+$/, '').trim()}`
       : String(query || '').replace(/\s+/g, ' ').trim();
     const legalBadges = collectLegalCitationBadges(results, 2);
     const sourceSummary = buildSourceSummary(results, intent, 2);
     const lines = [
-      'Tienes razón en corregirme. Disculpa: no debí responder como si ese dato ya estuviera cerrado sin verificarlo bien.',
+      'Entiendo la corrección. No debo tomar ese dato como cierto solo porque aparece en internet o porque me lo indicas; primero tengo que verificarlo.',
       '',
       correctedFact
         ? `Tomo tu precisión como dato a revisar: **${correctedFact}**.`
@@ -3285,7 +3408,7 @@ function buildCorrectionAnswer(query, intent, results = [], memoryMessages = [])
   }
   if (/\b(condenen|condena|condenaron|sentencia|pise el penal|ingrese al penal|carcel|cárcel|prision|prisión)\b/.test(normalizedQuery)) {
     return [
-      'Tienes razón. El punto no era “denunciar”.',
+      'Entiendo la precisión. Revisando lo que indicas, el punto ya no debe tratarse como una ruta de denuncia.',
       '',
       'Si lo que te preocupa es que **la condenen o termine ingresando al penal**, entonces el enfoque es defensa y estrategia procesal: revisar en qué etapa está el caso, qué resolución existe, qué plazo corre y qué medio de defensa o recurso todavía es posible.',
       '',
@@ -3295,21 +3418,21 @@ function buildCorrectionAnswer(query, intent, results = [], memoryMessages = [])
     ].join('\n');
   }
   return [
-    'Tienes razón. Estaba arrastrando una idea que no correspondía.',
+    'Entiendo tu corrección. Antes de cambiar la respuesta, debo contrastar tu precisión con el hilo y con una fuente verificable cuando sea un dato legal, normativo o factual.',
     '',
-    'Tomo como válido **lo que acabas de precisar**, no mi lectura anterior.',
+    'Por ahora no lo tomo como verdad cerrada: lo trato como **dato a verificar** y corrijo mi enfoque solo si coincide con la información disponible o con una fuente que lo sustente.',
     '',
     memoryState.lastUserFact
-      ? `Lo que tenía del hilo era: **${truncateForRag(memoryState.lastUserFact, 220)}**. Si eso ya no encaja, lo dejo atrás.`
-      : 'Si me das el dato correcto en una frase, rehago el enfoque desde ahí.',
+      ? `Lo que tenía del hilo era: **${truncateForRag(memoryState.lastUserFact, 220)}**. Si tu corrección contradice ese dato, necesito verificar cuál corresponde.`
+      : 'Si me das el dato correcto en una frase y, si existe, la fuente donde aparece, rehago el enfoque desde ahí.',
     '',
-    '¿El error está en el hecho que entendí, en la norma que cité o en el paso que te sugerí?'
+    '¿El error está en el hecho que entendí, en la norma que cité o en el paso que te sugerí? Si tienes fuente, pásamela para contrastarla.'
   ].join('\n');
 }
 
 function buildProfessionalRoleConflictAnswer(query, intent, results = [], reasoningProfile = null) {
   const lines = [
-    'Tienes razón: si hablas de **tu patrocinada**, no debo tratarte como si fueras la víctima que va a denunciar.',
+    'Entiendo la precisión: si hablas de **tu patrocinada**, no debo tratarte automáticamente como si fueras la víctima que va a denunciar.',
     '',
     'Ahí el enfoque cambia. Primero hay que separar si tú estás actuando como defensa, si quieres dejar constancia de un hecho, si existe un conflicto ético o si estás evaluando apartarte del patrocinio. No es automático decir “denúnciala”.'
   ];
@@ -4208,6 +4331,8 @@ REGLAS:
 - Siempre responde en español, con tono profesional, cercano y claro.
 - Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
 - Si el usuario escribe solo una ley, por ejemplo "Ley 29973", o solo una secuencia numérica, por ejemplo "29973", interpreta primero si puede ser una referencia normativa peruana. Identifica la ley si hay coincidencia, explica en lenguaje simple qué quiere decir y pregunta qué aspecto desea revisar. Si no hay coincidencia segura, no inventes: indica que debe verificarse en El Peruano, SPIJ o fuente oficial.
+- Si el usuario corrige a LEXIA, no aceptes automáticamente la corrección como verdadera. Contrasta el dato con el RAG, la síntesis interna, el catálogo normativo conocido o la fuente que el usuario aporte. Si la corrección es correcta, reconócelo y corrige. Si no es correcta, responde amablemente que el dato no coincide con la fuente verificada, indica exactamente la fuente usada por LEXIA y explica la diferencia sin confrontar.
+- En fechas normativas distingue siempre entre promulgación, publicación y vigencia. Si el usuario confunde una fecha de publicación con una de promulgación, aclara esa diferencia con la fuente.
 - Si falta información clave, responde con supuestos explícitos y preguntas concretas.
 - Advierte cuando sea necesaria revisión de un abogado o documento real.
 - No presentes orientación general como asesoría legal definitiva.
@@ -4300,6 +4425,10 @@ const knownPeruvianLawsByNumber = {
     matter: 'Derechos de las personas con discapacidad',
     plainMeaning: 'reconoce derechos, medidas de accesibilidad, ajustes razonables, inclusión, no discriminación y obligaciones del Estado y de privados frente a las personas con discapacidad.',
     practicalUse: 'Sirve para sustentar pedidos de accesibilidad, trato igualitario, ajustes razonables, atención preferente, inclusión educativa, laboral o administrativa, y eliminación de barreras.',
+    promulgationDate: '13 de diciembre de 2012',
+    publicationDate: '24 de diciembre de 2012',
+    effectiveDate: '25 de diciembre de 2012',
+    officialSource: 'Diario Oficial El Peruano, Ley N.° 29973, publicada el 24 de diciembre de 2012',
     verification: 'Verifica siempre el texto vigente y su reglamento en El Peruano, SPIJ, CONADIS o la entidad competente.'
   },
   '30403': {
