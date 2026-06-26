@@ -1818,11 +1818,14 @@ function classifyConversationMode(query, memoryMessages = []) {
   const normativeReference = extractNormativeReference(query);
   const exactArticleRequest = /\b(?:que|qué|como|cómo|dime|dame|lee|leeme|léeme|muestrame|muéstrame|transcribe|texto)\b.*\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b/.test(normalized)
     || /\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b.*\b(?:dice|establece|señala|senala|escrita|escrito|texto|leer|leera|léela|leela)\b/.test(normalized);
+  const clauseExplanationRequest = /\b(?:explica|explicame|explícame|que significa|qué significa|que quiere decir|qué quiere decir|en simple|en sencillo)\b.*\b(?:inciso|numeral|apartado)\s*\d+[a-z]?\b/.test(normalized)
+    || /\b(?:inciso|numeral|apartado)\s*\d+[a-z]?\b.*\b(?:explica|explicame|explícame|significa|quiere decir|simple|sencillo)\b/.test(normalized);
 
   const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
   const verificationRequest = /\b(como sabes|cómo sabes|como sabes si|cómo sabes si|por que dices|por qué dices|porque dices|de donde sale que|de dónde sale que|como concluyes|cómo concluyes|como determinas|cómo determinas|en que te basas para decir|en qué te basas para decir|verifica|verificalo|verifícalo|revisa|revisalo|revísalo)\b/.test(normalized);
   const normRequest = /\b(dame|dime|busca|muestrame|muéstrame|necesito)\b.*\b(ley|leyes|articulo|artículo|articulos|artículos|norma|codigo|código)\b/.test(normalized)
     || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized)
+    || clauseExplanationRequest
     || exactArticleRequest;
   const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
   const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
@@ -1852,7 +1855,7 @@ function classifyConversationMode(query, memoryMessages = []) {
     && (hasLegalSignal || looksLikeCaseFact || (!asksQuestion && userTerms.length >= 2));
 
   let id = 'case_start';
-  if (exactArticleRequest) id = 'norm_request';
+  if (exactArticleRequest || clauseExplanationRequest) id = 'norm_request';
   else if (normativeReference?.onlyReference) id = 'norm_request';
   else if (topicShift) id = 'topic_shift';
   else if (sourceRequest) id = 'source_request';
@@ -3126,6 +3129,15 @@ const knownConstitutionArticles = {
     label: 'Constitución Política del Perú, art. 139',
     title: 'Principios y derechos de la función jurisdiccional',
     source: 'Constitución Política del Perú, artículo 139, base normativa local de LEXIA',
+    clauses: {
+      '1': 'Este inciso significa que, como regla general, la justicia ordinaria la ejerce el Poder Judicial de forma única y exclusiva. No se pueden crear tribunales especiales o jurisdicciones paralelas para un caso concreto, salvo las excepciones reconocidas por la propia Constitución: la jurisdicción militar y la arbitral.',
+      '2': 'Este inciso protege la independencia judicial. Ninguna autoridad puede meterse en un proceso pendiente, anular resoluciones firmes, cortar trámites, modificar sentencias ni retrasar su ejecución.',
+      '3': 'Este inciso reconoce el debido proceso y la tutela jurisdiccional: toda persona debe ser juzgada por el juez competente, con reglas previas, defensa y un proceso válido.',
+      '4': 'Este inciso establece que los procesos judiciales son públicos como regla, salvo que la ley disponga reserva por una razón válida.',
+      '5': 'Este inciso exige que las resoluciones judiciales estén motivadas por escrito, explicando la ley aplicada y los hechos que sostienen la decisión.',
+      '6': 'Este inciso reconoce la pluralidad de instancia: normalmente una decisión judicial puede ser revisada por un órgano superior.',
+      '14': 'Este inciso protege el derecho de defensa en todo estado del proceso: la persona debe poder conocer la imputación o razón de la actuación y contar con defensa.'
+    },
     text: [
       'Artículo 139.- Son principios y derechos de la función jurisdiccional:',
       '1. La unidad y exclusividad de la función jurisdiccional. No existe ni puede establecerse jurisdicción alguna independiente, con excepción de la militar y la arbitral. No hay proceso judicial por comisión o delegación.',
@@ -3159,6 +3171,31 @@ function extractRequestedArticleNumber(query = '') {
   return match?.[1] || '';
 }
 
+function extractRequestedClauseNumber(query = '') {
+  const match = normalizeText(query).match(/\b(?:inciso|numeral|apartado)\s*(\d+[a-z]?)\b/);
+  return match?.[1] || '';
+}
+
+function extractArticleNumberFromMemory(memoryMessages = []) {
+  const recentMemory = normalizeMemoryMessages(memoryMessages).slice(-8).reverse();
+  for (const message of recentMemory) {
+    const text = String(message.content || '');
+    const citationMatch = text.match(/\bart\.?\s*(\d+[a-z]?)/i);
+    if (citationMatch?.[1]) return citationMatch[1].toLowerCase();
+    const articleMatch = normalizeText(text).match(/\bart(?:iculo|ículo|\.?)?\s*(\d+[a-z]?)\b/);
+    if (articleMatch?.[1]) return articleMatch[1];
+  }
+  return '';
+}
+
+function extractClauseTextFromArticle(articleText = '', clauseNumber = '') {
+  if (!articleText || !clauseNumber) return '';
+  const escaped = String(clauseNumber).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(?:^|\\n)${escaped}\\.\\s*([\\s\\S]*?)(?=\\n\\d+[a-z]?\\.\\s|$)`, 'i');
+  const match = String(articleText).match(pattern);
+  return match?.[1]?.replace(/\s+/g, ' ').trim() || '';
+}
+
 function detectNormativeSourceInText(text = '') {
   const normalized = normalizeText(text);
   const patterns = [
@@ -3184,6 +3221,101 @@ function detectNormativeSourceContext(query = '', memoryMessages = []) {
     if (source) return { ...source, origin: 'memory' };
   }
   return null;
+}
+
+function detectNormativeSourceFromIntent(intent = null) {
+  const text = normalizeText([
+    intent?.area?.label,
+    intent?.topic?.label,
+    ...(Array.isArray(intent?.concepts) ? intent.concepts : [])
+  ].filter(Boolean).join(' '));
+  if (/\b(constitucion|constitución|constitucional)\b/.test(text)) {
+    return { id: 'constitucion', label: 'Constitución Política del Perú', origin: 'intent' };
+  }
+  if (/\bcodigo penal|código penal\b/.test(text)) {
+    return { id: 'codigo_penal', label: 'Código Penal', origin: 'intent' };
+  }
+  if (/\bcodigo civil|código civil\b/.test(text)) {
+    return { id: 'codigo_civil', label: 'Código Civil', origin: 'intent' };
+  }
+  return null;
+}
+
+function buildClauseExplanationAnswer(query, intent, results = [], memoryMessages = []) {
+  const clauseNumber = extractRequestedClauseNumber(query);
+  if (!clauseNumber) return '';
+
+  const sourceContext = detectNormativeSourceContext(query, memoryMessages) || detectNormativeSourceFromIntent(intent);
+  const articleNumber = extractRequestedArticleNumber(query) || extractArticleNumberFromMemory(memoryMessages);
+
+  if (!sourceContext) {
+    return [
+      `¿De qué norma y artículo quieres que explique el **inciso ${clauseNumber}**?`,
+      '',
+      'Por ejemplo: Constitución, Código Penal, Código Civil, una ley o un decreto. Con eso te explico el inciso exacto sin inventar.'
+    ].join('\n');
+  }
+
+  if (!articleNumber) {
+    return [
+      `Por el hilo, entiendo que hablas del **${sourceContext.label}**, pero necesito saber de qué artículo es el **inciso ${clauseNumber}**.`,
+      '',
+      'Dime el artículo y te explico ese inciso en sencillo.'
+    ].join('\n');
+  }
+
+  if (sourceContext.id === 'constitucion' && knownConstitutionArticles[articleNumber]) {
+    const article = knownConstitutionArticles[articleNumber];
+    const clauseText = extractClauseTextFromArticle(article.text, clauseNumber);
+    const explanation = article.clauses?.[clauseNumber];
+    if (!clauseText) {
+      return [
+        `Por el hilo, asumo que te refieres al **inciso ${clauseNumber} del artículo ${articleNumber} de la Constitución Política del Perú**.`,
+        '',
+        'No encuentro ese inciso dentro del texto verificado que tengo para ese artículo. Confírmame el número del inciso y lo reviso de nuevo.'
+      ].join('\n');
+    }
+    return [
+      `Por el hilo, asumo que te refieres al **inciso ${clauseNumber} del [${article.label}]**.`,
+      '',
+      `El inciso dice: **${clauseText}**`,
+      '',
+      explanation || 'En simple, ese inciso fija una regla constitucional que debe leerse dentro del artículo completo y aplicarse al caso concreto.',
+      '',
+      `Fuente usada por LEXIA: **${article.source}**.`
+    ].join('\n');
+  }
+
+  const primary = selectBestLegalResult(results, intent);
+  const primaryText = primary ? getFullResultText(primary) : '';
+  if (!primaryText) {
+    return [
+      `Por el hilo, entiendo que preguntas por el **inciso ${clauseNumber} del artículo ${articleNumber} del ${sourceContext.label}**.`,
+      '',
+      'No tengo el texto exacto de ese inciso en una fuente disponible ahora mismo, y no voy a inventarlo. Pásame el texto o la norma y lo explico.'
+    ].join('\n');
+  }
+
+  const articlePattern = new RegExp(`art[ií]culo\\s+${articleNumber}\\b[\\s\\S]{0,1800}`, 'i');
+  const articleMatch = primaryText.match(articlePattern);
+  const clauseText = articleMatch ? extractClauseTextFromArticle(articleMatch[0], clauseNumber) : '';
+  if (!clauseText) {
+    return [
+      `Por el hilo, entiendo que preguntas por el **inciso ${clauseNumber} del artículo ${articleNumber} del ${sourceContext.label}**.`,
+      '',
+      'No encontré ese inciso en el texto recuperado. Confírmame la norma exacta o pega el artículo para explicarlo con precisión.'
+    ].join('\n');
+  }
+
+  return [
+    `Por el hilo, asumo que te refieres al **inciso ${clauseNumber} del artículo ${articleNumber} del ${sourceContext.label}**.`,
+    '',
+    `El inciso dice: **${clauseText}**`,
+    '',
+    'En simple: ese inciso establece una regla específica dentro del artículo. Para aplicarlo bien hay que leerlo junto con el encabezado del artículo y los demás incisos relacionados.',
+    '',
+    `Fuente usada por LEXIA: **${getResultTitle(primary)}** | ${getResultSource(primary)}.`
+  ].join('\n');
 }
 
 function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages = []) {
@@ -3738,9 +3870,15 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   const modeId = intent?.conversationMode?.id || 'case_start';
   const scopedResults = filterResultsForCurrentIntent(query, intent, results);
   if (modeId === 'source_request' || modeId === 'norm_request') {
+    const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
+    if (clauseAnswer) return clauseAnswer;
     const exactArticleAnswer = buildExactArticleTextAnswer(query, intent, scopedResults, memoryMessages);
     if (exactArticleAnswer) return exactArticleAnswer;
     return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
+  }
+  if (modeId === 'confusion') {
+    const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
+    if (clauseAnswer) return clauseAnswer;
   }
   if (modeId === 'definition_request') {
     return buildDefinitionAnswer(query, intent, scopedResults, reasoningProfile);
@@ -3769,12 +3907,12 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   return '';
 }
 
-function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null) {
+function buildConversationalLegalAnswer(query, intent, results, reasoningProfile = null, graphReasoning = null, memoryMessages = []) {
   results = filterResultsForCurrentIntent(query, intent, results);
   const lines = [];
   const shortInput = isShortUserInput(query);
   const normalizedQuery = normalizeText(query);
-  const modeAnswer = buildModeAwareAnswer(query, intent, results, reasoningProfile, graphReasoning, []);
+  const modeAnswer = buildModeAwareAnswer(query, intent, results, reasoningProfile, graphReasoning, memoryMessages);
   if (modeAnswer) return modeAnswer;
   const forcedBenefitsGuidance = normalizedQuery.includes('beneficios sociales')
     ? [
@@ -3849,7 +3987,7 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     || isConversationContinuation(query, normalizedMemory);
 
   if (!followUp) {
-    return buildConversationalLegalAnswer(query, intent, results, reasoningProfile, graphReasoning);
+    return buildConversationalLegalAnswer(query, intent, results, reasoningProfile, graphReasoning, normalizedMemory);
   }
 
   const lines = [];
