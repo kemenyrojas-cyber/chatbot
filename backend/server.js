@@ -1665,7 +1665,7 @@ const legalAreas = [
       'garantias procesales', 'garantías procesales', 'defensa en juicio'
     ],
     topics: [
-      { id: 'constitucion', label: 'Constitución', keywords: ['constitucion', 'constitución', 'constituci', 'articulo', 'artículo', 'art culo', 'derechos fundamentales'] },
+      { id: 'constitucion', label: 'Constitución', keywords: ['constitucion', 'constitución', 'constituci', 'derechos fundamentales'] },
       { id: 'debido_proceso_defensa', label: 'Debido proceso y derecho de defensa', keywords: ['debido proceso', 'tutela jurisdiccional', 'derecho de defensa', 'derecho a la defensa', 'garantias procesales', 'garantías procesales', 'defensa en juicio'] },
       { id: 'habeas_data', label: 'Hábeas data', keywords: ['habeas data', 'datos personales', 'acceso a informacion', 'acceso a información'] },
       { id: 'amparo', label: 'Amparo', keywords: ['amparo', 'derechos constitucionales'] },
@@ -1817,7 +1817,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   const userTerms = getQueryTerms(query);
   const normativeReference = extractNormativeReference(query);
   const exactArticleRequest = /\b(?:que|qué|como|cómo|dime|dame|lee|leeme|léeme|muestrame|muéstrame|transcribe|texto)\b.*\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b/.test(normalized)
-    || /\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b.*\b(?:dice|establece|señala|senala|escrita|escrito|texto|leer|leera|léela|leela)\b/.test(normalized);
+    || /\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b.*\b(?:dice|establece|señala|senala|escrita|escrito|texto|leer|leera|léela|leela|habla|trata|regula)\b/.test(normalized);
   const clauseExplanationRequest = /\b(?:explica|explicame|explícame|que significa|qué significa|que quiere decir|qué quiere decir|en simple|en sencillo)\b.*\b(?:inciso|numeral|apartado)\s*\d+[a-z]?\b/.test(normalized)
     || /\b(?:inciso|numeral|apartado)\s*\d+[a-z]?\b.*\b(?:explica|explicame|explícame|significa|quiere decir|simple|sencillo)\b/.test(normalized);
 
@@ -1958,7 +1958,13 @@ function areLegalCaseScopesCompatible(currentScopes = [], previousScopes = []) {
 
 function shouldIgnoreMemoryForCurrentQuery(query, memoryMessages = []) {
   if (extractNormativeReference(query)?.onlyReference) return true;
-  const explicitNewCase = /\b(otro caso|otra consulta|nuevo caso|cambiando de tema|ahora quiero saber sobre)\b/.test(normalizeText(query));
+  const normalizedQuery = normalizeText(query);
+  const explicitCurrentNormativeSource = detectNormativeSourceInText(query);
+  if (explicitCurrentNormativeSource) {
+    const memorySource = detectNormativeSourceContext('', memoryMessages);
+    if (memorySource && memorySource.id !== explicitCurrentNormativeSource.id) return true;
+  }
+  const explicitNewCase = /\b(otro caso|otra consulta|nuevo caso|cambiando de tema|ahora quiero saber sobre)\b/.test(normalizedQuery);
   if (explicitNewCase) return true;
 
   const currentScopes = detectLegalCaseScopes(query);
@@ -3349,7 +3355,17 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
 
   const primary = selectBestLegalResult(results, intent);
   const primaryText = primary ? getFullResultText(primary) : '';
-  if (!primary || !primaryText) return '';
+  if (!primary || !primaryText) {
+    return [
+      sourceContext.origin === 'query'
+        ? `Entiendo: estás hablando del **artículo ${articleNumber} del ${sourceContext.label}**, no de la Constitución.`
+        : `Por el hilo, entiendo que preguntas por el **artículo ${articleNumber} del ${sourceContext.label}**.`,
+      '',
+      'No encuentro el texto exacto de ese artículo en la fuente normativa disponible ahora mismo, y no voy a mezclarlo con otro código o con la Constitución.',
+      '',
+      'Pásame el texto o confirma la fuente del código vigente, y lo explico sobre esa base.'
+    ].join('\n');
+  }
 
   const pattern = new RegExp(`art[ií]culo\\s+${articleNumber}\\b[\\s\\S]{0,1200}`, 'i');
   const match = primaryText.match(pattern);
@@ -3360,7 +3376,7 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
     return [
       assumedLine,
       '',
-      'No encuentro el texto exacto de ese artículo en la fuente normativa disponible ahora mismo, y no voy a inventarlo.',
+      'No encuentro el texto exacto de ese artículo en la fuente normativa disponible ahora mismo, y no voy a mezclarlo con otro código o con la Constitución.',
       '',
       'Confírmame el cuerpo normativo exacto o pásame la norma/documento, y te transcribo cómo está escrito.'
     ].join('\n');
