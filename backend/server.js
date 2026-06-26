@@ -1816,11 +1816,14 @@ function classifyConversationMode(query, memoryMessages = []) {
   const hasMemory = memory.length > 0;
   const userTerms = getQueryTerms(query);
   const normativeReference = extractNormativeReference(query);
+  const exactArticleRequest = /\b(?:que|qué|como|cómo|dime|dame|lee|leeme|léeme|muestrame|muéstrame|transcribe|texto)\b.*\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b/.test(normalized)
+    || /\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b.*\b(?:dice|establece|señala|senala|escrita|escrito|texto|leer|leera|léela|leela)\b/.test(normalized);
 
   const sourceRequest = /\b(donde dice|dónde dice|de donde sacas|de dónde sacas|sustento|fundamento|base legal|fuente|cita|en que norma|en qué norma|que articulo|qué articulo|que artículo|qué artículo|que ley|qué ley|cual es la ley|cuál es la ley)\b/.test(normalized);
   const verificationRequest = /\b(como sabes|cómo sabes|como sabes si|cómo sabes si|por que dices|por qué dices|porque dices|de donde sale que|de dónde sale que|como concluyes|cómo concluyes|como determinas|cómo determinas|en que te basas para decir|en qué te basas para decir|verifica|verificalo|verifícalo|revisa|revisalo|revísalo)\b/.test(normalized);
   const normRequest = /\b(dame|dime|busca|muestrame|muéstrame|necesito)\b.*\b(ley|leyes|articulo|artículo|articulos|artículos|norma|codigo|código)\b/.test(normalized)
-    || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized);
+    || /\b(leyes aplicables|articulos aplicables|artículos aplicables|normas aplicables)\b/.test(normalized)
+    || exactArticleRequest;
   const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
   const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
   const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste|te vengo diciendo|te estoy diciendo|te digo que|no estas tomando en cuenta|no estás tomando en cuenta|parece que no estas|parece que no estás|en internet dice|segun internet|según internet|la pagina dice|la página dice|la fuente dice|he visto que|dice que fue|fue promulgada|promulgada el|publicada el)\b/.test(normalized);
@@ -1849,7 +1852,8 @@ function classifyConversationMode(query, memoryMessages = []) {
     && (hasLegalSignal || looksLikeCaseFact || (!asksQuestion && userTerms.length >= 2));
 
   let id = 'case_start';
-  if (normativeReference?.onlyReference) id = 'norm_request';
+  if (exactArticleRequest) id = 'norm_request';
+  else if (normativeReference?.onlyReference) id = 'norm_request';
   else if (topicShift) id = 'topic_shift';
   else if (sourceRequest) id = 'source_request';
   else if (verificationRequest) id = 'verification_request';
@@ -3117,6 +3121,84 @@ function filterResultsForCurrentIntent(query, intent, results = []) {
   return filtered;
 }
 
+const knownConstitutionArticles = {
+  '139': {
+    label: 'Constitución Política del Perú, art. 139',
+    title: 'Principios y derechos de la función jurisdiccional',
+    source: 'Constitución Política del Perú, artículo 139, base normativa local de LEXIA',
+    text: [
+      'Artículo 139.- Son principios y derechos de la función jurisdiccional:',
+      '1. La unidad y exclusividad de la función jurisdiccional. No existe ni puede establecerse jurisdicción alguna independiente, con excepción de la militar y la arbitral. No hay proceso judicial por comisión o delegación.',
+      '2. La independencia en el ejercicio de la función jurisdiccional. Ninguna autoridad puede avocarse a causas pendientes ante el órgano jurisdiccional ni interferir en el ejercicio de sus funciones. Tampoco puede dejar sin efecto resoluciones que han pasado en autoridad de cosa juzgada, ni cortar procedimientos en trámite, ni modificar sentencias ni retardar su ejecución.',
+      '3. La observancia del debido proceso y la tutela jurisdiccional.',
+      '4. La publicidad en los procesos, salvo disposición contraria de la ley.',
+      '5. La motivación escrita de las resoluciones judiciales en todas las instancias, excepto los decretos de mero trámite, con mención expresa de la ley aplicable y de los fundamentos de hecho en que se sustentan.',
+      '6. La pluralidad de la instancia.',
+      '7. La indemnización, en la forma que determine la ley, por los errores judiciales en los procesos penales y por las detenciones arbitrarias, sin perjuicio de la responsabilidad a que hubiere lugar.',
+      '8. El principio de no dejar de administrar justicia por vacío o deficiencia de la ley.',
+      '9. El principio de inaplicabilidad por analogía de la ley penal y de las normas que restrinjan derechos.',
+      '10. El principio de no ser penado sin proceso judicial.',
+      '11. La aplicación de la ley más favorable al procesado en caso de duda o de conflicto entre leyes penales.',
+      '12. El principio de no ser condenado en ausencia.',
+      '13. La prohibición de revivir procesos fenecidos con resolución ejecutoriada. La amnistía, el indulto, el sobreseimiento definitivo y la prescripción producen los efectos de cosa juzgada.',
+      '14. El principio de no ser privado del derecho de defensa en ningún estado del proceso.',
+      '15. El principio de que toda persona debe ser informada, inmediatamente y por escrito, de las causas o razones de su detención.',
+      '16. El principio de la gratuidad de la administración de justicia y de la defensa gratuita para las personas de escasos recursos; y, para todos, en los casos que la ley señala.',
+      '17. La participación popular en el nombramiento y en la revocación de magistrados, conforme a ley.',
+      '18. La obligación del Poder Ejecutivo de prestar la colaboración que en los procesos le sea requerida.',
+      '19. La prohibición de ejercer función judicial por quien no ha sido nombrado en la forma prevista por la Constitución o la ley.',
+      '20. El principio del derecho de toda persona de formular análisis y críticas de las resoluciones y sentencias judiciales, con las limitaciones de ley.',
+      '21. El derecho de los reclusos y sentenciados de ocupar establecimientos adecuados.',
+      '22. El principio de que el régimen penitenciario tiene por objeto la reeducación, rehabilitación y reincorporación del penado a la sociedad.'
+    ].join('\n')
+  }
+};
+
+function extractRequestedArticleNumber(query = '') {
+  const match = normalizeText(query).match(/\bart(?:iculo|ículo|\.?)?\s*(\d+[a-z]?)\b/);
+  return match?.[1] || '';
+}
+
+function conversationMentionsConstitution(query = '', memoryMessages = []) {
+  const text = normalizeText([
+    query,
+    ...normalizeMemoryMessages(memoryMessages).slice(-6).map(message => message.content)
+  ].join(' '));
+  return /\b(constitucion|constitución|constitucional)\b/.test(text);
+}
+
+function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages = []) {
+  const articleNumber = extractRequestedArticleNumber(query);
+  if (!articleNumber) return '';
+
+  if (conversationMentionsConstitution(query, memoryMessages) && knownConstitutionArticles[articleNumber]) {
+    const article = knownConstitutionArticles[articleNumber];
+    return [
+      `Claro. Esto es lo que dice el **[${article.label}]**:`,
+      '',
+      article.text,
+      '',
+      `Fuente usada por LEXIA: **${article.source}**.`
+    ].join('\n');
+  }
+
+  const primary = selectBestLegalResult(results, intent);
+  const primaryText = primary ? getFullResultText(primary) : '';
+  if (!primary || !primaryText) return '';
+
+  const pattern = new RegExp(`art[ií]culo\\s+${articleNumber}\\b[\\s\\S]{0,1200}`, 'i');
+  const match = primaryText.match(pattern);
+  if (!match) return '';
+
+  return [
+    `Claro. Ubico el **artículo ${articleNumber}** en la fuente disponible y te lo dejo para lectura:`,
+    '',
+    truncateForRag(match[0].replace(/\s+/g, ' ').trim(), 1000),
+    '',
+    `Fuente usada por LEXIA: **${getResultTitle(primary)}** | ${getResultSource(primary)}.`
+  ].join('\n');
+}
+
 function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_request') {
   const lawReferenceAnswer = buildKnownLawReferenceAnswer(query, results);
   if (lawReferenceAnswer) return lawReferenceAnswer;
@@ -3607,6 +3689,8 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   const modeId = intent?.conversationMode?.id || 'case_start';
   const scopedResults = filterResultsForCurrentIntent(query, intent, results);
   if (modeId === 'source_request' || modeId === 'norm_request') {
+    const exactArticleAnswer = buildExactArticleTextAnswer(query, intent, scopedResults, memoryMessages);
+    if (exactArticleAnswer) return exactArticleAnswer;
     return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
   }
   if (modeId === 'definition_request') {
