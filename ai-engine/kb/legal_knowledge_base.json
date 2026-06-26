@@ -1419,6 +1419,166 @@
           "¿Qué ocurrió, cuándo y qué documento tienes?"
         ]
       }
+    },
+    {
+      "id": "ingest-munlima-portal-institucional-f294f1c9d4b2",
+      "titulo": "Municipalidad Metropolitana de Lima - Portal institucional - parte 1",
+      "materia": "Derecho Municipal",
+      "fecha": "2026-06-26",
+      "fuente": "Municipalidad Metropolitana de Lima",
+      "url": "https://www.munlima.gob.pe/",
+      "contenido": "Portal institucional de la Municipalidad Metropolitana de Lima (https://www.munlima.gob.pe/). Fuente municipal complementaria para LEXIA. Esta fuente no debe prevalecer sobre El Peruano, SPIJ, normas oficiales nacionales ni documentos normativos espec�ficos; sirve como medio adicional para ubicar informacion municipal de Lima y rutas de verificacion.",
+      "resumen": "Portal institucional de la Municipalidad Metropolitana de Lima (https://www.munlima.gob.pe/). Fuente municipal complementaria para LEXIA. Esta fuente no debe prevalecer sobre El Peruano, SPIJ, normas oficiales nacionales ni documentos normativos espec�ficos; sirve como medio adicional para ubicar informacion municipal de Lima y rutas de verificacion.",
+      "inteligencia": {
+        "hechos_clave": [
+          "identificar hechos, fechas, partes involucradas y documentos disponibles"
+        ],
+        "problemas_juridicos": [
+          "determinar regla aplicable, autoridad competente y consecuencia jurídica"
+        ],
+        "reglas_practicas": [
+          "no concluir sin revisar texto fuente y hechos concretos",
+          "usar la fuente como apoyo, no como respuesta automática definitiva"
+        ],
+        "riesgos": [],
+        "documentos": [
+          "documentos, expediente, comunicaciones y pruebas relacionadas"
+        ],
+        "pasos": [
+          "ordenar documentos y cronología antes del análisis jurídico"
+        ],
+        "preguntas": [
+          "¿Qué ocurrió, cuándo y qué documento tienes?"
+        ]
+      }
+    },
+    {
+      "id": "ingest-munlima-portal-institucional-6923e6273e5f",
+      "titulo": "Municipalidad Metropolitana de Lima - Portal institucional - parte 2",
+      "materia": "Derecho Municipal",
+      "fecha": "2026-06-26",
+      "fuente": "Municipalidad Metropolitana de Lima",
+      "url": "https://www.munlima.gob.pe/",
+      "contenido": "La web municipal contiene accesos institucionales a la municipalidad, gestion, gerencias, funcionarios, Concejo Municipal, organigrama, gobierno abierto, gobierno electronico municipal, Gobierno Regional Metropolitano de Lima, Sistema Integrado de Gestion, normas emitidas, rendicion de cuentas, presupuesto participativo, Asamblea Metropolitana de Lima y prepublicacion de ordenanzas.",
+      "resumen": "La web municipal contiene accesos institucionales a la municipalidad, gestion, gerencias, funcionarios, Concejo Municipal, organigrama, gobierno abierto, gobierno electronico municipal, Gobierno Regional Metropolitano de Lima, Sistema Integrado de Gestion, normas emitidas, rendicion de cuentas, presupuesto participativo, Asamblea Metropolitana de Lima y prepublicacion de ordenanzas.",
+      "inteligencia": {
+        "hechos_clave": [
+          "identificar hechos, fechas, partes involucradas y documentos disponibles"
+        ],
+        "problemas_juridicos": [
+          "determinar regla aplicable, autoridad competente y consecuencia jurídica"
+        ],
+        "reglas_practicas": [
+          "no concluir sin revisar texto fuente y hechos concretos",
+          "usar la fuente como apoyo, no como respuesta automática definitiva"
+        ],
+        "riesgos": [],
+        "documentos": [],
+        "pasos": [
+          "resumir hechos",
+          "contrastar con la fuente",
+          "formular próximos pasos"
+        ],
+        "preguntas": [
+          "¿Qué ocurrió, cuándo y qué documento tienes?"
+        ]
+      }
+    },
+    {
+      "id": "ingest-munlima-portal-institucional-ce13573233fd",
+      "titulo": "Municipalidad Metropolitana de Lima - Portal institucional - parte 3",
+      "materia": "Derecho Municipal",
+      "fecha": "2026-06-26",
+      "fuente": "Municipalidad Metropolitana de Lima",
+      "url": "https://www.munlima.gob.pe/",
+      "contenido": "Tambien contiene secciones de tramites y servicios: directorio de tramites y servicios, Mesa de Partes, actos matrimoniales, certificado de salud, carne de salud, servicios en linea, canal de denuncias, licencias de funcionamiento, tramites de desarrollo urbano, reclamos y sugerencias, TUPA y biblioteca municipal.",
+      "resumen": "Tambien contiene secciones de tramites y servicios: directorio de tramites y servicios, Mesa de Partes, actos matrimoniales, certificado de salud, carne de salud, servicios en linea, canal de denuncias, licencias de funcionamiento, tramites de desarrollo urbano, reclamos y sugerencias, TUPA y biblioteca municipal.",
+      "inteligencia": {
+        "hechos_clave": [
+          "identificar hechos, fechas, partes involucradas y documentos disponibles"
+        ],
+        "problemas_juridicos": [
+          "determinar regla aplicable, autoridad competente y consecuencia jurídica"
+        ],
+        "reglas_practicas": [
+          "no concluir sin revisar texto fuente y hechos concretos",
+          "usar la fuente como apoyo, no como respuesta automática definitiva"
+        ],
+        "riesgos": [],
+        "documentos": [],
+        "pasos": [
+          "resumir hechos",
+          "contrastar con la fuente",
+          "formular próximos pasos"
+        ],
+        "preguntas": [
+          "¿Qué ocurrió, cuándo y qué documento tienes?"
+        ]
+      }
+    },
+    {
+      "id": "ingest-munlima-portal-institucional-fdf3a861a64b",
+      "titulo": "Municipalidad Metropolitana de Lima - Portal institucional - parte 4",
+      "materia": "Derecho Municipal",
+      "fecha": "2026-06-26",
+      "fuente": "Municipalidad Metropolitana de Lima",
+      "url": "https://www.munlima.gob.pe/",
+      "contenido": "La web publica noticias, notas de prensa, sesiones de Concejo Municipal, Lima Transparente, boletines, comunicados y enlaces importantes relacionados con movilidad urbana, seguridad ciudadana, SMIA, SAT, SERPAR, EMAPE, INVERMET, Caja Metropolitana, PROHVILLA, IMP y otros organismos o servicios vinculados a la Municipalidad Metropolitana de Lima.",
+      "resumen": "La web publica noticias, notas de prensa, sesiones de Concejo Municipal, Lima Transparente, boletines, comunicados y enlaces importantes relacionados con movilidad urbana, seguridad ciudadana, SMIA, SAT, SERPAR, EMAPE, INVERMET, Caja Metropolitana, PROHVILLA, IMP y otros organismos o servicios vinculados a la Municipalidad Metropolitana de Lima.",
+      "inteligencia": {
+        "hechos_clave": [
+          "identificar hechos, fechas, partes involucradas y documentos disponibles"
+        ],
+        "problemas_juridicos": [
+          "determinar regla aplicable, autoridad competente y consecuencia jurídica"
+        ],
+        "reglas_practicas": [
+          "no concluir sin revisar texto fuente y hechos concretos",
+          "usar la fuente como apoyo, no como respuesta automática definitiva"
+        ],
+        "riesgos": [],
+        "documentos": [],
+        "pasos": [
+          "resumir hechos",
+          "contrastar con la fuente",
+          "formular próximos pasos"
+        ],
+        "preguntas": [
+          "¿Qué ocurrió, cuándo y qué documento tienes?"
+        ]
+      }
+    },
+    {
+      "id": "ingest-munlima-portal-institucional-00e84a313769",
+      "titulo": "Municipalidad Metropolitana de Lima - Portal institucional - parte 5",
+      "materia": "Derecho Municipal",
+      "fecha": "2026-06-26",
+      "fuente": "Municipalidad Metropolitana de Lima",
+      "url": "https://www.munlima.gob.pe/",
+      "contenido": "Uso recomendado para LEXIA: cuando el usuario consulte sobre municipalidad de Lima, ordenanzas, decretos de alcaldia, acuerdos de concejo, TUPA, licencias municipales, tramites urbanos, mesa de partes, reclamos municipales, papeletas, SAT, seguridad ciudadana, comunicados o informacion institucional municipal, usar esta fuente como ruta de orientacion y verificacion complementaria. Si se necesita texto normativo exacto, verificar en la seccion de Normas emitidas, portal de transparencia municipal, El Peruano u otra fuente oficial especifica.",
+      "resumen": "Uso recomendado para LEXIA: cuando el usuario consulte sobre municipalidad de Lima, ordenanzas, decretos de alcaldia, acuerdos de concejo, TUPA, licencias municipales, tramites urbanos, mesa de partes, reclamos municipales, papeletas, SAT, seguridad ciudadana, comunicados o informacion institucional municipal, usar esta fuente como ruta de orientacion y verificacion complementaria. Si se necesita texto normativo exac",
+      "inteligencia": {
+        "hechos_clave": [
+          "identificar hechos, fechas, partes involucradas y documentos disponibles"
+        ],
+        "problemas_juridicos": [
+          "determinar regla aplicable, autoridad competente y consecuencia jurídica"
+        ],
+        "reglas_practicas": [
+          "no concluir sin revisar texto fuente y hechos concretos",
+          "usar la fuente como apoyo, no como respuesta automática definitiva"
+        ],
+        "riesgos": [],
+        "documentos": [],
+        "pasos": [
+          "resumir hechos",
+          "contrastar con la fuente",
+          "formular próximos pasos"
+        ],
+        "preguntas": [
+          "¿Qué ocurrió, cuándo y qué documento tienes?"
+        ]
+      }
     }
   ],
   "jurisprudencia": [

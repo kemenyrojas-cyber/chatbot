@@ -1056,6 +1056,8 @@ function getAllowedLegalSourceHosts() {
     'www.sunarp.gob.pe',
     'sunafil.gob.pe',
     'www.sunafil.gob.pe',
+    'munlima.gob.pe',
+    'www.munlima.gob.pe',
     'lpderecho.pe',
     'www.lpderecho.pe'
   ];

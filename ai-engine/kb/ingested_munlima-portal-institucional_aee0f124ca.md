@@ -1,0 +1,11 @@
+# Municipalidad Metropolitana de Lima - Portal institucional
+
+Portal institucional de la Municipalidad Metropolitana de Lima (https://www.munlima.gob.pe/). Fuente municipal complementaria para LEXIA. Esta fuente no debe prevalecer sobre El Peruano, SPIJ, normas oficiales nacionales ni documentos normativos espec�ficos; sirve como medio adicional para ubicar informacion municipal de Lima y rutas de verificacion.
+
+La web municipal contiene accesos institucionales a la municipalidad, gestion, gerencias, funcionarios, Concejo Municipal, organigrama, gobierno abierto, gobierno electronico municipal, Gobierno Regional Metropolitano de Lima, Sistema Integrado de Gestion, normas emitidas, rendicion de cuentas, presupuesto participativo, Asamblea Metropolitana de Lima y prepublicacion de ordenanzas.
+
+Tambien contiene secciones de tramites y servicios: directorio de tramites y servicios, Mesa de Partes, actos matrimoniales, certificado de salud, carne de salud, servicios en linea, canal de denuncias, licencias de funcionamiento, tramites de desarrollo urbano, reclamos y sugerencias, TUPA y biblioteca municipal.
+
+La web publica noticias, notas de prensa, sesiones de Concejo Municipal, Lima Transparente, boletines, comunicados y enlaces importantes relacionados con movilidad urbana, seguridad ciudadana, SMIA, SAT, SERPAR, EMAPE, INVERMET, Caja Metropolitana, PROHVILLA, IMP y otros organismos o servicios vinculados a la Municipalidad Metropolitana de Lima.
+
+Uso recomendado para LEXIA: cuando el usuario consulte sobre municipalidad de Lima, ordenanzas, decretos de alcaldia, acuerdos de concejo, TUPA, licencias municipales, tramites urbanos, mesa de partes, reclamos municipales, papeletas, SAT, seguridad ciudadana, comunicados o informacion institucional municipal, usar esta fuente como ruta de orientacion y verificacion complementaria. Si se necesita texto normativo exacto, verificar en la seccion de Normas emitidas, portal de transparencia municipal, El Peruano u otra fuente oficial especifica.
