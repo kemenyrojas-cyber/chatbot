@@ -5439,6 +5439,9 @@ app.post('/api/chat', async (req, res) => {
       userQuery,
       prompt,
       conversationMemory,
+      role: chatRole,
+      sessionId: chatSessionId,
+      caseFile: req.body?.caseFile,
       providerConfig: aiProviderConfig
     });
     const persisted = await persistAnswer(intelligenceResult.answer, intelligenceResult.metadata);
@@ -5455,6 +5458,8 @@ app.post('/api/chat', async (req, res) => {
       model: intelligenceResult.model,
       provider: intelligenceResult.provider,
       retrieval: intelligenceResult.retrieval,
+      caseFile: intelligenceResult.metadata?.caseFile || null,
+      quality: intelligenceResult.metadata?.lexiaScore || null,
       diagnostics: {
         providerStrategy: intelligenceResult.metadata?.providerStrategy || 'fallback',
         providerChecks: intelligenceResult.metadata?.providerChecks || [],
@@ -5463,6 +5468,8 @@ app.post('/api/chat', async (req, res) => {
         memoryMessages: intelligenceResult.metadata?.memoryMessages || 0,
         localSearchEvaluation: intelligenceResult.metadata?.localSearchEvaluation || null,
         conversationMode: intelligenceResult.metadata?.conversationMode || intelligenceResult.intent?.conversationMode || null,
+        dualAnalysis: intelligenceResult.metadata?.dualAnalysis || null,
+        candidateSelection: intelligenceResult.metadata?.candidateSelection || null,
         engineStage: intelligenceResult.metadata?.engineStage || null
       },
       persisted

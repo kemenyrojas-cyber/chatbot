@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test lexia-engine/*.test.js",
     "ingest": "node ../ai-engine/scripts/ingest.js",
     "ingest-lpderecho": "node ../ai-engine/scripts/ingest-lpderecho.js",
     "feed-official-laws": "node ../ai-engine/scripts/feed-official-legal-sources.js",

@@ -1,3 +1,7 @@
+const { buildCaseFile, buildCaseFileContext } = require('./case-file');
+const { buildDualAnalysis, buildDualAnalysisContext } = require('./dual-reasoning');
+const { evaluateCandidate, selectBestCandidate } = require('./lexia-score');
+
 function extractArticleNumbers(text) {
   const matches = String(text || '').matchAll(/\bart(?:iculo|ículo)?\.?\s*(\d+[a-z]?)/gi);
   return [...new Set([...matches].map(match => String(match[1] || '').toLowerCase()))];
@@ -171,6 +175,15 @@ function createLexiaEngine(deps) {
     const intent = brain.mergeIntent(currentIntent, memoryIntent);
     const effectiveConversationMemory = (intent?.interpretation?.topicShift || intent?.interpretation?.ignoredMemory) ? [] : conversationMemory;
     const conversationMemoryContext = memory.buildContext(effectiveConversationMemory, intent);
+    const caseFile = buildCaseFile({
+      userQuery,
+      conversationMemory: effectiveConversationMemory,
+      intent,
+      role: options.role,
+      sessionId: options.sessionId,
+      existingCaseFile: options.caseFile
+    });
+    const caseFileContext = buildCaseFileContext(caseFile);
 
     if (brain.isGreetingOnly(userQuery)) {
       return {
@@ -185,6 +198,7 @@ function createLexiaEngine(deps) {
         metadata: {
           model: 'local-greeting',
           source: 'LEXIA',
+          caseFile,
           engineStage: 'brain:greeting'
         }
       };
@@ -203,6 +217,7 @@ function createLexiaEngine(deps) {
         metadata: {
           model: 'local-follow-up',
           source: 'LEXIA',
+          caseFile,
           engineStage: 'brain:needs_context'
         }
       };
@@ -226,6 +241,8 @@ function createLexiaEngine(deps) {
     const legalReasoningContext = reasoner.buildContext(legalReasoningProfile);
     const legalGraphReasoning = reasoner.buildGraph(intent, ragContext.results);
     const legalGraphContext = reasoner.buildGraphContext(legalGraphReasoning);
+    const dualAnalysis = buildDualAnalysis(caseFile, legalReasoningProfile, ragContext.results);
+    const dualAnalysisContext = buildDualAnalysisContext(dualAnalysis);
     const temperature = config.temperature();
     const localSynthesis = response.buildLocalAnswer(
       userQuery,
@@ -237,6 +254,13 @@ function createLexiaEngine(deps) {
     );
 
     if (intent?.conversationMode?.deterministic) {
+      const localEvaluation = evaluateCandidate({
+        id: 'local-synthesis',
+        answer: localSynthesis
+      }, {
+        caseFile,
+        results: ragContext.results
+      });
       return {
         answer: localSynthesis,
         intent,
@@ -260,6 +284,13 @@ function createLexiaEngine(deps) {
           localSearchEvaluation,
           legalReasoningProfile,
           legalGraphReasoning,
+          caseFile,
+          dualAnalysis,
+          lexiaScore: localEvaluation.quality,
+          candidateSelection: {
+            selected: 'local-synthesis',
+            candidates: [{ id: 'local-synthesis', score: localEvaluation.quality.score100, hardGate: localEvaluation.hardGate }]
+          },
           legalInterpretation: intent,
           conversationMode: intent.conversationMode,
           providerErrors: [],
@@ -296,8 +327,8 @@ function createLexiaEngine(deps) {
       '- Mantén la respuesta escaneable, pero conversacional: respuesta directa, explicación breve, paso útil y una sola pregunta final.'
     ].join('\n');
     const context = dialogueMode
-      ? [dialogueInstruction, conversationMemoryContext, legalReasoningContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
-      : [conversationMemoryContext, legalReasoningContext, legalGraphContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
+      ? [dialogueInstruction, conversationMemoryContext, caseFileContext, legalReasoningContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
+      : [conversationMemoryContext, caseFileContext, legalReasoningContext, legalGraphContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,
@@ -330,6 +361,13 @@ function createLexiaEngine(deps) {
       providerConfig: options.providerConfig || (typeof config.providerConfig === 'function' ? config.providerConfig() : undefined)
     });
     if (!providerResult.answer) {
+      const localEvaluation = evaluateCandidate({
+        id: 'local-synthesis',
+        answer: localSynthesis
+      }, {
+        caseFile,
+        results: ragContext.results
+      });
       return {
         answer: localSynthesis,
         intent,
@@ -360,6 +398,13 @@ function createLexiaEngine(deps) {
           localSearchEvaluation,
           legalReasoningProfile,
           legalGraphReasoning,
+          caseFile,
+          dualAnalysis,
+          lexiaScore: localEvaluation.quality,
+          candidateSelection: {
+            selected: 'local-synthesis',
+            candidates: [{ id: 'local-synthesis', score: localEvaluation.quality.score100, hardGate: localEvaluation.hardGate }]
+          },
           legalInterpretation: intent,
           conversationMode: intent.conversationMode,
           engineStage: config.externalProviderRequested() ? 'local:synthesis_after_provider_failure' : 'local:synthesis'
@@ -369,6 +414,20 @@ function createLexiaEngine(deps) {
 
     const sourceValidation = validateAnswerAgainstSources(providerResult.answer, ragContext.results, localSynthesis);
     if (!sourceValidation.ok) {
+      const selection = selectBestCandidate([
+        {
+          id: 'provider',
+          answer: providerResult.answer,
+          unsupportedArticles: sourceValidation.unsupportedArticles
+        },
+        {
+          id: 'local-synthesis',
+          answer: localSynthesis
+        }
+      ], {
+        caseFile,
+        results: ragContext.results
+      });
       return {
         answer: localSynthesis,
         intent,
@@ -402,6 +461,13 @@ function createLexiaEngine(deps) {
           localSearchEvaluation,
           legalReasoningProfile,
           legalGraphReasoning,
+          caseFile,
+          dualAnalysis,
+          lexiaScore: selection.selected?.quality || null,
+          candidateSelection: {
+            selected: selection.selected?.id || 'local-synthesis',
+            candidates: selection.candidates
+          },
           legalInterpretation: intent,
           conversationMode: intent.conversationMode,
           engineStage: 'local:synthesis_after_provider_source_rejection'
@@ -409,29 +475,56 @@ function createLexiaEngine(deps) {
       };
     }
 
+    const selection = selectBestCandidate([
+      {
+        id: 'provider',
+        answer: providerResult.answer
+      },
+      {
+        id: 'local-synthesis',
+        answer: localSynthesis
+      }
+    ], {
+      caseFile,
+      results: ragContext.results
+    });
+    const selectedAnswer = selection.selected?.answer || providerResult.answer;
+    const selectedProvider = selection.selected?.id === 'local-synthesis' ? 'local' : providerResult.provider;
+    const selectedModel = selection.selected?.id === 'local-synthesis' ? 'local-rag-engine' : providerResult.model;
+    const selectedSource = selection.selected?.id === 'local-synthesis'
+      ? 'LEXIA Integrated Reasoning (quality selection)'
+      : providerResult.source;
+
     return {
-      answer: providerResult.answer,
+      answer: selectedAnswer,
       intent,
       results: ragContext.results,
       ragSources: ragContext.sources,
-      source: providerResult.source,
+      source: selectedSource,
       fallback: false,
-      model: providerResult.model,
-      provider: providerResult.provider,
+      model: selectedModel,
+      provider: selectedProvider,
       retrieval: {
         mode: 'rag',
         results: ragContext.results.length,
         memoryMessages: effectiveConversationMemory.length
       },
       metadata: {
-        model: providerResult.model,
-        source: providerResult.source,
+        model: selectedModel,
+        source: selectedSource,
         ragSources: ragContext.sources,
         localSynthesis,
         memoryMessages: effectiveConversationMemory.length,
         localSearchEvaluation,
         legalReasoningProfile,
         legalGraphReasoning,
+        caseFile,
+        dualAnalysis,
+        lexiaScore: selection.selected?.quality || null,
+        candidateSelection: {
+          selected: selection.selected?.id || 'provider',
+          candidates: selection.candidates
+        },
         legalInterpretation: intent,
         conversationMode: intent.conversationMode,
         providerErrors: providerResult.providerErrors,
