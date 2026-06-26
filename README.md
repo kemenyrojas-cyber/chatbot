@@ -3,6 +3,30 @@
 
 ---
 
+## Entorno profesional de ingeniería
+
+LEXIA usa Node.js 20 LTS, ramas cortas, pull requests y CI automático.
+
+Antes de desarrollar:
+
+```bash
+npm ci --prefix backend
+npm run env:check
+npm run ci
+npm run dev
+```
+
+Documentación del equipo:
+
+- [Entorno y flujo de desarrollo](docs/DEVELOPMENT.md)
+- [Arquitectura](docs/ARCHITECTURE.md)
+- [Guía de contribución](CONTRIBUTING.md)
+- [Política de seguridad](SECURITY.md)
+
+`main` representa código listo para producción. Debe protegerse en GitHub y recibir cambios únicamente mediante pull requests con CI aprobado.
+
+---
+
 ## 🚀 Características Principales
 
 ### ✅ MOTOR JURÍDICO LOCAL
@@ -176,12 +200,9 @@ Al ejecutar `npm run ingest-lpderecho`, se actualizan:
 
 ```text
 chatbot-main/
+├── .github/               # CI, Dependabot y plantilla de pull request
 ├── backend/               # Servidor Express, APIs y dependencias backend
-│   ├── src/
-│   │   ├── config/
-│   │   ├── controllers/
-│   │   ├── routes/
-│   │   └── services/
+│   ├── lexia-engine/      # Orquestación y módulos jurídicos
 │   ├── package.json
 │   └── server.js
 ├── frontend/              # Interfaz web estática
@@ -192,9 +213,9 @@ chatbot-main/
 │       └── views/
 ├── ai-engine/             # Base jurídica, scripts RAG y prompts
 │   ├── kb/
-│   ├── scripts/
-│   ├── vector_db/
-│   └── prompt_templates/
+│   └── scripts/
+├── docs/                  # Arquitectura y manual de desarrollo
+├── scripts/               # Controles de repositorio y entorno
 ├── render.yaml
 └── package.json
 ```

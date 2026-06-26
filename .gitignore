@@ -2,5 +2,15 @@ node_modules/
 backend/node_modules/
 frontend/node_modules/
 .env
+.env.*
+!.env.example
 .DS_Store
 *.log
+coverage/
+.nyc_output/
+dist/
+tmp/
+
+# Runtime data can contain personal data or credentials.
+data/*.json
+!data/*.example.json
