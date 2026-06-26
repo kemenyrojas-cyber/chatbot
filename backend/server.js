@@ -1817,6 +1817,7 @@ function classifyConversationMode(query, memoryMessages = []) {
   const userTerms = getQueryTerms(query);
   const normativeReference = extractNormativeReference(query);
   const exactArticleRequest = /\b(?:que|qué|como|cómo|dime|dame|lee|leeme|léeme|muestrame|muéstrame|transcribe|texto)\b.*\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b/.test(normalized)
+    || /\b(?:me referia|me refería|era|quise decir|hablo|habló|hablaba)\b.*\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b/.test(normalized)
     || /\bart(?:iculo|ículo|\.?)?\s*\d+[a-z]?\b.*\b(?:dice|establece|señala|senala|escrita|escrito|texto|leer|leera|léela|leela|habla|trata|regula)\b/.test(normalized);
   const clauseExplanationRequest = /\b(?:explica|explicame|explícame|que significa|qué significa|que quiere decir|qué quiere decir|en simple|en sencillo)\b.*\b(?:inciso|numeral|apartado)\s*\d+[a-z]?\b/.test(normalized)
     || /\b(?:inciso|numeral|apartado)\s*\d+[a-z]?\b.*\b(?:explica|explicame|explícame|significa|quiere decir|simple|sencillo)\b/.test(normalized);
@@ -3204,17 +3205,46 @@ function extractClauseTextFromArticle(articleText = '', clauseNumber = '') {
 
 function detectNormativeSourceInText(text = '') {
   const normalized = normalizeText(text);
-  const patterns = [
-    { id: 'constitucion', label: 'Constitución Política del Perú', pattern: /\b(constitucion|constitución|constitucional)\b/ },
-    { id: 'codigo_penal', label: 'Código Penal', pattern: /\b(codigo penal|código penal)\b/ },
-    { id: 'codigo_civil', label: 'Código Civil', pattern: /\b(codigo civil|código civil)\b/ },
-    { id: 'codigo_procesal_civil', label: 'Código Procesal Civil', pattern: /\b(codigo procesal civil|código procesal civil|procesal civil|cpc)\b/ },
-    { id: 'codigo_procesal_penal', label: 'Código Procesal Penal', pattern: /\b(codigo procesal penal|código procesal penal|procesal penal|cpp)\b/ },
-    { id: 'codigo_ninos_adolescentes', label: 'Código de los Niños y Adolescentes', pattern: /\b(codigo de los ninos y adolescentes|código de los niños y adolescentes|ninos y adolescentes|niños y adolescentes)\b/ },
-    { id: 'decreto', label: 'decreto mencionado en la conversación', pattern: /\b(decreto legislativo|decreto supremo|decreto de urgencia|decreto ley|decreto)\b/ },
-    { id: 'ley', label: 'ley mencionada en la conversación', pattern: /\bley\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*\d{1,6}\b|\bley\b/ }
+  if (!normalized) return null;
+
+  const numberedPatterns = [
+    { type: 'ley', label: 'Ley', pattern: /\bley\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,6}[a-z-]*)\b/ },
+    { type: 'decreto_legislativo', label: 'Decreto Legislativo', pattern: /\bdecreto legislativo\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,6}[a-z-]*)\b/ },
+    { type: 'decreto_supremo', label: 'Decreto Supremo', pattern: /\bdecreto supremo\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,6}[a-z-]*)\b/ },
+    { type: 'decreto_urgencia', label: 'Decreto de Urgencia', pattern: /\bdecreto de urgencia\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,6}[a-z-]*)\b/ },
+    { type: 'decreto_ley', label: 'Decreto Ley', pattern: /\bdecreto ley\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,6}[a-z-]*)\b/ },
+    { type: 'resolucion', label: 'Resolución', pattern: /\bresolucion\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,8}[a-z-]*)\b/ },
+    { type: 'ordenanza', label: 'Ordenanza', pattern: /\bordenanza\s*(?:n|no|nro|numero|número|n\.|n°|º)?\s*(\d{1,8}[a-z-]*)\b/ }
   ];
-  return patterns.find(item => item.pattern.test(normalized)) || null;
+  for (const item of numberedPatterns) {
+    const match = normalized.match(item.pattern);
+    if (match?.[1]) {
+      return {
+        id: `${item.type}_${match[1]}`,
+        type: item.type,
+        label: `${item.label} N.° ${match[1]}`,
+        number: match[1]
+      };
+    }
+  }
+
+  const namedPatterns = [
+    { id: 'constitucion', type: 'constitucion', label: 'Constitución Política del Perú', pattern: /\b(constitucion|constitución|constitucional)\b/ },
+    { id: 'codigo_penal', type: 'codigo', label: 'Código Penal', pattern: /\b(codigo penal|código penal)\b/ },
+    { id: 'codigo_civil', type: 'codigo', label: 'Código Civil', pattern: /\b(codigo civil|código civil)\b/ },
+    { id: 'codigo_procesal_civil', type: 'codigo', label: 'Código Procesal Civil', pattern: /\b(codigo procesal civil|código procesal civil|procesal civil|cpc)\b/ },
+    { id: 'codigo_procesal_penal', type: 'codigo', label: 'Código Procesal Penal', pattern: /\b(codigo procesal penal|código procesal penal|procesal penal|cpp)\b/ },
+    { id: 'codigo_ninos_adolescentes', type: 'codigo', label: 'Código de los Niños y Adolescentes', pattern: /\b(codigo de los ninos y adolescentes|código de los niños y adolescentes|ninos y adolescentes|niños y adolescentes)\b/ },
+    { id: 'codigo_tributario', type: 'codigo', label: 'Código Tributario', pattern: /\b(codigo tributario|código tributario)\b/ },
+    { id: 'codigo_consumidor', type: 'codigo', label: 'Código de Protección y Defensa del Consumidor', pattern: /\b(codigo de proteccion y defensa del consumidor|código de protección y defensa del consumidor|codigo del consumidor|código del consumidor)\b/ },
+    { id: 'convencion_americana', type: 'convencion', label: 'Convención Americana sobre Derechos Humanos', pattern: /\b(convencion americana|convención americana|pacto de san jose|pacto de san josé|cadh)\b/ },
+    { id: 'convencion_nino', type: 'convencion', label: 'Convención sobre los Derechos del Niño', pattern: /\b(convencion sobre los derechos del nino|convención sobre los derechos del niño|derechos del nino|derechos del niño)\b/ },
+    { id: 'tratado', type: 'tratado', label: 'tratado o convención mencionado en la conversación', pattern: /\b(tratado|convencion|convención|pacto|convenio internacional)\b/ },
+    { id: 'reglamento', type: 'reglamento', label: 'reglamento mencionado en la conversación', pattern: /\b(reglamento|reglamento de la ley)\b/ },
+    { id: 'decreto', type: 'decreto', label: 'decreto mencionado en la conversación', pattern: /\b(decreto legislativo|decreto supremo|decreto de urgencia|decreto ley|decreto)\b/ },
+    { id: 'ley', type: 'ley', label: 'ley mencionada en la conversación', pattern: /\bley\b/ }
+  ];
+  return namedPatterns.find(item => item.pattern.test(normalized)) || null;
 }
 
 function detectNormativeSourceContext(query = '', memoryMessages = []) {
@@ -3230,21 +3260,26 @@ function detectNormativeSourceContext(query = '', memoryMessages = []) {
 }
 
 function detectNormativeSourceFromIntent(intent = null) {
-  const text = normalizeText([
+  const text = [
     intent?.area?.label,
     intent?.topic?.label,
     ...(Array.isArray(intent?.concepts) ? intent.concepts : [])
-  ].filter(Boolean).join(' '));
-  if (/\b(constitucion|constitución|constitucional)\b/.test(text)) {
-    return { id: 'constitucion', label: 'Constitución Política del Perú', origin: 'intent' };
-  }
-  if (/\bcodigo penal|código penal\b/.test(text)) {
-    return { id: 'codigo_penal', label: 'Código Penal', origin: 'intent' };
-  }
-  if (/\bcodigo civil|código civil\b/.test(text)) {
-    return { id: 'codigo_civil', label: 'Código Civil', origin: 'intent' };
-  }
-  return null;
+  ].filter(Boolean).join(' ');
+  const source = detectNormativeSourceInText(text);
+  return source ? { ...source, origin: 'intent' } : null;
+}
+
+function articleSourcePhrase(articleNumber, sourceContext) {
+  const label = sourceContext?.label || 'norma indicada';
+  const feminineTypes = new Set(['ley', 'resolucion', 'ordenanza', 'constitucion', 'convencion']);
+  const connector = feminineTypes.has(sourceContext?.type) || /^(ley|resoluci[oó]n|ordenanza|constituci[oó]n|convenci[oó]n)\b/i.test(label)
+    ? 'de la'
+    : 'del';
+  return `artículo ${articleNumber} ${connector} ${label}`;
+}
+
+function clauseSourcePhrase(clauseNumber, articleNumber, sourceContext) {
+  return `inciso ${clauseNumber} del ${articleSourcePhrase(articleNumber, sourceContext)}`;
 }
 
 function buildClauseExplanationAnswer(query, intent, results = [], memoryMessages = []) {
@@ -3296,7 +3331,7 @@ function buildClauseExplanationAnswer(query, intent, results = [], memoryMessage
   const primaryText = primary ? getFullResultText(primary) : '';
   if (!primaryText) {
     return [
-      `Por el hilo, entiendo que preguntas por el **inciso ${clauseNumber} del artículo ${articleNumber} del ${sourceContext.label}**.`,
+      `Por el hilo, entiendo que preguntas por el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
       '',
       'No tengo el texto exacto de ese inciso en una fuente disponible ahora mismo, y no voy a inventarlo. Pásame el texto o la norma y lo explico.'
     ].join('\n');
@@ -3307,14 +3342,14 @@ function buildClauseExplanationAnswer(query, intent, results = [], memoryMessage
   const clauseText = articleMatch ? extractClauseTextFromArticle(articleMatch[0], clauseNumber) : '';
   if (!clauseText) {
     return [
-      `Por el hilo, entiendo que preguntas por el **inciso ${clauseNumber} del artículo ${articleNumber} del ${sourceContext.label}**.`,
+      `Por el hilo, entiendo que preguntas por el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
       '',
       'No encontré ese inciso en el texto recuperado. Confírmame la norma exacta o pega el artículo para explicarlo con precisión.'
     ].join('\n');
   }
 
   return [
-    `Por el hilo, asumo que te refieres al **inciso ${clauseNumber} del artículo ${articleNumber} del ${sourceContext.label}**.`,
+    `Por el hilo, asumo que te refieres al **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
     '',
     `El inciso dice: **${clauseText}**`,
     '',
@@ -3358,8 +3393,8 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
   if (!primary || !primaryText) {
     return [
       sourceContext.origin === 'query'
-        ? `Entiendo: estás hablando del **artículo ${articleNumber} del ${sourceContext.label}**, no de la Constitución.`
-        : `Por el hilo, entiendo que preguntas por el **artículo ${articleNumber} del ${sourceContext.label}**.`,
+        ? `Entiendo: estás hablando del **${articleSourcePhrase(articleNumber, sourceContext)}**, no de la Constitución.`
+        : `Por el hilo, entiendo que preguntas por el **${articleSourcePhrase(articleNumber, sourceContext)}**.`,
       '',
       'No encuentro el texto exacto de ese artículo en la fuente normativa disponible ahora mismo, y no voy a mezclarlo con otro código o con la Constitución.',
       '',
@@ -3371,8 +3406,8 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
   const match = primaryText.match(pattern);
   if (!match) {
     const assumedLine = sourceContext.origin === 'memory'
-      ? `Por el hilo, entiendo que preguntas por el **artículo ${articleNumber} del ${sourceContext.label}**.`
-      : `Entiendo que preguntas por el **artículo ${articleNumber} del ${sourceContext.label}**.`;
+      ? `Por el hilo, entiendo que preguntas por el **${articleSourcePhrase(articleNumber, sourceContext)}**.`
+      : `Entiendo que preguntas por el **${articleSourcePhrase(articleNumber, sourceContext)}**.`;
     return [
       assumedLine,
       '',
@@ -3383,8 +3418,8 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
   }
 
   const contextLine = sourceContext.origin === 'memory'
-    ? `Por el hilo, asumo que te refieres al **artículo ${articleNumber} del ${sourceContext.label}**.`
-    : `Te refieres al **artículo ${articleNumber} del ${sourceContext.label}**.`;
+    ? `Por el hilo, asumo que te refieres al **${articleSourcePhrase(articleNumber, sourceContext)}**.`
+    : `Te refieres al **${articleSourcePhrase(articleNumber, sourceContext)}**.`;
   return [
     contextLine,
     '',
