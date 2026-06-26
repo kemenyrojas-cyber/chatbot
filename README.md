@@ -10,11 +10,11 @@ LEXIA usa Node.js 20 LTS, ramas cortas, pull requests y CI automático.
 Antes de desarrollar:
 
 ```bash
-npm ci --prefix backend
-npm run env:check
-npm run ci
-npm run dev
+npm run doctor
+npm run dev:container
 ```
+
+Esto inicia Node.js 20 y PostgreSQL 16 mediante Docker Compose. También puedes abrir el repositorio con VS Code y seleccionar `Dev Containers: Reopen in Container`.
 
 Documentación del equipo:
 

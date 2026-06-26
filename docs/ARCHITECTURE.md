@@ -18,6 +18,19 @@ LEXIA Engine
  └─ Response/Score: respuesta, validación y selección
 ```
 
+## Topología local
+
+`compose.dev.yaml` crea dos servicios aislados:
+
+```text
+localhost:3000 ─► app (Node.js 20)
+                         │
+                         ▼
+                  database (PostgreSQL 16)
+```
+
+Las credenciales `lexia/lexia_dev` son exclusivamente locales y no deben reutilizarse en staging o producción. Los puertos solo se enlazan a `127.0.0.1`.
+
 ## Reglas
 
 - El orquestador coordina; la lógica nueva debe residir en módulos especializados.

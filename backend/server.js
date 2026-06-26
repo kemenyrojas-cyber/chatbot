@@ -19,8 +19,10 @@ const frontendSrcRoot = path.join(frontendRoot, 'src');
 const publicRoot = path.join(frontendRoot, 'public');
 const aiEngineRoot = path.join(projectRoot, 'ai-engine');
 
-for (const envPath of [path.join(projectRoot, '.env'), path.join(__dirname, '.env')]) {
-  if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+if (process.env.LEXIA_LOAD_ENV !== 'false') {
+  for (const envPath of [path.join(projectRoot, '.env'), path.join(__dirname, '.env')]) {
+    if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+  }
 }
 
 function envValue(name, fallback = '') {
@@ -771,6 +773,34 @@ app.get('/registro', (req, res) => {
 
 app.get('/recuperar-password', (req, res) => {
   sendView(res, 'recuperar-password.html');
+});
+
+app.get('/api/health/live', (req, res) => {
+  return res.json({
+    ok: true,
+    service: 'lexia-backend',
+    uptimeSeconds: Math.round(process.uptime())
+  });
+});
+
+app.get('/api/health', async (req, res) => {
+  const accounts = await getAccountsStoreStatus();
+  const healthy = accounts.ok || (process.env.NODE_ENV !== 'production' && accounts.storage === 'json');
+  return res.status(healthy ? 200 : 503).json({
+    ok: healthy,
+    service: 'lexia-backend',
+    version: '2.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    uptimeSeconds: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+    dependencies: {
+      accounts: {
+        ok: accounts.ok,
+        storage: accounts.storage,
+        provider: accounts.provider || null
+      }
+    }
+  });
 });
 
 app.get('/api/auth/status', async (req, res) => {

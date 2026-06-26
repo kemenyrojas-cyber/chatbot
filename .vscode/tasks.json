@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "LEXIA: CI local",
+      "type": "npm",
+      "script": "ci",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "LEXIA: iniciar contenedores",
+      "type": "npm",
+      "script": "dev:container",
+      "problemMatcher": []
+    },
+    {
+      "label": "LEXIA: detener contenedores",
+      "type": "npm",
+      "script": "dev:container:down",
+      "problemMatcher": []
+    }
+  ]
+}

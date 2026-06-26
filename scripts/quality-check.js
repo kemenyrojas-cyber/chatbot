@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const sourceRoots = ['server.js', 'backend', 'frontend/src', 'ai-engine/scripts'];
+const sourceRoots = ['server.js', 'backend', 'frontend/src', 'ai-engine/scripts', 'scripts'];
 const ignoredDirectories = new Set(['node_modules', 'coverage', 'dist', '.git']);
 
 function collectJavaScript(target, files = []) {

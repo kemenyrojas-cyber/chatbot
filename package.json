@@ -14,6 +14,11 @@
   "scripts": {
     "start": "node server.js",
     "dev": "npm --prefix backend run dev",
+    "dev:container": "docker compose -f compose.dev.yaml up --build",
+    "dev:container:down": "docker compose -f compose.dev.yaml down",
+    "dev:container:logs": "docker compose -f compose.dev.yaml logs -f app",
+    "doctor": "node scripts/doctor.js",
+    "health": "node scripts/health-check.js",
     "build": "npm ci --prefix backend --omit=dev",
     "test": "npm --prefix backend test",
     "check": "node scripts/quality-check.js",
