@@ -1812,6 +1812,12 @@ function inferLegalObjective(normalizedText) {
   };
 }
 
+function isConfusionText(text = '') {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+  return /\b(no entiendo|no estoy entendiendo|no entendi|no entendí|no comprendo|no estoy comprendiendo|no te entiendo|no logro entender|no logro seguir|no me queda claro|no se entiende|me confunde|me perdi|me perdí|me enrede|me enredé|explicame|explícame|explicamelo|explícamelo|mas simple|más simple|mas claro|más claro|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
+}
+
 function classifyConversationMode(query, memoryMessages = []) {
   const normalized = normalizeText(query);
   const memory = normalizeMemoryMessages(memoryMessages);
@@ -1831,7 +1837,7 @@ function classifyConversationMode(query, memoryMessages = []) {
     || clauseExplanationRequest
     || exactArticleRequest;
   const definitionRequest = /\b(que es|qué es|que significa|qué significa|que quiere decir|qué quiere decir|a que se refiere|a qué se refiere|defineme|defíneme|explicame que es|explícame qué es)\b/.test(normalized);
-  const confusion = /\b(no entiendo|no entendi|no entendí|no comprendo|no logro entender|no me queda claro|me confunde|explicame|explícame|mas simple|más simple|en simple|en sencillo|como asi|cómo así|que quieres decir|qué quieres decir)\b/.test(normalized);
+  const confusion = isConfusionText(query);
   const correction = /\b(no fue asi|no fue así|eso no es|eso no fue|te equivocas|estas mal|estás mal|incorrecto|no dije eso|yo no dije|no corresponde|corrige|mal entendido|malinterpretaste|te vengo diciendo|te estoy diciendo|te digo que|no estas tomando en cuenta|no estás tomando en cuenta|parece que no estas|parece que no estás|en internet dice|segun internet|según internet|la pagina dice|la página dice|la fuente dice|he visto que|dice que fue|fue promulgada|promulgada el|publicada el)\b/.test(normalized);
   const professionalRoleConflict = /\b(patrocinada|patrocinado|patrocinante|mi cliente|cliente|defendida|defendido)\b/.test(normalized)
     && /\b(denunciar|denuncio|denuncia|condena|condenaron|pena|penal|defender|defensa|proceso)\b/.test(normalized);
@@ -2175,7 +2181,8 @@ function isConversationalFollowUp(text) {
     'vale', 'perfecto', 'gracias', 'no', 'si', 'sí', 'eso', 'esa', 'este'
   ]);
   const meaningfulTerms = legalTerms.filter(term => !fillerWords.has(term));
-  const followUpPattern = /^(asi|así|como asi|cómo así|explica|explicame|explícame|explicamelo|explícamelo|hazlo|dilo|ponlo|resumelo|resúmelo|resume|continua|continúa|sigue|no entendi|no entendí|no entiendo|mas claro|más claro|en simple|en sencillo|ok|vale|gracias)(\s.*)?$/;
+  if (isConfusionText(text)) return true;
+  const followUpPattern = /^(asi|así|como asi|cómo así|explica|explicame|explícame|explicamelo|explícamelo|hazlo|dilo|ponlo|resumelo|resúmelo|resume|continua|continúa|sigue|no entendi|no entendí|no entiendo|no estoy entendiendo|no comprendo|no estoy comprendiendo|mas claro|más claro|en simple|en sencillo|ok|vale|gracias)(\s.*)?$/;
   return followUpPattern.test(normalized) && meaningfulTerms.length < 2 && !isLegalQuery(text);
 }
 
@@ -3474,31 +3481,34 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
   return lines.join('\n');
 }
 
-function buildConfusionAnswer(query, intent, results = [], reasoningProfile = null) {
+function buildConfusionAnswer(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
+  const memoryState = buildConversationMemoryState(memoryMessages);
+  const lastAssistantReply = memoryState.assistantReplies[memoryState.assistantReplies.length - 1] || '';
   const primary = selectBestLegalResult(results, intent);
-  let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 2);
-  if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 2);
-  const rules = collectIntelligenceItems(primary ? [primary] : results, 'reglas_practicas', 2);
+  const rules = collectIntelligenceItems(primary ? [primary] : results, 'reglas_practicas', 1);
   const topicId = intent?.topic?.id || '';
   const topicLabel = intent?.topic?.label || 'este punto';
-  const lines = ['Tienes razón, lo explico más simple.'];
+  const lastReplyNormative = /\b(art[ií]culo|inciso|numeral|ley|c[oó]digo|constituci[oó]n|decreto|ordenanza)\b/i.test(lastAssistantReply);
+  const lines = ['Claro. Lo digo más simple.'];
 
   if (topicId === 'extorsion') {
     lines.push('');
-    lines.push(`Para que hablemos de **extorsión**, no basta una deuda o una discusión. Tiene que haber **amenaza, violencia o presión ilegítima** para obligar a alguien a entregar dinero, hacer algo o dejar de hacer algo${legalBadges.length ? ` ${legalBadges.map(item => `[${item}]`).join(' ')}` : ''}.`);
+    lines.push('Para hablar de **extorsión**, no basta que exista una deuda o una discusión. Tiene que haber **amenaza, violencia o presión indebida** para obligar a alguien a entregar dinero, hacer algo o dejar de hacer algo.');
   } else if (topicId === 'abuso_sexual_menor') {
     lines.push('');
-    lines.push(`En simple: si la víctima es menor de edad, lo primero no es discutir trámites, sino **proteger al menor y ubicar el tipo de hecho**. Si hubo acceso carnal o acto análogo con menor de 14 años, la base penal visible es ${legalBadges.map(item => `[${item}]`).join(' ') || 'la norma penal aplicable verificada por fuente'}.`);
+    lines.push('En simple: si la víctima es menor de edad, primero hay que **protegerla** y luego precisar qué pasó: edad, fecha, quién intervino y qué prueba existe.');
+  } else if (lastReplyNormative) {
+    lines.push('');
+    lines.push('Si te mostré una norma o un artículo, la idea es esta: puedo leer el texto, pero después hay que traducirlo a palabras simples para saber qué exige, qué permite o qué prohíbe.');
   } else {
     lines.push('');
-    lines.push(`La idea central sobre **${topicLabel}** es esta: ${rules[0] || reasoningProfile?.legalIssue || 'hay que conectar los hechos concretos con una norma o vía legal verificable'}.`);
-    if (legalBadges.length) lines.push(`La base visible es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+    lines.push(`Sobre **${topicLabel}**, la idea es: ${rules[0] || reasoningProfile?.legalIssue || 'primero entendemos el hecho concreto y luego vemos qué norma o camino legal corresponde'}.`);
   }
 
   lines.push('');
-  lines.push('Dicho en una frase: **primero identificamos el hecho clave, luego vemos si encaja en una norma, y recién después decidimos qué hacer**.');
+  lines.push('Dicho en una frase: **primero aclaramos qué pasó; luego vemos qué ley encaja; después decidimos qué hacer**.');
   lines.push('');
-  lines.push('¿Qué parte quieres que te baje más: el hecho que debe probarse, la ley aplicable o el paso práctico?');
+  lines.push('Dime cuál prefieres: te lo explico como resumen, palabra por palabra, o aplicado a tu caso.');
   return lines.join('\n');
 }
 
@@ -3937,7 +3947,7 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
     return buildDefinitionAnswer(query, intent, scopedResults, reasoningProfile);
   }
   if (modeId === 'confusion') {
-    return buildConfusionAnswer(query, intent, scopedResults, reasoningProfile);
+    return buildConfusionAnswer(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (modeId === 'professional_role_conflict') {
     return buildProfessionalRoleConflictAnswer(query, intent, scopedResults, reasoningProfile);
