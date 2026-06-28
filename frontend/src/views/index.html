@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260628-documents-view">
+    <link rel="stylesheet" href="/css/style.css?v=20260628-documents-nav-fix">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -31,7 +31,7 @@
                 <a class="nav-item active" href="#inicio" data-action="home"><span><i class="fa-solid fa-house icon" aria-hidden="true"></i></span> Inicio</a>
                 <a class="nav-item" href="#consulta-ia" data-action="new-query"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span> Consulta jurídica</a>
                 <a class="nav-item" href="#historial" data-action="history"><span><i class="fa-solid fa-clock-rotate-left icon" aria-hidden="true"></i></span> Historial</a>
-                <a class="nav-item" href="#documentos" data-action="documents"><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span> Documentos</a>
+                <a class="nav-item" href="#documentos" data-documents-link><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span> Documentos</a>
                 <a class="nav-item" href="#clientes" data-action="clients"><span><i class="fa-regular fa-address-book icon" aria-hidden="true"></i></span> Clientes</a>
                 <a class="nav-item" href="#casos" data-action="cases"><span><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i></span> Casos</a>
                 <a class="nav-item" href="#agenda" data-action="agenda"><span><i class="fa-regular fa-calendar-check icon" aria-hidden="true"></i></span> Agenda</a>
@@ -264,7 +264,7 @@
                 </div>
             </section>
 
-            <section class="documents-view" id="documentsView" tabindex="-1" aria-labelledby="documentsTitle" hidden>
+            <section class="documents-view" id="documentos" tabindex="-1" aria-labelledby="documentsTitle" hidden>
                 <header class="documents-header">
                     <div>
                         <span class="module-eyebrow">Gestión documental</span>
@@ -363,7 +363,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260628-documents-view"></script>
+    <script src="/js/app.js?v=20260628-documents-nav-fix"></script>
 </body>
 </html>
 

@@ -704,8 +704,34 @@ summary:focus-visible,
 #dashboardView[hidden],
 .chat-view[hidden],
 .brain-view[hidden],
-.documents-view[hidden] {
+.documents-view[hidden]:not(:target) {
     display: none !important;
+}
+
+.documents-view:target {
+    display: block !important;
+}
+
+.main-panel:has(.documents-view:target) #dashboardView {
+    display: none !important;
+}
+
+.dashboard-shell:has(.documents-view:target) .nav-item[href="#documentos"] {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4EA7 100%);
+    color: #FFFFFF;
+}
+
+.dashboard-shell:has(.documents-view:target) .nav-item[href="#documentos"] span {
+    color: #FFFFFF;
+}
+
+.dashboard-shell:has(.documents-view:target) .nav-item[data-action="home"] {
+    background: transparent;
+    color: #EAF1FF;
+}
+
+.dashboard-shell:has(.documents-view:target) .nav-item[data-action="home"] span {
+    color: #AFC2E3;
 }
 
 .documents-view {

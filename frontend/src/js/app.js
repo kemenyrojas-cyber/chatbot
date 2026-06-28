@@ -31,7 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const dashboardView = document.getElementById("dashboardView");
     const legalChatView = document.getElementById("legalChatView");
     const brainView = document.getElementById("brainView");
-    const documentsView = document.getElementById("documentsView");
+    const documentsView = document.getElementById("documentos");
+    const documentsNavItems = document.querySelectorAll("[data-documents-link]");
     const uploadDocumentButton = document.getElementById("uploadDocumentButton");
     const documentFileInput = document.getElementById("documentFileInput");
     const documentDropZone = document.getElementById("documentDropZone");
@@ -1058,7 +1059,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function updateNav(activeAction) {
         document.querySelectorAll(".nav-item").forEach(item => {
-            const isActive = item.dataset.action === activeAction;
+            const isActive = item.dataset.action === activeAction
+                || (activeAction === "documents" && item.hasAttribute("data-documents-link"));
             item.classList.toggle("active", isActive);
             if (isActive) {
                 item.setAttribute("aria-current", "page");
@@ -2206,6 +2208,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    documentsNavItems.forEach(item => {
+        item.addEventListener("click", event => {
+            event.preventDefault();
+            history.replaceState(null, "", `${window.location.pathname}${window.location.search}#documentos`);
+            showView("documents");
+        });
+    });
+
     document.querySelectorAll("[data-action]").forEach(item => {
         item.addEventListener("click", event => {
             const action = item.dataset.action;
@@ -2226,11 +2236,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 event.preventDefault();
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}#historial`);
                 openHistoryView();
-            }
-            if (action === "documents") {
-                event.preventDefault();
-                history.replaceState(null, "", `${window.location.pathname}${window.location.search}#documentos`);
-                showView("documents");
             }
             if (action === "notifications") {
                 event.preventDefault();
