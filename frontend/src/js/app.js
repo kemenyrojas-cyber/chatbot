@@ -31,6 +31,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const dashboardView = document.getElementById("dashboardView");
     const legalChatView = document.getElementById("legalChatView");
     const brainView = document.getElementById("brainView");
+    const documentsView = document.getElementById("documentsView");
+    const uploadDocumentButton = document.getElementById("uploadDocumentButton");
+    const documentFileInput = document.getElementById("documentFileInput");
+    const documentDropZone = document.getElementById("documentDropZone");
+    const documentSearchInput = document.getElementById("documentSearchInput");
+    const documentTypeFilter = document.getElementById("documentTypeFilter");
+    const documentsList = document.getElementById("documentsList");
+    const documentsStatus = document.getElementById("documentsStatus");
+    const documentTotalCount = document.getElementById("documentTotalCount");
+    const documentTotalSize = document.getElementById("documentTotalSize");
+    const documentRecentCount = document.getElementById("documentRecentCount");
     const chatSessionList = document.getElementById("chatSessionList");
     const chatThread = document.getElementById("chatThread");
     const chatComposerInput = document.getElementById("chatComposerInput");
@@ -247,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let isSending = false;
     let canSuggestBrainSources = false;
     let canCurateBrainSources = false;
+    let documentDatabasePromise = null;
     let voiceAssistEnabled = localStorage.getItem("lexiaVoiceAssist") === "true";
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
@@ -263,6 +275,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function saveList(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    function openDocumentDatabase() {
+        if (documentDatabasePromise) return documentDatabasePromise;
+        documentDatabasePromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open("lexia-private-documents", 1);
+            request.onupgradeneeded = () => {
+                const database = request.result;
+                if (!database.objectStoreNames.contains("files")) {
+                    database.createObjectStore("files", { keyPath: "id" });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error("No se pudo abrir el almacenamiento privado."));
+        });
+        return documentDatabasePromise;
+    }
+
+    async function storeDocumentFile(id, file) {
+        const database = await openDocumentDatabase();
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction("files", "readwrite");
+            transaction.objectStore("files").put({ id, blob: file });
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error || new Error("No se pudo guardar el archivo."));
+        });
+    }
+
+    async function getDocumentFile(id) {
+        const database = await openDocumentDatabase();
+        return new Promise((resolve, reject) => {
+            const request = database.transaction("files", "readonly").objectStore("files").get(id);
+            request.onsuccess = () => resolve(request.result?.blob || null);
+            request.onerror = () => reject(request.error || new Error("No se pudo recuperar el archivo."));
+        });
+    }
+
+    async function removeDocumentFile(id) {
+        const database = await openDocumentDatabase();
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction("files", "readwrite");
+            transaction.objectStore("files").delete(id);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error || new Error("No se pudo eliminar el archivo."));
+        });
     }
 
     function getApiBase() {
@@ -816,6 +873,189 @@ document.addEventListener("DOMContentLoaded", () => {
         renderStats();
     }
 
+    function getDocuments() {
+        return loadList(storageKeys.documents)
+            .filter(item => item.role === currentRole)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    function getDocumentType(fileName = "", mimeType = "") {
+        const extension = fileName.split(".").pop()?.toLowerCase() || "";
+        if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
+        if (mimeType.startsWith("image/") || ["png", "jpg", "jpeg"].includes(extension)) return "image";
+        if (["doc", "docx"].includes(extension) || mimeType.includes("wordprocessingml") || mimeType.includes("msword")) return "word";
+        return "text";
+    }
+
+    function getDocumentIcon(type) {
+        const icons = {
+            pdf: "fa-regular fa-file-pdf",
+            word: "fa-regular fa-file-word",
+            image: "fa-regular fa-file-image",
+            text: "fa-regular fa-file-lines"
+        };
+        return icons[type] || icons.text;
+    }
+
+    function formatFileSize(bytes) {
+        const size = Number(bytes) || 0;
+        if (size < 1024) return `${size} B`;
+        if (size < 1024 * 1024) return `${(size / 1024).toFixed(size < 10240 ? 1 : 0)} KB`;
+        return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function setDocumentsStatus(message, type = "info") {
+        if (!documentsStatus) return;
+        documentsStatus.hidden = !message;
+        documentsStatus.textContent = message || "";
+        documentsStatus.classList.toggle("error", type === "error");
+    }
+
+    function renderDocuments() {
+        if (!documentsList) return;
+        const allDocuments = getDocuments();
+        const query = String(documentSearchInput?.value || "").trim().toLowerCase();
+        const selectedType = documentTypeFilter?.value || "all";
+        const visibleDocuments = allDocuments.filter(item => {
+            const matchesQuery = !query || String(item.name || "").toLowerCase().includes(query);
+            const matchesType = selectedType === "all" || item.type === selectedType;
+            return matchesQuery && matchesType;
+        });
+        const weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+
+        documentTotalCount.textContent = String(allDocuments.length);
+        documentTotalSize.textContent = formatFileSize(allDocuments.reduce((total, item) => total + (Number(item.size) || 0), 0));
+        documentRecentCount.textContent = String(allDocuments.filter(item => new Date(item.createdAt).getTime() >= weekAgo).length);
+
+        if (!visibleDocuments.length) {
+            const hasFilters = Boolean(query || selectedType !== "all");
+            documentsList.innerHTML = `
+                <div class="documents-empty" role="status">
+                    <span><i class="${hasFilters ? "fa-solid fa-magnifying-glass" : "fa-regular fa-folder-open"} icon" aria-hidden="true"></i></span>
+                    <strong>${hasFilters ? "No encontramos documentos" : "Aún no tienes documentos"}</strong>
+                    <small>${hasFilters ? "Prueba con otro nombre o tipo de archivo." : "Sube tu primer archivo para empezar a organizarlo."}</small>
+                </div>
+            `;
+            return;
+        }
+
+        documentsList.innerHTML = `
+            <div class="document-list-head" aria-hidden="true">
+                <span>Documento</span><span>Tamaño</span><span>Fecha de carga</span><span>Acciones</span>
+            </div>
+            ${visibleDocuments.map(item => `
+                <article class="document-item" role="listitem" data-document-id="${escapeHtml(item.id)}">
+                    <div class="document-file">
+                        <span class="document-file-icon ${escapeHtml(item.type)}"><i class="${getDocumentIcon(item.type)} icon" aria-hidden="true"></i></span>
+                        <div>
+                            <strong title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong>
+                            <small>${escapeHtml(String(item.extension || item.type).toUpperCase())}</small>
+                        </div>
+                    </div>
+                    <span>${formatFileSize(item.size)}</span>
+                    <span>${formatDate(item.createdAt)}</span>
+                    <div class="document-actions">
+                        <button class="document-action" type="button" data-document-download title="Descargar ${escapeHtml(item.name)}" aria-label="Descargar ${escapeHtml(item.name)}">
+                            <i class="fa-solid fa-download icon" aria-hidden="true"></i>
+                        </button>
+                        <button class="document-action delete" type="button" data-document-delete title="Eliminar ${escapeHtml(item.name)}" aria-label="Eliminar ${escapeHtml(item.name)}">
+                            <i class="fa-regular fa-trash-can icon" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </article>
+            `).join("")}
+        `;
+    }
+
+    async function importDocuments(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+        const allowedExtensions = new Set(["pdf", "doc", "docx", "txt", "rtf", "png", "jpg", "jpeg"]);
+        const maxBytes = 25 * 1024 * 1024;
+        const metadata = loadList(storageKeys.documents);
+        let imported = 0;
+        const errors = [];
+
+        setDocumentsStatus(`Guardando ${files.length === 1 ? "documento" : `${files.length} documentos`}...`);
+        for (const file of files) {
+            const extension = file.name.split(".").pop()?.toLowerCase() || "";
+            if (!allowedExtensions.has(extension)) {
+                errors.push(`${file.name}: formato no permitido`);
+                continue;
+            }
+            if (file.size > maxBytes) {
+                errors.push(`${file.name}: supera 25 MB`);
+                continue;
+            }
+
+            const id = createId();
+            try {
+                await storeDocumentFile(id, file);
+                metadata.unshift({
+                    id,
+                    role: currentRole,
+                    owner: storageOwner,
+                    name: file.name,
+                    extension,
+                    type: getDocumentType(file.name, file.type),
+                    mimeType: file.type || "application/octet-stream",
+                    size: file.size,
+                    createdAt: new Date().toISOString()
+                });
+                imported += 1;
+            } catch (error) {
+                errors.push(`${file.name}: ${error.message}`);
+            }
+        }
+
+        if (imported) {
+            saveList(storageKeys.documents, metadata);
+            addNotification("Documentos guardados", `${imported} ${imported === 1 ? "archivo fue guardado" : "archivos fueron guardados"} de forma privada.`);
+            renderAppState();
+            renderDocuments();
+        }
+        if (errors.length) {
+            setDocumentsStatus(`${imported ? `${imported} guardado(s). ` : ""}${errors.join(" · ")}`, "error");
+        } else {
+            setDocumentsStatus(`${imported} ${imported === 1 ? "documento guardado" : "documentos guardados"} correctamente.`);
+        }
+        if (documentFileInput) documentFileInput.value = "";
+    }
+
+    async function downloadDocument(id) {
+        const item = getDocuments().find(document => document.id === id);
+        if (!item) return;
+        try {
+            const blob = await getDocumentFile(id);
+            if (!blob) throw new Error("El contenido del archivo ya no está disponible en este navegador.");
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = item.name;
+            link.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            announce(`Descargando ${item.name}.`);
+        } catch (error) {
+            setDocumentsStatus(error.message, "error");
+        }
+    }
+
+    async function deleteDocument(id) {
+        const item = getDocuments().find(document => document.id === id);
+        if (!item || !window.confirm(`¿Eliminar "${item.name}"? Esta acción no se puede deshacer.`)) return;
+        try {
+            await removeDocumentFile(id);
+            saveList(storageKeys.documents, loadList(storageKeys.documents).filter(document => document.id !== id));
+            addNotification("Documento eliminado", `${item.name} fue eliminado del almacenamiento privado.`);
+            setDocumentsStatus("Documento eliminado.");
+            renderAppState();
+            renderDocuments();
+            announce(`${item.name} eliminado.`);
+        } catch (error) {
+            setDocumentsStatus(error.message, "error");
+        }
+    }
+
     function updateNav(activeAction) {
         document.querySelectorAll(".nav-item").forEach(item => {
             const isActive = item.dataset.action === activeAction;
@@ -867,22 +1107,25 @@ document.addEventListener("DOMContentLoaded", () => {
         const showChat = viewName === "chat" || viewName === "history";
         const showHistory = viewName === "history";
         const showBrain = viewName === "brain";
+        const showDocuments = viewName === "documents";
         if (showBrain && !canSuggestBrainSources) {
             currentView = "dashboard";
             dashboardView.hidden = false;
             legalChatView.hidden = true;
             if (brainView) brainView.hidden = true;
+            if (documentsView) documentsView.hidden = true;
             mainPanel?.classList.toggle("chat-mode", false);
             mainPanel?.classList.toggle("history-mode", false);
             updateNav("home");
             return;
         }
-        dashboardView.hidden = showChat || showBrain;
+        dashboardView.hidden = showChat || showBrain || showDocuments;
         legalChatView.hidden = !showChat;
         if (brainView) brainView.hidden = !showBrain;
+        if (documentsView) documentsView.hidden = !showDocuments;
         mainPanel?.classList.toggle("chat-mode", showChat);
         mainPanel?.classList.toggle("history-mode", showHistory);
-        updateNav(showHistory ? "history" : showChat ? "new-query" : showBrain ? "brain" : "home");
+        updateNav(showHistory ? "history" : showChat ? "new-query" : showBrain ? "brain" : showDocuments ? "documents" : "home");
         if (showChat) {
             chatViewTitle.textContent = showHistory ? "Historial de consultas" : "Consulta jurídica LEXIA";
             chatViewSubtitle.textContent = showHistory
@@ -892,8 +1135,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (showBrain) {
             void loadBrainSources();
         }
-        announce(showHistory ? "Historial de consultas abierto." : showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : "Panel principal abierto.");
-        focusRegion(showHistory ? chatSessionList : showChat ? chatThread : showBrain ? brainView : mainPanel);
+        if (showDocuments) {
+            renderDocuments();
+        }
+        announce(showHistory ? "Historial de consultas abierto." : showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : showDocuments ? "Gestor de documentos abierto." : "Panel principal abierto.");
+        focusRegion(showHistory ? chatSessionList : showChat ? chatThread : showBrain ? brainView : showDocuments ? documentsView : mainPanel);
     }
 
     function setBrainStatus(message, type = "info") {
@@ -1191,6 +1437,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (window.location.hash === "#cerebro") {
             showView("brain");
+            return;
+        }
+        if (window.location.hash === "#documentos") {
+            showView("documents");
             return;
         }
         showView("dashboard");
@@ -1917,6 +2167,45 @@ document.addEventListener("DOMContentLoaded", () => {
         announce("Historial de consultas limpiado.");
     });
 
+    uploadDocumentButton?.addEventListener("click", () => documentFileInput?.click());
+    documentDropZone?.addEventListener("click", () => documentFileInput?.click());
+    documentDropZone?.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        documentFileInput?.click();
+    });
+    documentFileInput?.addEventListener("change", () => {
+        void importDocuments(documentFileInput.files);
+    });
+    documentSearchInput?.addEventListener("input", renderDocuments);
+    documentTypeFilter?.addEventListener("change", renderDocuments);
+
+    ["dragenter", "dragover"].forEach(eventName => {
+        documentDropZone?.addEventListener(eventName, event => {
+            event.preventDefault();
+            documentDropZone.classList.add("dragging");
+        });
+    });
+    ["dragleave", "drop"].forEach(eventName => {
+        documentDropZone?.addEventListener(eventName, event => {
+            event.preventDefault();
+            documentDropZone.classList.remove("dragging");
+        });
+    });
+    documentDropZone?.addEventListener("drop", event => {
+        void importDocuments(event.dataTransfer?.files);
+    });
+    documentsList?.addEventListener("click", event => {
+        const item = event.target.closest("[data-document-id]");
+        if (!item) return;
+        if (event.target.closest("[data-document-download]")) {
+            void downloadDocument(item.dataset.documentId);
+        }
+        if (event.target.closest("[data-document-delete]")) {
+            void deleteDocument(item.dataset.documentId);
+        }
+    });
+
     document.querySelectorAll("[data-action]").forEach(item => {
         item.addEventListener("click", event => {
             const action = item.dataset.action;
@@ -1938,13 +2227,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}#historial`);
                 openHistoryView();
             }
+            if (action === "documents") {
+                event.preventDefault();
+                history.replaceState(null, "", `${window.location.pathname}${window.location.search}#documentos`);
+                showView("documents");
+            }
             if (action === "notifications") {
                 event.preventDefault();
                 notificationPanel.hidden = false;
                 notificationButton.setAttribute("aria-expanded", "true");
                 focusRegion(notificationPanel);
             }
-            if (["documents", "clients", "cases", "agenda", "favorites", "deadlines", "profile", "settings"].includes(action)) {
+            if (["clients", "cases", "agenda", "favorites", "deadlines", "profile", "settings"].includes(action)) {
                 event.preventDefault();
                 addNotification("Módulo listo para configurar", "Todavía no hay información registrada en esta sección.");
                 renderAppState();
