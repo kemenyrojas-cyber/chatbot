@@ -772,6 +772,18 @@ function containsNormalizedTerm(text, term) {
   return new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(String(text || ''));
 }
 
+function isTechnicalSourceLabel(value = '') {
+  return /\.(?:md|json|pdf)\b|ingested[_-]|chunk[_-]|[\\/]|lexia legal knowledge base|base jur[ií]dica local lexia|archivo jur[ií]dico local/i
+    .test(String(value || ''));
+}
+
+function publicSourceLabel(item = {}) {
+  const source = String(item.fuente || item.source || '').replace(/\s+/g, ' ').trim();
+  if (source && !isTechnicalSourceLabel(source)) return source;
+  const host = getSourceHost(item);
+  return host || '';
+}
+
 function buildSourceSummary(results, intent, limit = 3) {
   const rankedSources = filterSourcesForIntent(results, intent)
     .filter(item => Number(item.relevance || 0) >= 10)
@@ -785,19 +797,19 @@ function buildSourceSummary(results, intent, limit = 3) {
 
   if (!relevantSources.length) {
     return [
-      '**Fuentes y verificación**',
-      `No encontré una fuente específica sobre ${intent?.topic?.label || 'este tema'} en la base local. Conviene verificar la norma aplicable en El Peruano, SPIJ, Ministerio Público, Poder Judicial o la entidad competente.`
+      '**Fuentes**',
+      `No pude verificar una fuente específica sobre ${intent?.topic?.label || 'este tema'}. Conviene revisar la norma aplicable en El Peruano, SPIJ, Ministerio Público, Poder Judicial o la entidad competente.`
     ].join('\n');
   }
 
-  const lines = ['**Fuentes y verificación**'];
+  const lines = ['**Fuentes**'];
   relevantSources.slice(0, limit).forEach((item, index) => {
-    const title = item.titulo || item.title || 'Referencia jurídica';
-    const source = item.fuente || item.source || 'Base jurídica local LEXIA';
-    const sourceType = isOfficialLegalSource(item) ? 'oficial' : 'referencia secundaria';
+    const rawTitle = String(item.titulo || item.title || '').replace(/\s+/g, ' ').trim();
+    const title = rawTitle && !isTechnicalSourceLabel(rawTitle) ? rawTitle : 'Referencia jurídica';
+    const source = publicSourceLabel(item);
     const matter = item.materia ? ` | Materia: ${item.materia}` : '';
     const url = item.url ? `\nURL: ${item.url}` : '';
-    lines.push(`${index + 1}. ${title} | Fuente ${sourceType}: ${source}${matter}${url}`);
+    lines.push(`${index + 1}. ${title}${source ? ` | ${source}` : ''}${matter}${url}`);
   });
   if (!officialSources.length && relevantSources.some(isSecondaryLegalSource)) {
     lines.push('', 'Nota: esta referencia ayuda a ubicar el tema, pero conviene contrastar el texto vigente en El Peruano, SPIJ o la entidad oficial competente.');

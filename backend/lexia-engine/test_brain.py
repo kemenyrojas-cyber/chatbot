@@ -223,6 +223,61 @@ class BrainScenarioMatrixTest(unittest.TestCase):
         self.assertEqual(dialogue["memoryPolicy"], "new")
         self.assertFalse(dialogue["supersedesPriorInterpretation"])
 
+    def test_python_recognizes_supported_normative_sources(self):
+        cases = (
+            ("quiero saber que dice el articulo 8 de la constitucion politica del peru", "constitucion"),
+            ("dime el articulo 106 del codigo penal", "codigo_penal"),
+            ("explicame el articulo 18 del codigo civil", "codigo_civil"),
+        )
+        for query, expected_source in cases:
+            with self.subTest(query=query):
+                result = analyze({
+                    "query": query,
+                    "baseline": {},
+                    "memoryMessages": [
+                        {"role": "assistant", "content": "¿Cuándo ocurrió el hecho principal?"}
+                    ],
+                })
+                intent = result["intent"]
+                dialogue = intent["interpretation"]["dialogue"]
+                source = intent["interpretation"]["normativeSource"]
+                self.assertEqual(intent["conversationMode"]["id"], "norm_request")
+                self.assertTrue(intent["conversationMode"]["deterministic"])
+                self.assertEqual(source["id"], expected_source)
+                self.assertEqual(source["origin"], "current")
+                self.assertEqual(dialogue["speechAct"], "question")
+                self.assertFalse(dialogue["answeredPreviousQuestion"])
+                self.assertEqual(dialogue["responsePlan"]["maxQuestions"], 0)
+
+    def test_python_uses_normative_memory_only_when_current_turn_omits_source(self):
+        result = analyze({
+            "query": "y que dice el articulo 19",
+            "baseline": {},
+            "memoryMessages": [
+                {"role": "user", "content": "Estoy revisando la Constitución Política del Perú."},
+                {"role": "assistant", "content": "¿Qué artículo necesitas?"}
+            ],
+        })
+        source = result["intent"]["interpretation"]["normativeSource"]
+        self.assertEqual(source["id"], "constitucion")
+        self.assertEqual(source["origin"], "memory")
+        self.assertEqual(source["requestedArticle"], "19")
+
+    def test_current_normative_source_replaces_conflicting_memory(self):
+        result = analyze({
+            "query": "ahora dime el articulo 106 del codigo penal",
+            "baseline": {},
+            "memoryMessages": [
+                {"role": "user", "content": "Estábamos revisando el Código Civil."},
+                {"role": "assistant", "content": "¿Qué artículo civil necesitas?"}
+            ],
+        })
+        interpretation = result["intent"]["interpretation"]
+        self.assertEqual(interpretation["normativeSource"]["id"], "codigo_penal")
+        self.assertTrue(interpretation["normativeSource"]["currentOverridesMemory"])
+        self.assertTrue(interpretation["ignoredMemory"])
+        self.assertEqual(interpretation["dialogue"]["memoryPolicy"], "replace")
+
 
 if __name__ == "__main__":
     unittest.main()

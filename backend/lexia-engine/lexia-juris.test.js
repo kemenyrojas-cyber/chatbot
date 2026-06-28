@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 const {
   classifyUserProfile,
@@ -12,7 +13,16 @@ const {
   selectBestCandidate
 } = require('./lexia-score');
 const { buildDualAnalysis } = require('./dual-reasoning');
-const { createLexiaEngine } = require('./orchestrator');
+const {
+  createLexiaEngine,
+  filterRagContextForIntent,
+  resultMatchesNormativeSource
+} = require('./orchestrator');
+const { createKnowledgeEngine } = require('./knowledge');
+
+const { buildSourceSummary } = createKnowledgeEngine({
+  aiEngineRoot: path.resolve(__dirname, '../../ai-engine')
+});
 
 const intent = {
   type: { id: 'analisis_caso', label: 'Análisis de caso', confidence: 'alta' },
@@ -52,6 +62,51 @@ test('construye un expediente y no convierte alegaciones en hechos probados', ()
 test('detecta señales de urgencia jurídica', () => {
   assert.equal(inferUrgency('Estoy detenido y mañana vence el plazo').level, 'high');
   assert.ok(inferUrgency('Amenazaron de muerte a un menor').signals.includes('personal_safety'));
+});
+
+test('las fuentes visibles no exponen archivos ni identificadores internos', () => {
+  const summary = buildSourceSummary([{
+    titulo: 'Artículo 18',
+    fuente: 'ingested_codigo-civil-2026_75ee115a17.md',
+    materia: 'Derecho Civil',
+    contenido: 'Código Civil artículo 18 sobre derechos de autor.',
+    relevance: 95,
+    modulo: 'normativa'
+  }], {
+    topic: { id: 'codigo_civil', label: 'Código Civil' },
+    area: { id: 'derecho_civil', label: 'Derecho Civil' }
+  });
+
+  assert.doesNotMatch(summary, /ingested_|\.md|base local|LEXIA/i);
+  assert.match(summary, /Artículo 18/);
+});
+
+test('la recuperación normativa no mezcla Constitución, Código Penal y Código Civil', () => {
+  const results = [
+    { title: 'Artículo 8', source: 'constitucion-politica-del-peru.pdf', matter: 'Derecho Constitucional' },
+    { title: 'Artículo 8', source: 'ingested_codigo-penal.md', matter: 'Derecho Penal' },
+    { title: 'Artículo 8', source: 'ingested_codigo-civil.md', matter: 'Derecho Civil' }
+  ];
+  const cases = (
+    [
+      ['constitucion', 'constitucion-politica-del-peru.pdf'],
+      ['codigo_penal', 'ingested_codigo-penal.md'],
+      ['codigo_civil', 'ingested_codigo-civil.md']
+    ]
+  );
+
+  for (const [sourceId, expectedSource] of cases) {
+    const filtered = filterRagContextForIntent({
+      context: 'contexto sin filtrar',
+      results,
+      sources: []
+    }, 'consulta normativa', {
+      interpretation: { normativeSource: { id: sourceId } }
+    });
+    assert.equal(filtered.results.length, 1);
+    assert.equal(filtered.results[0].source, expectedSource);
+    assert.ok(resultMatchesNormativeSource(filtered.results[0], { id: sourceId }));
+  }
 });
 
 test('LEXIA-SCORE aplica penalizaciones multiplicativas', () => {
@@ -254,4 +309,102 @@ test('el orquestador expone expediente, análisis dual y selección de calidad',
   assert.ok(['provider', 'local-synthesis'].includes(result.metadata.candidateSelection.selected));
   assert.match(capturedProviderMessages[0].content, /CONTROL CONVERSACIONAL OBLIGATORIO/);
   assert.match(capturedProviderMessages[0].content, /Responde primero al último turno/);
+});
+
+test('el orquestador sintetiza todas las consultas de apoyo antes de responder', async () => {
+  let synthesisInput = null;
+  const engine = createLexiaEngine({
+    brain: {
+      interpret: query => ({
+        ...intent,
+        originalQuery: query,
+        conversationMode: { id: 'case_start', label: 'Nuevo caso', deterministic: false },
+        interpretation: { dialogue: { speechAct: 'question', responsePlan: { maxQuestions: 0 } } },
+        concepts: ['despido'],
+        complexity: 'media'
+      }),
+      mergeIntent: current => current,
+      buildInterpretationSearchQuery: query => query,
+      isGreetingOnly: () => false,
+      isConversationalFollowUp: () => false,
+      isShortUserInput: () => false
+    },
+    memory: {
+      normalizeMessages: messages => messages,
+      buildSearchQuery: query => query,
+      buildContext: () => ''
+    },
+    knowledge: {
+      ensureAvailable: async () => {},
+      search: () => [{ title: 'Norma laboral', source: 'Fuente oficial', relevance: 90 }],
+      evaluateSufficiency: () => ({ localSearchStatus: 'sufficient' }),
+      logSufficiency: () => {},
+      buildRagContext: () => ({
+        context: 'Fuente laboral verificada.',
+        results: [{ title: 'Norma laboral', source: 'Fuente oficial', relevance: 90 }],
+        sources: [{ id: 'R1', title: 'Norma laboral' }]
+      })
+    },
+    reasoner: {
+      buildProfile: () => ({ legalIssues: ['validez del despido'], risks: ['plazo'] }),
+      buildContext: () => 'Razonamiento jurídico.',
+      buildGraph: () => ({}),
+      buildGraphContext: () => ''
+    },
+    response: {
+      buildSystemPrompt: () => 'Responde con prudencia.',
+      buildGreetingAnswer: () => 'Hola.',
+      buildFollowUpClarificationAnswer: () => 'Aclara el caso.',
+      buildLocalAnswer: () => 'La fuente local exige revisar la carta y la fecha del despido.'
+    },
+    providers: {
+      generate: async () => ({
+        answer: 'Respuesta primaria.',
+        provider: 'groq',
+        model: 'groq-model',
+        source: 'Groq',
+        providerStrategy: 'ensemble',
+        providerErrors: [],
+        providerChecks: [
+          { provider: 'groq', model: 'groq-model' },
+          { provider: 'cerebras', model: 'cerebras-model' }
+        ],
+        consultations: [
+          { provider: 'groq', model: 'groq-model', answer: 'Revisa la carta y el plazo.' },
+          { provider: 'cerebras', model: 'cerebras-model', answer: 'Distingue causa y fecha del despido.' }
+        ]
+      }),
+      synthesize: async (_messages, options) => {
+        synthesisInput = options;
+        return {
+          answer: 'Conviene revisar la carta, la causa y la fecha antes de definir la acción.',
+          provider: 'groq',
+          model: 'groq-model',
+          source: 'LEXIA Integrated Consultation',
+          consultedProviders: ['groq', 'cerebras']
+        };
+      }
+    },
+    config: {
+      temperature: () => 0.2,
+      providerConfig: () => ({}),
+      externalProviderRequested: () => true
+    }
+  });
+
+  const result = await engine.runLegalIntelligence({
+    userQuery: '¿Qué debo revisar después de un despido?',
+    role: 'abogado-independiente'
+  });
+
+  assert.deepEqual(
+    synthesisInput.consultations.map(item => item.provider),
+    ['groq', 'cerebras']
+  );
+  assert.match(synthesisInput.localSynthesis, /fuente local/i);
+  assert.deepEqual(
+    result.metadata.consultationSynthesis.consultedProviders,
+    ['groq', 'cerebras']
+  );
+  assert.equal(result.metadata.providerStrategy, 'ensemble');
 });

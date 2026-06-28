@@ -34,6 +34,7 @@ const publicUrl = envValue('RENDER_EXTERNAL_URL') || envValue('PUBLIC_URL');
 const openAiKey = envValue('OPENAI_API_KEY');
 const rawXAiKey = envValue('XAI_API_KEY');
 const rawGroqKey = envValue('GROQ_API_KEY') || envValue('GROCK_API_KEY');
+const cerebrasKey = envValue('CEREBRAS_API_KEY');
 const xAiKey = rawXAiKey && !String(rawXAiKey).startsWith('gsk_') ? rawXAiKey : '';
 const groqKey = rawGroqKey || (String(rawXAiKey).startsWith('gsk_') ? rawXAiKey : '');
 const openAiBaseUrl = envValue('OPENAI_BASE_URL', 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -42,16 +43,24 @@ const xAiBaseUrl = (envValue('XAI_BASE_URL') || envValue('GROK_BASE_URL') || 'ht
 const grokModel = envValue('XAI_MODEL') || envValue('GROK_MODEL') || 'grok-4.3';
 const groqBaseUrl = (envValue('GROQ_BASE_URL') || envValue('GROCK_BASE_URL') || 'https://api.groq.com/openai/v1').replace(/\/+$/, '');
 const groqModel = envValue('GROQ_MODEL') || envValue('GROCK_MODEL') || 'llama-3.3-70b-versatile';
+const cerebrasBaseUrl = envValue('CEREBRAS_BASE_URL', 'https://api.cerebras.ai/v1').replace(/\/+$/, '');
+const cerebrasModel = envValue('CEREBRAS_MODEL', 'gpt-oss-120b');
 const ollamaBaseUrl = envValue('OLLAMA_BASE_URL').replace(/\/+$/, '');
 const ollamaModel = envValue('OLLAMA_MODEL', 'llama3.1:8b');
 const ollamaApiKey = envValue('OLLAMA_API_KEY');
 const ollamaEnabled = Boolean(ollamaBaseUrl) && process.env.OLLAMA_ENABLED !== 'false';
 const configuredAiProvider = envValue('AI_PROVIDER').toLowerCase();
 const providerStrategy = envValue('LEXIA_PROVIDER_STRATEGY', 'fallback').toLowerCase();
+const configuredConsultants = envValue('LEXIA_CONSULTANTS')
+  .toLowerCase()
+  .split(',')
+  .map(value => value.trim())
+  .filter(value => ['groq', 'cerebras', 'openai', 'grok', 'ollama'].includes(value));
 const forceLocalProvider = configuredAiProvider === 'local';
 const externalProviderRequested = Boolean(configuredAiProvider && configuredAiProvider !== 'local');
 const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAiProvider) || process.env.GROK_PREFER === 'true' || process.env.XAI_PREFER === 'true');
 const preferGroq = !forceLocalProvider && (['groq', 'grock'].includes(configuredAiProvider) || (configuredAiProvider === 'grok' && Boolean(groqKey) && !xAiKey) || process.env.GROQ_PREFER === 'true' || process.env.GROCK_PREFER === 'true');
+const preferCerebras = !forceLocalProvider && (configuredAiProvider === 'cerebras' || process.env.CEREBRAS_PREFER === 'true');
 const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
 const pythonBrain = createPythonBrain({
@@ -79,6 +88,13 @@ const aiProviderConfig = {
     model: groqModel,
     temperature: Number(process.env.GROQ_TEMPERATURE || process.env.GROCK_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.35),
     maxTokens: Number(process.env.GROQ_MAX_TOKENS || process.env.GROCK_MAX_TOKENS || 2000)
+  },
+  cerebras: {
+    apiKey: cerebrasKey,
+    baseUrl: cerebrasBaseUrl,
+    model: cerebrasModel,
+    temperature: Number(process.env.CEREBRAS_TEMPERATURE || process.env.OPENAI_TEMPERATURE || 0.25),
+    maxTokens: Number(process.env.CEREBRAS_MAX_TOKENS || 2000)
   },
   ollama: {
     enabled: ollamaEnabled,
@@ -2113,6 +2129,21 @@ async function interpretLegalQueryWithPython(query, memoryMessages = []) {
 }
 
 function mergeConversationIntent(currentIntent, memoryIntent) {
+  const currentNormativeSource = currentIntent?.interpretation?.normativeSource;
+  if (currentNormativeSource?.origin === 'current') {
+    return {
+      ...currentIntent,
+      interpretation: {
+        ...(currentIntent.interpretation || {}),
+        mergedWithMemory: false,
+        topicShift: Boolean(currentNormativeSource.currentOverridesMemory),
+        ignoredMemory: Boolean(
+          currentIntent?.interpretation?.ignoredMemory
+          || currentNormativeSource.currentOverridesMemory
+        )
+      }
+    };
+  }
   const currentIsFollowUp = isConversationalFollowUp(currentIntent?.originalQuery || '');
   const currentHasLegalSignal = !currentIsFollowUp && ((currentIntent?.interpretation?.currentAreaScore || 0) > 0
     || (currentIntent?.interpretation?.currentTopicScore || 0) > 0);
@@ -2162,13 +2193,15 @@ function mergeConversationIntent(currentIntent, memoryIntent) {
 function buildInterpretationSearchQuery(userQuery, intent, memorySearchQuery) {
   const lawReferenceQuery = buildLawReferenceSearchQuery(userQuery);
   if (intent?.type?.id === 'consulta_normativa') {
+    const normativeSource = intent?.interpretation?.normativeSource;
     const memoryAwareNormativeQuery = [
       lawReferenceQuery,
+      normativeSource?.label,
+      normativeSource?.requestedArticle ? `artículo ${normativeSource.requestedArticle}` : '',
       intent?.area?.label,
       intent?.topic?.label,
       intent?.objective?.label,
-      ...(intent?.concepts || []).slice(0, 8),
-      memorySearchQuery && memorySearchQuery !== userQuery ? memorySearchQuery : ''
+      ...(intent?.concepts || []).slice(0, 8)
     ].filter(Boolean).join(' ');
     return truncateForRag(memoryAwareNormativeQuery || userQuery, 1600);
   }
@@ -2845,6 +2878,44 @@ function getResultSource(item) {
   return item?.fuente || item?.source || 'Base jurídica local LEXIA';
 }
 
+function getPublicLegalSource(item, fallback = '') {
+  const candidates = [getResultSource(item), getResultTitle(item)]
+    .map(value => String(value || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const publicLabel = candidates.find(value => !(
+    /\.md\b|\.json\b|\.pdf\b|ingested[_-]|chunk[_-]|[\\/]|lexia legal knowledge base|base jurídica local lexia/i
+  ).test(value));
+  return publicLabel && !/^art[ií]culo\s+\d+/i.test(publicLabel)
+    ? publicLabel
+    : String(fallback || '').trim();
+}
+
+function resultMatchesNormativeSource(item, sourceContext = null) {
+  if (!sourceContext) return true;
+  const metadata = normalizeText([
+    getResultTitle(item),
+    getResultSource(item),
+    item?.materia,
+    item?.matter,
+    item?.documentTitle,
+    item?.document_title
+  ].filter(Boolean).join(' ').replace(/[_-]+/g, ' '));
+  const sourcePatterns = {
+    constitucion: /\bconstitucion(?: politica)?(?: del peru)?\b/,
+    codigo_penal: /\bcodigo penal\b/,
+    codigo_civil: /\bcodigo civil\b/,
+    codigo_procesal_civil: /\bcodigo procesal civil\b/,
+    codigo_procesal_penal: /\bcodigo procesal penal\b/,
+    codigo_ninos_adolescentes: /\bcodigo (?:de los )?ninos y adolescentes\b/,
+    codigo_tributario: /\bcodigo tributario\b/,
+    codigo_consumidor: /\bcodigo (?:de proteccion y defensa )?(?:del )?consumidor\b/
+  };
+  const namedPattern = sourcePatterns[sourceContext.id];
+  if (namedPattern) return namedPattern.test(metadata);
+  const expected = normalizeText(sourceContext.label || '');
+  return Boolean(expected && metadata.includes(expected));
+}
+
 function getResultText(item) {
   return String(item?.resumen || item?.excerpt || item?.contenido || item?.content || '').replace(/\s+/g, ' ').trim();
 }
@@ -2953,14 +3024,17 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
     return [
       'Claro, estás consultando una norma.',
       '',
-      'No encontré una fuente específica en mi base local para explicarla con seguridad. Para no inventar, conviene verificar el texto vigente en **El Peruano, SPIJ o la entidad competente**.',
+      'No pude verificar una fuente específica para explicarla con seguridad. Conviene revisar el texto vigente en **El Peruano, SPIJ o la entidad competente**.',
       '',
       'Si me escribes el nombre completo de la ley o pegas un fragmento, te digo en sencillo qué significa y para qué sirve.'
     ].join('\n');
   }
 
-  const title = getResultTitle(primary);
-  const source = getResultSource(primary);
+  const rawTitle = getResultTitle(primary);
+  const title = /\.(?:md|json|pdf)\b|ingested[_-]|chunk[_-]|[\\/]/i.test(rawTitle)
+    ? 'la norma consultada'
+    : rawTitle;
+  const publicSource = getPublicLegalSource(primary);
   const text = getFullResultText(primary);
   const excerpt = truncateForRag(text, 520);
   const legalBadges = collectLegalCitationBadges(usefulResults.length ? usefulResults : results);
@@ -2968,33 +3042,27 @@ function buildNormativeLegalAnswer(query, intent, results = []) {
     normalizeText(item?.module || item?.modulo).includes('legal article')
     && normalizeText(getResultTitle(item)).includes('articulo')
   ));
-  const sourceSummary = buildSourceSummary(usefulResults.length ? usefulResults : results, intent, 3);
   const lines = [
-    `Para esa parte, la referencia que mejor encaja es **${title}**.`,
+    `Sí. La referencia que mejor responde a tu consulta es **${title}**.`,
     '',
     excerpt
       ? `Lo central es esto: **${excerpt}**`
-      : 'Esa fuente aparece como la referencia más cercana para ubicar el fundamento legal aplicable.',
+      : 'Esa norma contiene el fundamento legal aplicable.',
   ];
 
   if (articleResult) {
-    lines.push('', `También aparece una referencia más concreta: **${getResultTitle(articleResult)}** (${getResultSource(articleResult)}).`);
+    const articleTitle = getResultTitle(articleResult);
+    if (!/\.(?:md|json|pdf)\b|ingested[_-]|chunk[_-]|[\\/]/i.test(articleTitle)) {
+      lines.push('', `También hay una referencia más concreta: **${articleTitle}**.`);
+    }
   }
 
   if (legalBadges.length) {
-    lines.push('', `El fundamento normativo visible sería ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+    lines.push('', `El fundamento normativo es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
 
-  lines.push(
-    '',
-    'Para usarlo bien en tu caso, hay que mirar el acto concreto, la notificación, el plazo y si realmente se permitió presentar descargos, pruebas o recurso.',
-    '',
-    `Fuente principal: **${source}**.`
-  );
-
-  if (sourceSummary && !sourceSummary.includes('No encontré una fuente específica')) {
-    lines.push('', sourceSummary);
-  }
+  lines.push('', 'Para aplicarlo a tu caso hay que revisar los hechos concretos, los documentos y los plazos involucrados.');
+  if (publicSource) lines.push('', `Fuente: **${publicSource}**.`);
 
   return lines.join('\n');
 }
@@ -3075,6 +3143,17 @@ function filterResultsForCurrentIntent(query, intent, results = []) {
 }
 
 const knownConstitutionArticles = {
+  '18': {
+    label: 'Constitución Política del Perú, artículo 18',
+    title: 'Educación universitaria y autonomía de las universidades',
+    source: 'Constitución Política del Perú',
+    text: [
+      'Artículo 18.- La educación universitaria tiene como fines la formación profesional, la difusión cultural, la creación intelectual y artística y la investigación científica y tecnológica. El Estado garantiza la libertad de cátedra y rechaza la intolerancia.',
+      'Las universidades son promovidas por entidades privadas o públicas. La ley fija las condiciones para autorizar su funcionamiento.',
+      'La universidad es la comunidad de profesores, alumnos y graduados. Participan en ella los representantes de los promotores, de acuerdo a ley.',
+      'Cada universidad es autónoma en su régimen normativo, de gobierno, académico, administrativo y económico. Las universidades se rigen por sus propios estatutos en el marco de la Constitución y de las leyes.'
+    ].join('\n\n')
+  },
   '139': {
     label: 'Constitución Política del Perú, art. 139',
     title: 'Principios y derechos de la función jurisdiccional',
@@ -3212,6 +3291,17 @@ function detectNormativeSourceFromIntent(intent = null) {
   return source ? { ...source, origin: 'intent' } : null;
 }
 
+function detectPythonNormativeSource(intent = null) {
+  const source = intent?.interpretation?.normativeSource;
+  if (!source?.id || !source?.label) return null;
+  return {
+    id: source.id,
+    label: source.label,
+    type: source.id === 'constitucion' ? 'constitucion' : 'codigo',
+    origin: source.origin || 'intent'
+  };
+}
+
 function articleSourcePhrase(articleNumber, sourceContext) {
   const label = sourceContext?.label || 'norma indicada';
   const feminineTypes = new Set(['ley', 'resolucion', 'ordenanza', 'constitucion', 'convencion']);
@@ -3229,7 +3319,9 @@ function buildClauseExplanationAnswer(query, intent, results = [], memoryMessage
   const clauseNumber = extractRequestedClauseNumber(query);
   if (!clauseNumber) return '';
 
-  const sourceContext = detectNormativeSourceContext(query, memoryMessages) || detectNormativeSourceFromIntent(intent);
+  const sourceContext = detectPythonNormativeSource(intent)
+    || detectNormativeSourceContext(query, memoryMessages)
+    || detectNormativeSourceFromIntent(intent);
   const articleNumber = extractRequestedArticleNumber(query) || extractArticleNumberFromMemory(memoryMessages);
 
   if (!sourceContext) {
@@ -3254,27 +3346,28 @@ function buildClauseExplanationAnswer(query, intent, results = [], memoryMessage
     const explanation = article.clauses?.[clauseNumber];
     if (!clauseText) {
       return [
-        `Por el hilo, asumo que te refieres al **inciso ${clauseNumber} del artículo ${articleNumber} de la Constitución Política del Perú**.`,
+        `Claro. Te refieres al **inciso ${clauseNumber} del artículo ${articleNumber} de la Constitución Política del Perú**.`,
         '',
         'No encuentro ese inciso dentro del texto verificado que tengo para ese artículo. Confírmame el número del inciso y lo reviso de nuevo.'
       ].join('\n');
     }
     return [
-      `Por el hilo, asumo que te refieres al **inciso ${clauseNumber} del [${article.label}]**.`,
+      `Claro. Aquí tienes el **inciso ${clauseNumber} del [${article.label}]**:`,
       '',
       `El inciso dice: **${clauseText}**`,
       '',
       explanation || 'En simple, ese inciso fija una regla constitucional que debe leerse dentro del artículo completo y aplicarse al caso concreto.',
       '',
-      `Fuente usada por LEXIA: **${article.source}**.`
+      `Fuente: **${article.source}**.`
     ].join('\n');
   }
 
-  const primary = selectBestLegalResult(results, intent);
+  const compatibleResults = results.filter(item => resultMatchesNormativeSource(item, sourceContext));
+  const primary = selectBestLegalResult(compatibleResults, intent);
   const primaryText = primary ? getFullResultText(primary) : '';
   if (!primaryText) {
     return [
-      `Por el hilo, entiendo que preguntas por el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
+      `Claro. Preguntas por el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
       '',
       'No tengo el texto exacto de ese inciso en una fuente disponible ahora mismo, y no voy a inventarlo. Pásame el texto o la norma y lo explico.'
     ].join('\n');
@@ -3285,27 +3378,29 @@ function buildClauseExplanationAnswer(query, intent, results = [], memoryMessage
   const clauseText = articleMatch ? extractClauseTextFromArticle(articleMatch[0], clauseNumber) : '';
   if (!clauseText) {
     return [
-      `Por el hilo, entiendo que preguntas por el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
+      `Claro. Preguntas por el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
       '',
       'No encontré ese inciso en el texto recuperado. Confírmame la norma exacta o pega el artículo para explicarlo con precisión.'
     ].join('\n');
   }
 
-  return [
-    `Por el hilo, asumo que te refieres al **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**.`,
+  const publicSource = getPublicLegalSource(primary, sourceContext.label);
+  const lines = [
+    `Claro. Aquí tienes el **${clauseSourcePhrase(clauseNumber, articleNumber, sourceContext)}**:`,
     '',
     `El inciso dice: **${clauseText}**`,
     '',
-    'En simple: ese inciso establece una regla específica dentro del artículo. Para aplicarlo bien hay que leerlo junto con el encabezado del artículo y los demás incisos relacionados.',
-    '',
-    `Fuente usada por LEXIA: **${getResultTitle(primary)}** | ${getResultSource(primary)}.`
-  ].join('\n');
+    'En simple: ese inciso establece una regla específica dentro del artículo. Para aplicarlo bien hay que leerlo junto con el encabezado del artículo y los demás incisos relacionados.'
+  ];
+  if (publicSource) lines.push('', `Fuente: **${publicSource}**.`);
+  return lines.join('\n');
 }
 
 function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages = []) {
   const articleNumber = extractRequestedArticleNumber(query);
   if (!articleNumber) return '';
-  const sourceContext = detectNormativeSourceContext(query, memoryMessages);
+  const sourceContext = detectPythonNormativeSource(intent)
+    || detectNormativeSourceContext(query, memoryMessages);
 
   if (!sourceContext) {
     return [
@@ -3317,31 +3412,27 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
 
   if (sourceContext.id === 'constitucion' && knownConstitutionArticles[articleNumber]) {
     const article = knownConstitutionArticles[articleNumber];
-    const contextLine = sourceContext.origin === 'memory'
-      ? `Por el hilo, asumo que te refieres al **artículo ${articleNumber} de la Constitución Política del Perú**.`
-      : `Te refieres al **artículo ${articleNumber} de la Constitución Política del Perú**.`;
     return [
-      contextLine,
-      '',
-      `Esto es lo que dice el **[${article.label}]**:`,
+      `Sí, por supuesto. Aquí tienes el **artículo ${articleNumber} de la Constitución Política del Perú**:`,
       '',
       article.text,
       '',
-      `Fuente usada por LEXIA: **${article.source}**.`
+      `Fuente: **${article.source}**.`
     ].join('\n');
   }
 
-  const primary = selectBestLegalResult(results, intent);
+  const compatibleResults = results.filter(item => resultMatchesNormativeSource(item, sourceContext));
+  const primary = selectBestLegalResult(compatibleResults, intent);
   const primaryText = primary ? getFullResultText(primary) : '';
   if (!primary || !primaryText) {
     return [
       sourceContext.origin === 'query'
-        ? `Entiendo: estás hablando del **${articleSourcePhrase(articleNumber, sourceContext)}**, no de la Constitución.`
-        : `Por el hilo, entiendo que preguntas por el **${articleSourcePhrase(articleNumber, sourceContext)}**.`,
+        ? `Claro. Estás preguntando por el **${articleSourcePhrase(articleNumber, sourceContext)}**.`
+        : `Claro. Por la conversación, entiendo que preguntas por el **${articleSourcePhrase(articleNumber, sourceContext)}**.`,
       '',
-      'No encuentro el texto exacto de ese artículo en la fuente normativa disponible ahora mismo, y no voy a mezclarlo con otro código o con la Constitución.',
+      'No pude localizar el texto exacto dentro de las fuentes disponibles en este momento. Prefiero indicarlo claramente antes que mostrarte un artículo de otra norma.',
       '',
-      'Pásame el texto o confirma la fuente del código vigente, y lo explico sobre esa base.'
+      'Cuando esa fuente esté disponible, podré transcribirlo y explicarlo sin mezclar cuerpos normativos.'
     ].join('\n');
   }
 
@@ -3354,24 +3445,23 @@ function buildExactArticleTextAnswer(query, intent, results = [], memoryMessages
     return [
       assumedLine,
       '',
-      'No encuentro el texto exacto de ese artículo en la fuente normativa disponible ahora mismo, y no voy a mezclarlo con otro código o con la Constitución.',
+      'No pude localizar el texto exacto dentro de las fuentes disponibles en este momento, y no voy a completarlo con contenido de otra norma.',
       '',
-      'Confírmame el cuerpo normativo exacto o pásame la norma/documento, y te transcribo cómo está escrito.'
+      'Cuando esa fuente esté disponible, podré transcribirlo y explicarlo con precisión.'
     ].join('\n');
   }
 
   const contextLine = sourceContext.origin === 'memory'
-    ? `Por el hilo, asumo que te refieres al **${articleSourcePhrase(articleNumber, sourceContext)}**.`
-    : `Te refieres al **${articleSourcePhrase(articleNumber, sourceContext)}**.`;
-  return [
+    ? `Sí, por supuesto. Aquí tienes el **${articleSourcePhrase(articleNumber, sourceContext)}**:`
+    : `Claro. Aquí tienes el **${articleSourcePhrase(articleNumber, sourceContext)}**:`;
+  const publicSource = getPublicLegalSource(primary, sourceContext.label);
+  const lines = [
     contextLine,
     '',
-    'Lo ubico en la fuente disponible y te lo dejo para lectura:',
-    '',
-    truncateForRag(match[0].replace(/\s+/g, ' ').trim(), 1000),
-    '',
-    `Fuente usada por LEXIA: **${getResultTitle(primary)}** | ${getResultSource(primary)}.`
-  ].join('\n');
+    truncateForRag(match[0].replace(/\s+/g, ' ').trim(), 1000)
+  ];
+  if (publicSource) lines.push('', `Fuente: **${publicSource}**.`);
+  return lines.join('\n');
 }
 
 function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_request') {
@@ -3389,9 +3479,9 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
     return [
       modeId === 'norm_request'
         ? `Para darte artículos sobre **${topicLabel}**, necesito una fuente normativa exacta.`
-        : `Tienes razón en pedir la base. En este momento no tengo un artículo exacto verificado en la base local para **${topicLabel}**.`,
+        : `Tienes razón en pedir la base. En este momento no tengo un artículo exacto verificado para **${topicLabel}**.`,
       '',
-      'No voy a inventar el número de artículo. Conviene verificarlo en El Peruano, SPIJ o la fuente oficial correspondiente, o cargar esa norma al cerebro de LEXIA.',
+      'No voy a inventar el número de artículo. Conviene verificarlo en El Peruano, SPIJ o la fuente oficial correspondiente.',
       '',
       '¿Quieres que lo tratemos como búsqueda de norma exacta y me indiques si tienes el código, ley o documento a revisar?'
     ].join('\n');
@@ -3401,8 +3491,8 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
   const excerpt = truncateForRag(fullText, modeId === 'norm_request' ? 520 : 360);
   const lines = [
     modeId === 'norm_request'
-      ? `La base legal verificada que encuentro para **${topicLabel}** es ${legalBadges.map(item => `[${item}]`).join(' ')}.`
-      : `Lo saco de esta base legal verificada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`,
+      ? `Sí. La referencia legal para **${topicLabel}** es ${legalBadges.map(item => `[${item}]`).join(' ')}.`
+      : `Claro. La base legal es ${legalBadges.map(item => `[${item}]`).join(' ')}.`,
     ''
   ];
 
@@ -3411,7 +3501,8 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
     lines.push('');
   }
 
-  lines.push(`Fuente usada por LEXIA: **${getResultTitle(primary)}** | ${getResultSource(primary)}.`);
+  const publicSource = getPublicLegalSource(primary);
+  if (publicSource) lines.push(`Fuente: **${publicSource}**.`);
   return lines.join('\n');
 }
 
@@ -3602,14 +3693,14 @@ function buildKnownLawDateCorrectionAnswer(query = '', law = null) {
       '',
       `Para la **${law.title}** ${legalBadges}, la fecha de **${describeLawDateKind(claimedKind)}** es **${law[claimedKind]}**.`,
       '',
-      `Fuente usada por LEXIA: **${source}**.`
+      `Fuente: **${source}**.`
     ].join('\n');
   }
 
   const lines = [
     'Entiendo la corrección, pero al verificarla hay una diferencia importante.',
     '',
-    `Según la fuente que usa LEXIA, la **${law.title}** ${legalBadges} tiene como fecha de **${describeLawDateKind(claimedKind)}** el **${law[claimedKind]}**.`
+    `Según la fuente oficial disponible, la **${law.title}** ${legalBadges} tiene como fecha de **${describeLawDateKind(claimedKind)}** el **${law[claimedKind]}**.`
   ];
 
   if (matchingDifferentKind) {
@@ -3621,7 +3712,7 @@ function buildKnownLawDateCorrectionAnswer(query = '', law = null) {
 
   lines.push(
     '',
-    `Fuente usada por LEXIA: **${source}**.`,
+    `Fuente: **${source}**.`,
     '',
     'Por eso, dicho con cuidado: tu dato apunta a una fecha real, pero no corresponde al concepto indicado. Si quieres, seguimos usando la distinción correcta entre promulgación, publicación y vigencia.'
   );
@@ -3878,6 +3969,13 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   const modeId = intent?.conversationMode?.id || 'case_start';
   const dialogue = intent?.interpretation?.dialogue || {};
   const scopedResults = filterResultsForCurrentIntent(query, intent, results);
+  if (modeId === 'source_request' || modeId === 'norm_request') {
+    const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
+    if (clauseAnswer) return clauseAnswer;
+    const exactArticleAnswer = buildExactArticleTextAnswer(query, intent, scopedResults, memoryMessages);
+    if (exactArticleAnswer) return exactArticleAnswer;
+    return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
+  }
   if (dialogue.answeredPreviousQuestion) {
     return buildAnsweredQuestionResponse(query, intent, reasoningProfile);
   }
@@ -3886,13 +3984,6 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   }
   if (dialogue.speechAct === 'new_fact') {
     return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile);
-  }
-  if (modeId === 'source_request' || modeId === 'norm_request') {
-    const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
-    if (clauseAnswer) return clauseAnswer;
-    const exactArticleAnswer = buildExactArticleTextAnswer(query, intent, scopedResults, memoryMessages);
-    if (exactArticleAnswer) return exactArticleAnswer;
-    return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
   }
   if (modeId === 'confusion') {
     const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
@@ -4323,7 +4414,7 @@ async function callGroqChat(messages, options = {}) {
   const baseUrl = String(providerConfig?.baseUrl || groqBaseUrl).replace(/\/+$/, '');
   const model = options.model || providerConfig?.model || groqModel;
   const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(providerConfig?.temperature ?? 0.35);
-  const maxTokens = Number(providerConfig?.maxTokens || 2000);
+  const maxTokens = Number(options.maxTokens || providerConfig?.maxTokens || 2000);
   const { controller, timeout } = createProviderTimeout();
 
   try {
@@ -4381,6 +4472,86 @@ async function callGroqChat(messages, options = {}) {
         provider: 'groq',
         code: 'timeout',
         error: 'GroqCloud no respondió dentro del tiempo límite.'
+      };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callCerebrasChat(messages, options = {}) {
+  const providerConfig = options.providerConfig?.cerebras || aiProviderConfig.cerebras;
+  const apiKey = String(providerConfig?.apiKey || '').trim();
+  if (!apiKey) {
+    throw {
+      provider: 'cerebras',
+      code: 'not_configured',
+      error: 'Cerebras Cloud no está configurado.'
+    };
+  }
+
+  const baseUrl = String(providerConfig?.baseUrl || cerebrasBaseUrl).replace(/\/+$/, '');
+  const model = options.model || providerConfig?.model || cerebrasModel;
+  const temperature = Number.isFinite(options.temperature) ? options.temperature : Number(providerConfig?.temperature ?? 0.25);
+  const maxTokens = Number(options.maxTokens || providerConfig?.maxTokens || 2000);
+  const { controller, timeout } = createProviderTimeout();
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      let parsedError = null;
+      try {
+        parsedError = JSON.parse(errorBody);
+      } catch {
+        parsedError = null;
+      }
+      console.error('❌ Error Cerebras Cloud:', errorBody);
+      throw {
+        provider: 'cerebras',
+        code: parsedError?.error?.code || null,
+        error: parsedError?.error?.message || parsedError?.error || `Cerebras Cloud respondió con estado ${response.status}.`,
+        status: response.status
+      };
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content?.trim();
+    if (!answer) {
+      throw {
+        provider: 'cerebras',
+        code: 'empty_response',
+        error: 'Cerebras Cloud no devolvió una respuesta válida.'
+      };
+    }
+
+    return {
+      answer,
+      model: data.model || model,
+      provider: 'cerebras',
+      source: 'LEXIA (fuentes jurídicas + Cerebras Cloud)'
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw {
+        provider: 'cerebras',
+        code: 'timeout',
+        error: 'Cerebras Cloud no respondió dentro del tiempo límite.'
       };
     }
     throw error;
@@ -4472,6 +4643,57 @@ async function callOllamaChat(messages, options = {}) {
   }
 }
 
+function configuredProviderOrder() {
+  if (preferGroq) return ['groq', 'cerebras', 'openai', 'grok', 'ollama'];
+  if (preferCerebras) return ['cerebras', 'groq', 'openai', 'grok', 'ollama'];
+  if (preferGrok) return ['grok', 'groq', 'cerebras', 'openai', 'ollama'];
+  if (preferOllama) return ['ollama', 'groq', 'cerebras', 'grok', 'openai'];
+  return ['openai', 'groq', 'cerebras', 'grok', 'ollama'];
+}
+
+function canRunConfiguredProvider(provider, providerConfig = aiProviderConfig) {
+  return Boolean(
+    (provider === 'groq' && providerConfig.groq?.apiKey)
+    || (provider === 'cerebras' && providerConfig.cerebras?.apiKey)
+    || (provider === 'grok' && providerConfig.grok?.apiKey)
+    || (provider === 'openai' && providerConfig.openai?.apiKey)
+    || (provider === 'ollama' && providerConfig.ollama?.enabled)
+  );
+}
+
+function runConfiguredProvider(provider, messages, options = {}) {
+  const providerConfig = options.providerConfig || aiProviderConfig;
+  if (provider === 'groq') return callGroqChat(messages, { ...options, providerConfig });
+  if (provider === 'cerebras') return callCerebrasChat(messages, { ...options, providerConfig });
+  if (provider === 'grok') return callGrokChat(messages, { ...options, providerConfig });
+  if (provider === 'openai') return callOpenAiChat(messages, { ...options, providerConfig });
+  if (provider === 'ollama') return callOllamaChat(messages, { ...options, providerConfig });
+  throw { provider, code: 'unsupported_provider', error: `Proveedor no soportado: ${provider}` };
+}
+
+function buildConsultantMessages(messages, provider) {
+  const specialty = provider === 'cerebras'
+    ? 'Revisa coherencia jurídica, contradicciones, ambigüedades y vacíos de información.'
+    : 'Revisa pertinencia, utilidad práctica y comprensión de la necesidad concreta del usuario.';
+  return [
+    {
+      role: 'system',
+      content: [
+        messages[0]?.content || buildLexiaSystemPrompt(),
+        '',
+        'ROL INTERNO DE CONSULTOR:',
+        '- No redactes la respuesta final para el usuario.',
+        '- Analiza únicamente la necesidad detectada en el último mensaje.',
+        `- ${specialty}`,
+        '- Usa el contexto jurídico proporcionado como límite factual.',
+        '- Señala incertidumbres; no inventes normas, artículos, fechas, expedientes ni hechos.',
+        '- Devuelve un informe breve que otra capa de LEXIA pueda contrastar y sintetizar.'
+      ].join('\n')
+    },
+    ...messages.slice(1)
+  ];
+}
+
 async function generateWithConfiguredProvider(messages, options = {}) {
   if (forceLocalProvider) {
     return {
@@ -4483,32 +4705,31 @@ async function generateWithConfiguredProvider(messages, options = {}) {
     };
   }
 
-  const providers = preferGroq
-    ? ['groq', 'grok', 'openai', 'ollama']
-    : (preferGrok
-      ? ['grok', 'groq', 'openai', 'ollama']
-      : (preferOllama ? ['ollama', 'groq', 'grok', 'openai'] : ['openai', 'groq', 'grok', 'ollama']));
-  const errors = [];
   const providerConfig = options.providerConfig || aiProviderConfig;
-  const canRunProvider = provider => (
-    (provider === 'groq' && providerConfig.groq?.apiKey)
-    || (provider === 'grok' && providerConfig.grok?.apiKey)
-    || (provider === 'openai' && providerConfig.openai?.apiKey)
-    || (provider === 'ollama' && providerConfig.ollama?.enabled)
+  const preferredOrder = configuredProviderOrder();
+  const providers = providerStrategy === 'ensemble' && configuredConsultants.length
+    ? configuredConsultants
+    : preferredOrder;
+  const errors = [];
+  const canRunProvider = provider => canRunConfiguredProvider(provider, providerConfig);
+  const runProvider = (provider, consultation = false) => runConfiguredProvider(
+    provider,
+    consultation ? buildConsultantMessages(messages, provider) : messages,
+    { ...options, providerConfig, ...(consultation ? { maxTokens: 700 } : {}) }
   );
-  const runProvider = provider => {
-    if (provider === 'groq') return callGroqChat(messages, { ...options, providerConfig });
-    if (provider === 'grok') return callGrokChat(messages, { ...options, providerConfig });
-    if (provider === 'openai') return callOpenAiChat(messages, { ...options, providerConfig });
-    if (provider === 'ollama') return callOllamaChat(messages, { ...options, providerConfig });
-    throw { provider, code: 'unsupported_provider', error: `Proveedor no soportado: ${provider}` };
-  };
 
   if (providerStrategy === 'ensemble') {
     const runnableProviders = providers.filter(canRunProvider);
+    for (const provider of providers.filter(item => !canRunProvider(item))) {
+      errors.push({
+        provider,
+        code: 'not_configured',
+        error: `${provider} no está configurado para la consulta conjunta.`
+      });
+    }
     const settled = await Promise.allSettled(runnableProviders.map(async provider => ({
       provider,
-      result: await runProvider(provider)
+      result: await runProvider(provider, true)
     })));
     const successes = [];
 
@@ -4529,6 +4750,12 @@ async function generateWithConfiguredProvider(messages, options = {}) {
       const primary = successes[0];
       return {
         ...primary,
+        consultations: successes.map(item => ({
+          provider: item.provider,
+          model: item.model,
+          source: item.source,
+          answer: item.answer
+        })),
         providerErrors: errors,
         providerStrategy: 'ensemble',
         providerChecks: successes.map(item => ({
@@ -4562,6 +4789,71 @@ async function generateWithConfiguredProvider(messages, options = {}) {
   return { answer: '', provider: 'local', model: 'local-rag-engine', source: 'LEXIA RAG Local', providerErrors: errors };
 }
 
+async function synthesizeProviderConsultations(messages, options = {}) {
+  const consultations = Array.isArray(options.consultations) ? options.consultations : [];
+  if (!consultations.length) return null;
+
+  const providerConfig = options.providerConfig || aiProviderConfig;
+  const synthesizer = configuredProviderOrder()
+    .find(provider => canRunConfiguredProvider(provider, providerConfig));
+  if (!synthesizer) return null;
+
+  const reports = consultations.map((item, index) => (
+    `CONSULTA DE APOYO ${index + 1}:\n${String(item.answer || '').trim()}`
+  )).join('\n\n');
+  const synthesisMessages = [
+    {
+      role: 'system',
+      content: [
+        'Eres la capa final de síntesis de LEXIA, una IA jurídica peruana.',
+        'REGLAS OBLIGATORIAS:',
+        '- Los textos de apoyo son opiniones de consultores, no fuentes jurídicas.',
+        '- Responde con voz propia de LEXIA; nunca menciones consultores, proveedores, modelos ni este proceso.',
+        '- Conserva únicamente lo que sea pertinente para la intención detectada.',
+        '- Si un aporte contradice las fuentes jurídicas verificadas, descártalo.',
+        '- No agregues artículos, leyes, fechas o expedientes que no estén en el contexto jurídico verificado.',
+        '- Usa la respuesta local como ancla factual y mejora su análisis solo cuando los aportes sean compatibles.',
+        '- Entrega una sola respuesta natural, directa y sin explicar el proceso interno.'
+      ].join('\n')
+    },
+    {
+      role: 'user',
+      content: [
+        `CONSULTA ACTUAL:\n${String(options.userQuery || '').trim()}`,
+        '',
+        `RESPUESTA LOCAL BASADA EN FUENTES:\n${String(options.localSynthesis || '').trim()}`,
+        '',
+        reports,
+        '',
+        'Redacta ahora la respuesta final de LEXIA.'
+      ].join('\n')
+    }
+  ];
+
+  try {
+    const result = await runConfiguredProvider(synthesizer, synthesisMessages, {
+      ...options,
+      providerConfig,
+      temperature: Math.min(Number(options.temperature ?? 0.25), 0.3),
+      maxTokens: 900
+    });
+    return {
+      ...result,
+      source: 'LEXIA Integrated Consultation',
+      consultedProviders: consultations.map(item => item.provider)
+    };
+  } catch (error) {
+    return {
+      answer: '',
+      provider: synthesizer,
+      model: '',
+      source: 'LEXIA Integrated Consultation',
+      error: error.error || error.message || 'No se pudo sintetizar las consultas de apoyo.',
+      consultedProviders: consultations.map(item => item.provider)
+    };
+  }
+}
+
 function buildLexiaSystemPrompt() {
   return `Eres LEXIA, una IA jurídica especializada en Derecho peruano. Tu función en "Nueva Consulta (IA)" es conversar con la persona como lo haría un abogado cercano, paciente y claro: escuchas primero, explicas con palabras entendibles y luego das criterio jurídico riguroso, útil y verificable cuando existan fuentes.
 
@@ -4593,7 +4885,7 @@ CAPACIDADES QUE DEBES EJECUTAR EN CADA RESPUESTA:
 - Conversación antes que fuente: si el usuario está aclarando o siguiendo el hilo, responde a esa aclaración. No abras secciones de fuentes salvo que cites una norma, entidad o referencia concreta que cambie la respuesta.
 - Consulta de leyes: identifica normas, códigos, artículos, requisitos, plazos y autoridades competentes cuando aplique.
 - Jurisprudencia: cita sentencias, precedentes, criterios o jurisprudencia solo si aparecen en la base de conocimiento o si el usuario los proporciona. No inventes números de expediente, fechas, salas ni citas.
-- Fidelidad de fuentes: no cites números de artículos, leyes, expedientes, casaciones, sentencias ni entidades si no aparecen expresamente en el RAG, en la síntesis interna de LEXIA o en el mensaje del usuario. Si no hay artículo exacto, di "la base local ubica la garantía, pero no tengo artículo exacto verificado en este contexto".
+- Fidelidad de fuentes: no cites números de artículos, leyes, expedientes, casaciones, sentencias ni entidades si no aparecen expresamente en el contexto jurídico verificado o en el mensaje del usuario. Si no hay un artículo exacto, dilo de forma natural: "No tengo el artículo exacto verificado en este momento". Nunca menciones RAG, archivos, bases internas, nombres técnicos, proveedores, modelos ni procesos de LEXIA.
 - Fundamento visible: cuando afirmes que algo está prohibido, protegido, sancionado, permitido o que un delito es grave, añade la norma en corchetes, por ejemplo [Código Penal, art. 200] o [Ley 29571]. Usa esos corchetes solo si la norma aparece en el RAG, en la síntesis interna o fue dada por el usuario.
 - Citas resaltables: escribe toda norma sustantiva en formato exacto de corchetes para que la interfaz la marque como base legal: [Código Penal, art. 173], [Código Penal, art. 176-A], [Ley 30403], [Constitución Política del Perú, art. 2]. No uses ese formato si la norma no está verificada por el RAG, la síntesis interna o el usuario.
 - Análisis de casos: si hay hechos, separa hechos relevantes, problema jurídico, regla aplicable, análisis y conclusión.
@@ -4672,7 +4964,8 @@ function getLexiaEngine() {
       buildLocalAnswer: buildMemoryAwareLocalAnswer
     },
     providers: {
-      generate: generateWithConfiguredProvider
+      generate: generateWithConfiguredProvider,
+      synthesize: synthesizeProviderConsultations
     },
     config: {
       temperature: () => Number(process.env.OPENAI_TEMPERATURE || 0.35),
@@ -5480,9 +5773,14 @@ app.listen(port, async () => {
   console.log(`🧠 Modelo Grok: ${grokModel}`);
   console.log(`⚡ GroqCloud: ${groqKey ? '✅ Conectado' : '❌ No configurado'}`);
   console.log(`🧠 Modelo GroqCloud: ${groqModel}`);
+  console.log(`⚡ Cerebras Cloud: ${cerebrasKey ? '✅ Conectado' : '❌ No configurado'}`);
+  console.log(`🧠 Modelo Cerebras: ${cerebrasModel}`);
   console.log(`🧠 Ollama: ${ollamaEnabled ? `✅ ${ollamaBaseUrl}` : '❌ No configurado'}`);
   console.log(`🧩 Modelo Ollama: ${ollamaModel}`);
-  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferGroq ? 'groq' : (preferGrok ? 'grok' : (preferOllama ? 'ollama' : 'openai')))}`);
+  console.log(`🎛️ Proveedor preferido: ${forceLocalProvider ? 'local' : (preferGroq ? 'groq' : (preferCerebras ? 'cerebras' : (preferGrok ? 'grok' : (preferOllama ? 'ollama' : 'openai'))))}`);
   console.log(`🧪 Estrategia IA: ${providerStrategy === 'ensemble' ? 'ensemble (consulta proveedores configurados)' : 'fallback (primer proveedor disponible)'}`);
+  if (providerStrategy === 'ensemble') {
+    console.log(`🤝 Consultores IA: ${configuredConsultants.length ? configuredConsultants.join(', ') : 'todos los configurados'}`);
+  }
   console.log('\n' + '='.repeat(60) + '\n');
 });

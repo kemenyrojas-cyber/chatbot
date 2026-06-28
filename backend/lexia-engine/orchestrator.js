@@ -82,6 +82,26 @@ function detectRagResultScopes(item = {}) {
   ].filter(Boolean).join(' '));
 }
 
+const normativeSourcePatterns = {
+  constitucion: /\bconstitucion(?: politica)?(?: del peru)?\b/,
+  codigo_penal: /\bcodigo penal\b/,
+  codigo_civil: /\bcodigo civil\b/
+};
+
+function resultMatchesNormativeSource(item = {}, normativeSource = null) {
+  if (!normativeSource?.id) return true;
+  const pattern = normativeSourcePatterns[normativeSource.id];
+  if (!pattern) return true;
+  const metadata = normalizeScopeText([
+    item.title,
+    item.source,
+    item.module,
+    item.matter,
+    item.url
+  ].filter(Boolean).join(' '));
+  return pattern.test(metadata);
+}
+
 function resultLooksLikeArea(item = {}, areaId = '') {
   const text = normalizeScopeText([
     item.title,
@@ -135,6 +155,14 @@ function rebuildRagContext(results = []) {
 }
 
 function filterRagContextForIntent(ragContext, query, intent) {
+  const normativeSource = intent?.interpretation?.normativeSource;
+  if (normativeSource?.id) {
+    const normativeResults = (ragContext?.results || [])
+      .filter(item => resultMatchesNormativeSource(item, normativeSource));
+    if (normativeResults.length !== (ragContext?.results || []).length) {
+      return rebuildRagContext(normativeResults);
+    }
+  }
   const currentScopes = detectLegalCaseScopes([
     query,
     intent?.topic?.id,
@@ -262,8 +290,6 @@ function createLexiaEngine(deps) {
     const searchMemoryBase = intent?.interpretation?.topicShift ? userQuery : memorySearchQuery;
     const interpretationSearchQuery = brain.buildInterpretationSearchQuery(userQuery, intent, searchMemoryBase);
     const localResults = knowledge.search(interpretationSearchQuery);
-    const localSearchEvaluation = knowledge.evaluateSufficiency(interpretationSearchQuery, localResults);
-    knowledge.logSufficiency('Lexia Engine', interpretationSearchQuery, localSearchEvaluation);
 
     const conversationModeId = intent?.conversationMode?.id || 'case_start';
     const dialogueMode = !['source_request', 'norm_request'].includes(conversationModeId)
@@ -274,6 +300,8 @@ function createLexiaEngine(deps) {
       userQuery,
       intent
     );
+    const localSearchEvaluation = knowledge.evaluateSufficiency(interpretationSearchQuery, ragContext.results);
+    knowledge.logSufficiency('Lexia Engine', interpretationSearchQuery, localSearchEvaluation);
     const legalReasoningProfile = reasoner.buildProfile(userQuery, intent, effectiveConversationMemory, ragContext.results);
     const legalReasoningContext = reasoner.buildContext(legalReasoningProfile);
     const legalGraphReasoning = reasoner.buildGraph(intent, ragContext.results);
@@ -394,10 +422,48 @@ function createLexiaEngine(deps) {
       }
     ];
 
-    const providerResult = await providers.generate(messages, {
+    let providerResult = await providers.generate(messages, {
       temperature,
       providerConfig: options.providerConfig || (typeof config.providerConfig === 'function' ? config.providerConfig() : undefined)
     });
+    let consultationSynthesis = null;
+    if (
+      providerResult.providerStrategy === 'ensemble'
+      && Array.isArray(providerResult.consultations)
+      && providerResult.consultations.length
+      && typeof providers.synthesize === 'function'
+    ) {
+      consultationSynthesis = await providers.synthesize(messages, {
+        consultations: providerResult.consultations,
+        userQuery,
+        localSynthesis,
+        temperature,
+        providerConfig: options.providerConfig || (typeof config.providerConfig === 'function' ? config.providerConfig() : undefined)
+      });
+      if (consultationSynthesis?.answer) {
+        providerResult = {
+          ...providerResult,
+          answer: consultationSynthesis.answer,
+          provider: consultationSynthesis.provider,
+          model: consultationSynthesis.model,
+          source: consultationSynthesis.source,
+          consultedProviders: consultationSynthesis.consultedProviders
+        };
+      } else {
+        providerResult = {
+          ...providerResult,
+          answer: '',
+          providerErrors: [
+            ...(providerResult.providerErrors || []),
+            {
+              provider: consultationSynthesis?.provider || 'synthesis',
+              code: 'consultation_synthesis_failed',
+              error: consultationSynthesis?.error || 'No se pudo integrar las consultas de apoyo.'
+            }
+          ]
+        };
+      }
+    }
     if (!providerResult.answer) {
       const localEvaluation = evaluateCandidate({
         id: 'local-synthesis',
@@ -431,6 +497,9 @@ function createLexiaEngine(deps) {
           ragSources: ragContext.sources,
           providerErrors: providerResult.providerErrors,
           providerStrategy: providerResult.providerStrategy || 'fallback',
+          providerChecks: providerResult.providerChecks || [],
+          consultations: providerResult.consultations || [],
+          consultationSynthesis,
           reasoning: providerResult.reasoning,
           localSynthesis,
           memoryMessages: effectiveConversationMemory.length,
@@ -491,6 +560,8 @@ function createLexiaEngine(deps) {
           providerErrors: providerResult.providerErrors,
           providerStrategy: providerResult.providerStrategy || 'fallback',
           providerChecks: providerResult.providerChecks || [],
+          consultations: providerResult.consultations || [],
+          consultationSynthesis,
           rejectedProvider: {
             provider: providerResult.provider,
             model: providerResult.model,
@@ -571,6 +642,8 @@ function createLexiaEngine(deps) {
         providerErrors: providerResult.providerErrors,
         providerStrategy: providerResult.providerStrategy || 'fallback',
         providerChecks: providerResult.providerChecks || [],
+        consultations: providerResult.consultations || [],
+        consultationSynthesis,
         reasoning: providerResult.reasoning,
         engineStage: 'providers:answer'
       }
@@ -583,5 +656,7 @@ function createLexiaEngine(deps) {
 }
 
 module.exports = {
-  createLexiaEngine
+  createLexiaEngine,
+  filterRagContextForIntent,
+  resultMatchesNormativeSource
 };

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"
 
 
 def normalize(value: Any) -> str:
@@ -288,6 +288,101 @@ def is_replacement_language(text: str) -> bool:
     ))
 
 
+NORMATIVE_SOURCES = (
+    {
+        "id": "constitucion",
+        "label": "Constitución Política del Perú",
+        "area": {"id": "derecho_constitucional", "label": "Derecho Constitucional"},
+        "pattern": r"\b(constitucion politica del peru|constitucion del peru|constitucion|carta magna)\b",
+    },
+    {
+        "id": "codigo_penal",
+        "label": "Código Penal",
+        "area": {"id": "derecho_penal", "label": "Derecho Penal"},
+        "pattern": r"\b(codigo penal|cod penal)\b",
+    },
+    {
+        "id": "codigo_civil",
+        "label": "Código Civil",
+        "area": {"id": "derecho_civil", "label": "Derecho Civil"},
+        "pattern": r"\b(codigo civil|cod civil)\b",
+    },
+)
+
+
+def detect_normative_source(text: str) -> dict[str, Any] | None:
+    normalized = normalize(text)
+    for source in NORMATIVE_SOURCES:
+        if re.search(source["pattern"], normalized):
+            return {
+                "id": source["id"],
+                "label": source["label"],
+                "area": dict(source["area"]),
+            }
+    return None
+
+
+def extract_article_number(text: str) -> str:
+    match = re.search(r"\bart(?:iculo)?\s*(\d+[a-z]?)\b", normalize(text))
+    return match.group(1) if match else ""
+
+
+def analyze_normative_memory(query: str, messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    current_source = detect_normative_source(query)
+    memory_source = None
+    memory_article = ""
+    for item in reversed(messages[-12:]):
+        if item.get("role") != "user":
+            continue
+        content = str(item.get("content") or "")
+        if not memory_article:
+            memory_article = extract_article_number(content)
+        if not memory_source:
+            memory_source = detect_normative_source(content)
+        if memory_source and memory_article:
+            break
+
+    source = current_source or memory_source
+    current_article = extract_article_number(query)
+    article = current_article or memory_article
+    if not source:
+        return None
+
+    normalized = normalize(query)
+    explicit_request = bool(
+        current_article
+        or re.search(
+            r"\b(que dice|dime|explicame|quiero que me digas|quiero saber|"
+            r"texto|articulo|norma|contenido|significa)\b",
+            normalized,
+        )
+    )
+    return {
+        "source": source,
+        "origin": "current" if current_source else "memory",
+        "requestedArticle": article,
+        "explicitRequest": explicit_request,
+        "currentOverridesMemory": bool(
+            current_source and memory_source and current_source["id"] != memory_source["id"]
+        ),
+        "memorySource": memory_source,
+    }
+
+
+def is_explicit_request(text: str) -> bool:
+    normalized = normalize(text)
+    return bool(
+        "?" in str(text)
+        or extract_article_number(text)
+        or re.search(
+            r"^(que|como|cuando|donde|por que|cual)\b|"
+            r"\b(quiero que me digas|quiero saber|dime|explicame|defineme|"
+            r"que dice|que significa|que puedo hacer|necesito saber)\b",
+            normalized,
+        )
+    )
+
+
 def answers_question(query: str, question: str) -> bool:
     answer = normalize(query)
     asked = normalize(question)
@@ -316,6 +411,7 @@ def answers_question(query: str, question: str) -> bool:
 def analyze_dialogue(query: str, messages: list[dict[str, Any]], ambiguous: bool) -> dict[str, Any]:
     text = normalize(query)
     has_memory = bool(messages)
+    explicit_request = is_explicit_request(query)
     correction = has_memory and is_replacement_language(text) and not re.search(
         r"\b(otro caso|otra consulta|cambiando de tema|ahora quiero hablar|nuevo tema)\b", text
     )
@@ -328,6 +424,7 @@ def analyze_dialogue(query: str, messages: list[dict[str, Any]], ambiguous: bool
         has_memory
         and assistant_question
         and answers_question(query, assistant_question)
+        and not explicit_request
         and not correction
         and not explicit_topic_shift
     )
@@ -339,7 +436,7 @@ def analyze_dialogue(query: str, messages: list[dict[str, Any]], ambiguous: bool
         speech_act = "answer"
     elif re.search(r"\b(no entiendo|no comprendo|no me queda claro|me confunde)\b", text):
         speech_act = "confusion"
-    elif "?" in str(query) or re.search(r"^(que|como|cuando|donde|por que|cual)\b", text):
+    elif explicit_request:
         speech_act = "question"
     elif has_memory:
         speech_act = "new_fact"
@@ -424,6 +521,8 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     messages = payload.get("memoryMessages") if isinstance(payload.get("memoryMessages"), list) else []
     current = normalize(query)
     previous = memory_text(messages)
+    normative_memory = analyze_normative_memory(query, messages)
+    normative_request = bool(normative_memory and normative_memory["explicitRequest"])
     replacement_turn = bool(messages) and is_replacement_language(current)
     baseline_interpretation = baseline.get("interpretation") if isinstance(baseline.get("interpretation"), dict) else {}
     authoritative_norm = bool(
@@ -482,13 +581,68 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     intent = dict(baseline)
     intent["conversationMode"] = conversation_mode(query, messages)
     dialogue = analyze_dialogue(query, messages, ambiguous)
-    if dialogue["userGoal"]:
+    if normative_request:
+        source = normative_memory["source"]
+        article = normative_memory["requestedArticle"]
+        intent["type"] = {
+            "id": "consulta_normativa",
+            "label": "Consulta normativa",
+            "confidence": "alta",
+        }
+        intent["area"] = {**source["area"], "confidence": "alta"}
+        intent["topic"] = {
+            "id": source["id"],
+            "label": source["label"],
+            "confidence": "alta",
+        }
+        intent["objective"] = {
+            "id": "ubicar_norma",
+            "label": "Ubicar norma o artículo",
+            "confidence": "alta",
+        }
+        intent["conversationMode"] = {
+            "id": "norm_request",
+            "label": "Pedido de norma o artículo",
+            "hasMemory": bool(messages),
+            "status": None,
+            "deterministic": True,
+        }
+        intent["concepts"] = list(dict.fromkeys(filter(None, [
+            source["label"],
+            f"artículo {article}" if article else "",
+            *list(intent.get("concepts") or []),
+        ])))[:12]
+        intent["needsMoreFacts"] = False
+        ambiguous = False
+        confidence = "alta"
+        top = {
+            "id": source["id"],
+            "area": source["area"],
+            "topic": {"id": source["id"], "label": source["label"]},
+            "score": 100.0,
+            "currentScore": 100.0,
+            "memoryScore": 0.0,
+            "evidence": [source["label"], f"artículo {article}" if article else ""],
+            "memoryEvidence": [],
+        }
+        margin = 100.0
+        dialogue["speechAct"] = "question"
+        dialogue["answeredPreviousQuestion"] = False
+        dialogue["responsePlan"]["avoidQuestion"] = ""
+        dialogue["responsePlan"]["maxQuestions"] = 0
+        dialogue["responsePlan"]["includeSources"] = True
+        if normative_memory["currentOverridesMemory"]:
+            dialogue["supersedesPriorInterpretation"] = True
+            dialogue["memoryPolicy"] = "replace"
+    if dialogue["userGoal"] and not normative_request:
         intent["objective"] = {
             "id": dialogue["userGoal"]["id"],
             "label": dialogue["userGoal"]["label"],
             "confidence": "alta",
         }
-    if authoritative_norm:
+    if normative_request:
+        pass
+    elif authoritative_norm:
         ambiguous = False
         confidence = "alta"
         top = {
@@ -532,11 +686,18 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         dialogue["responsePlan"]["maxQuestions"] = 0
     interpretation["dialogue"] = dialogue
     interpretation["ignoredMemory"] = dialogue["supersedesPriorInterpretation"]
+    interpretation["normativeSource"] = ({
+        "id": normative_memory["source"]["id"],
+        "label": normative_memory["source"]["label"],
+        "origin": normative_memory["origin"],
+        "requestedArticle": normative_memory["requestedArticle"],
+        "currentOverridesMemory": normative_memory["currentOverridesMemory"],
+    } if normative_memory else None)
     interpretation["currentAreaScore"] = top["currentScore"] if top else 0
     interpretation["currentTopicScore"] = top["currentScore"] if top else 0
     interpretation["pythonBrain"] = {
         "version": ENGINE_VERSION,
-        "status": "normative" if authoritative_norm else ("clarify" if ambiguous else "selected"),
+        "status": "normative" if (authoritative_norm or normative_request) else ("clarify" if ambiguous else "selected"),
         "confidence": confidence,
         "margin": round(margin, 2),
         "memoryConflict": memory_conflict,
@@ -550,7 +711,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "version": ENGINE_VERSION,
         "query": query,
         "decision": {
-            "status": "normative" if authoritative_norm else ("clarify" if ambiguous else "selected"),
+            "status": "normative" if (authoritative_norm or normative_request) else ("clarify" if ambiguous else "selected"),
             "confidence": confidence,
             "margin": round(margin, 2),
             "selected": top,
