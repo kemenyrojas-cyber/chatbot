@@ -278,6 +278,21 @@ class BrainScenarioMatrixTest(unittest.TestCase):
         self.assertTrue(interpretation["ignoredMemory"])
         self.assertEqual(interpretation["dialogue"]["memoryPolicy"], "replace")
 
+    def test_code_definition_is_not_treated_as_article_or_source_request(self):
+        result = analyze({
+            "query": "estoy consultando sobre que es el codigo penal",
+            "baseline": {},
+            "memoryMessages": [],
+        })
+        intent = result["intent"]
+        source = intent["interpretation"]["normativeSource"]
+        self.assertEqual(source["id"], "codigo_penal")
+        self.assertEqual(source["requestKind"], "definition")
+        self.assertEqual(intent["conversationMode"]["id"], "definition_request")
+        self.assertFalse(intent["conversationMode"]["deterministic"])
+        self.assertEqual(intent["objective"]["id"], "comprender_norma")
+        self.assertFalse(intent["interpretation"]["dialogue"]["responsePlan"]["includeSources"])
+
 
 if __name__ == "__main__":
     unittest.main()

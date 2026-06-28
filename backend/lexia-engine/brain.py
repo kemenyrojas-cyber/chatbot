@@ -349,8 +349,24 @@ def analyze_normative_memory(query: str, messages: list[dict[str, Any]]) -> dict
         return None
 
     normalized = normalize(query)
+    definition_request = bool(re.search(
+        r"\b(que es|que significa|que quiere decir|a que se refiere|defineme)\b",
+        normalized,
+    ))
+    source_request = bool(re.search(
+        r"\b(fuente|base legal|fundamento|sustento|donde dice|de donde sale)\b",
+        normalized,
+    ))
+    request_kind = (
+        "article_text" if current_article
+        else "definition" if definition_request
+        else "source" if source_request
+        else "normative_information"
+    )
     explicit_request = bool(
         current_article
+        or definition_request
+        or source_request
         or re.search(
             r"\b(que dice|dime|explicame|quiero que me digas|quiero saber|"
             r"texto|articulo|norma|contenido|significa)\b",
@@ -361,6 +377,7 @@ def analyze_normative_memory(query: str, messages: list[dict[str, Any]]) -> dict
         "source": source,
         "origin": "current" if current_source else "memory",
         "requestedArticle": article,
+        "requestKind": request_kind,
         "explicitRequest": explicit_request,
         "currentOverridesMemory": bool(
             current_source and memory_source and current_source["id"] != memory_source["id"]
@@ -584,6 +601,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     if normative_request:
         source = normative_memory["source"]
         article = normative_memory["requestedArticle"]
+        request_kind = normative_memory["requestKind"]
         intent["type"] = {
             "id": "consulta_normativa",
             "label": "Consulta normativa",
@@ -596,16 +614,25 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
             "confidence": "alta",
         }
         intent["objective"] = {
-            "id": "ubicar_norma",
-            "label": "Ubicar norma o artículo",
+            "id": "comprender_norma" if request_kind == "definition" else "ubicar_norma",
+            "label": "Comprender la norma" if request_kind == "definition" else "Ubicar norma o artículo",
             "confidence": "alta",
         }
+        mode_id = (
+            "definition_request" if request_kind == "definition"
+            else "source_request" if request_kind == "source"
+            else "norm_request"
+        )
         intent["conversationMode"] = {
-            "id": "norm_request",
-            "label": "Pedido de norma o artículo",
+            "id": mode_id,
+            "label": (
+                "Pregunta de definición o explicación" if mode_id == "definition_request"
+                else "Pedido de fuente o base legal" if mode_id == "source_request"
+                else "Pedido de norma o artículo"
+            ),
             "hasMemory": bool(messages),
             "status": None,
-            "deterministic": True,
+            "deterministic": mode_id in ("source_request", "norm_request"),
         }
         intent["concepts"] = list(dict.fromkeys(filter(None, [
             source["label"],
@@ -691,6 +718,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "label": normative_memory["source"]["label"],
         "origin": normative_memory["origin"],
         "requestedArticle": normative_memory["requestedArticle"],
+        "requestKind": normative_memory["requestKind"],
         "currentOverridesMemory": normative_memory["currentOverridesMemory"],
     } if normative_memory else None)
     interpretation["currentAreaScore"] = top["currentScore"] if top else 0

@@ -3561,6 +3561,21 @@ function buildDefinitionAnswer(query, intent, results = [], reasoningProfile = n
   const normalizedTerm = normalizeText(term);
   const definitions = [
     {
+      match: ['codigo penal', 'código penal'],
+      standalone: true,
+      answer: 'El **Código Penal** es el conjunto de normas que define qué conductas constituyen delitos y qué penas o consecuencias jurídicas pueden aplicarse. Sirve para determinar cuándo una conducta tiene relevancia penal; el procedimiento para investigar y juzgar esos hechos se regula en normas procesales distintas.'
+    },
+    {
+      match: ['codigo civil', 'código civil'],
+      standalone: true,
+      answer: 'El **Código Civil** reúne las reglas principales sobre personas, familia, bienes, propiedad, obligaciones, contratos y sucesiones. Se utiliza para resolver relaciones y conflictos jurídicos entre particulares.'
+    },
+    {
+      match: ['constitucion politica del peru', 'constitución política del perú', 'constitucion', 'constitución'],
+      standalone: true,
+      answer: 'La **Constitución Política del Perú** es la norma jurídica de mayor jerarquía del país. Reconoce derechos fundamentales, organiza el Estado y establece los límites y funciones de los poderes públicos.'
+    },
+    {
       match: ['revictimizacion', 'revictimización'],
       answer: 'Revictimización significa **hacer que la víctima vuelva a sufrir por la forma en que se maneja el caso**. Por ejemplo: hacerle repetir muchas veces lo ocurrido, exponerla, culparla, tratarla con dureza o no protegerla del agresor.'
     },
@@ -3592,13 +3607,16 @@ function buildDefinitionAnswer(query, intent, results = [], reasoningProfile = n
     if (rules.length) lines.push(`La idea relacionada es: **${rules[0]}**.`);
   }
 
-  if (legalBadges.length) {
+  const includeSources = intent?.interpretation?.dialogue?.responsePlan?.includeSources === true;
+  if (includeSources && legalBadges.length) {
     lines.push('');
     lines.push(`Base relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
 
-  lines.push('');
-  lines.push('Para tu caso, lo importante es no quedarse en la palabra, sino ver **qué hecho concreto prueba ese riesgo o concepto**.');
+  if (!found?.standalone) {
+    lines.push('');
+    lines.push('Para tu caso, lo importante es no quedarse en la palabra, sino ver **qué hecho concreto prueba ese riesgo o concepto**.');
+  }
   return lines.join('\n');
 }
 
