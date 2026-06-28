@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 
 
 def normalize(value: Any) -> str:
@@ -74,6 +74,14 @@ SCENARIOS = (
         ("me robaron", "me asaltaron", "fui estafado", "fui estafada"),
         ("robo", "hurto", "estafa", "fraude", "asalto", "extorsion"),
         ("denuncia", "fiscalia", "policia", "delito", "dinero"),
+    ),
+    Scenario(
+        "penal_honor", "derecho_penal", "Derecho Penal",
+        "Delitos contra el honor y afectación de la reputación",
+        ("comentarios falsos", "acusaciones falsas", "publicacion difamatoria",
+         "delito de difamacion", "delito de calumnia", "delito de injuria"),
+        ("difamacion", "calumnia", "injuria", "difamatorio", "reputacion", "honor"),
+        ("publicaron", "difundieron", "comentarios", "redes sociales", "acusacion", "falso"),
     ),
     Scenario(
         "penal_otros", "derecho_penal", "Derecho Penal",
@@ -177,7 +185,8 @@ STRONG_SIGNALS = {
     "droga", "cocaina", "marihuana", "pasta basica", "estupefaciente",
     "narcotrafico", "microcomercializacion", "arma", "pistola", "revolver",
     "municiones", "explosivos", "robo", "hurto", "estafa", "fraude",
-    "asalto", "extorsion", "homicidio", "delito", "fiscalia", "imputado",
+    "asalto", "extorsion", "homicidio", "difamacion", "calumnia", "injuria",
+    "delito", "fiscalia", "imputado",
     "detenido", "custodia", "patria potestad", "alimentos", "divorcio",
     "posesion", "propiedad", "despido", "indecopi", "municipalidad",
     "entidad publica", "sunat", "habeas corpus", "habeas data", "amparo",
@@ -221,6 +230,147 @@ def confidence_label(score: float, margin: float) -> str:
     return "baja"
 
 
+def last_assistant_question(messages: list[dict[str, Any]]) -> str:
+    for item in reversed(messages):
+        if item.get("role") != "assistant":
+            continue
+        content = str(item.get("content") or "").strip()
+        for line in reversed(content.splitlines()):
+            if "?" not in line:
+                continue
+            question_start = line.rfind("¿")
+            return line[question_start if question_start >= 0 else 0:].strip()
+    return ""
+
+
+def extract_current_focus(query: str) -> str:
+    raw = str(query or "").strip()
+    patterns = (
+        r"(?:ya\s+te\s+dije\s+que\s+)?(?:estoy\s+hablando|hablo)\s+de\s+(.+)",
+        r"(?:me\s+refiero|quiero\s+decir)\s+(?:a|que)?\s*(.+)",
+        r"\bno\s+(?:es|era)\s+.+?[,.;]\s*(?:es|era|sino)\s+(.+)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, raw, re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" .,:;")
+    cleaned = re.sub(
+        r"^(?:no[,:\s]+|ya\s+te\s+dije\s+que\s+|te\s+estoy\s+diciendo\s+que\s+|"
+        r"lo\s+que\s+digo\s+es\s+|corrijo[:,]?\s*)",
+        "",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip(" .,:;")
+
+
+def detect_user_goal(text: str) -> dict[str, str] | None:
+    goals = (
+        ("defense", "defender a una persona", r"\b(defender|defensa|mi defendido|mi patrocinado)\b"),
+        ("report", "denunciar un hecho", r"\b(denunciar|presentar denuncia|hacer una denuncia)\b"),
+        ("understand", "entender la situación", r"\b(entender|comprender|saber que significa|informacion)\b"),
+        ("claim", "presentar un reclamo o demanda", r"\b(reclamar|demandar|presentar demanda)\b"),
+        ("prepare", "preparar un documento", r"\b(redactar|preparar|hacer un escrito|hacer una carta)\b"),
+    )
+    for goal_id, label, pattern in goals:
+        if re.search(pattern, text):
+            return {"id": goal_id, "label": label}
+    return None
+
+
+def is_replacement_language(text: str) -> bool:
+    return bool(re.search(
+        r"\b(no dije eso|eso no es|eso no fue|te equivocas|estas mal|incorrecto|corrige|"
+        r"malinterpretaste|ya te dije|te estoy diciendo|hablo de|estoy hablando de|"
+        r"me refiero|quiero decir|no es .+ sino|otro caso|otra consulta|cambiando de tema|"
+        r"ahora quiero hablar|nuevo tema)\b",
+        text,
+    ))
+
+
+def answers_question(query: str, question: str) -> bool:
+    answer = normalize(query)
+    asked = normalize(question)
+    if not asked:
+        return False
+    if re.search(r"\bcuando|fecha|que dia\b", asked):
+        return bool(re.search(
+            r"\b(hoy|ayer|mañana|hace\s+\d+|en\s+\d{4}|\d{1,2}[/-]\d{1,2}|"
+            r"enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|"
+            r"octubre|noviembre|diciembre)\b",
+            answer,
+        ))
+    if re.search(r"\b(denuncia|citacion|notificacion|preventiva)\b", asked):
+        return bool(re.search(r"\b(denuncia|denunciado|citacion|notificacion|preventiva|todavia no|aun no)\b", answer))
+    if re.search(r"\b(denunciar|defender|entender)\b", asked):
+        return detect_user_goal(answer) is not None
+    if re.search(r"\b(necesitas lograr|quieres lograr|objetivo|que buscas|que necesitas)\b", asked):
+        return detect_user_goal(answer) is not None
+    if re.search(r"\b(que ocurrio|que paso|cuentame que)\b", asked):
+        return len(answer.split()) >= 3
+    if re.fullmatch(r"(si|sí|no|todavia no|aun no|ya)", answer):
+        return True
+    return False
+
+
+def analyze_dialogue(query: str, messages: list[dict[str, Any]], ambiguous: bool) -> dict[str, Any]:
+    text = normalize(query)
+    has_memory = bool(messages)
+    correction = has_memory and is_replacement_language(text) and not re.search(
+        r"\b(otro caso|otra consulta|cambiando de tema|ahora quiero hablar|nuevo tema)\b", text
+    )
+    explicit_topic_shift = bool(re.search(
+        r"\b(otro caso|otra consulta|cambiando de tema|ahora quiero hablar|nuevo tema)\b",
+        text,
+    ))
+    assistant_question = last_assistant_question(messages)
+    short_answer = bool(
+        has_memory
+        and assistant_question
+        and answers_question(query, assistant_question)
+        and not correction
+        and not explicit_topic_shift
+    )
+    if correction:
+        speech_act = "correction"
+    elif explicit_topic_shift:
+        speech_act = "topic_shift"
+    elif short_answer:
+        speech_act = "answer"
+    elif re.search(r"\b(no entiendo|no comprendo|no me queda claro|me confunde)\b", text):
+        speech_act = "confusion"
+    elif "?" in str(query) or re.search(r"^(que|como|cuando|donde|por que|cual)\b", text):
+        speech_act = "question"
+    elif has_memory:
+        speech_act = "new_fact"
+    else:
+        speech_act = "case_start"
+
+    goal = detect_user_goal(text)
+    focus = extract_current_focus(query) if correction or explicit_topic_shift else str(query or "").strip()
+    replace_prior = correction or explicit_topic_shift
+    needs_confirmation = ambiguous and speech_act not in ("answer", "correction")
+    return {
+        "speechAct": speech_act,
+        "currentFocus": focus,
+        "userGoal": goal,
+        "lastAssistantQuestion": assistant_question,
+        "answeredPreviousQuestion": short_answer,
+        "supersedesPriorInterpretation": replace_prior,
+        "memoryPolicy": "replace" if replace_prior else ("continue" if has_memory else "new"),
+        "responsePlan": {
+            "acknowledgeLatestTurn": has_memory or speech_act in ("correction", "answer", "new_fact"),
+            "acknowledgeCorrection": correction,
+            "answerLatestTurnFirst": True,
+            "confirmUnderstanding": needs_confirmation,
+            "includeSources": False,
+            "maxQuestions": 1,
+            "maxParagraphs": 3,
+            "avoidQuestion": assistant_question if short_answer else "",
+        },
+    }
+
+
 def conversation_mode(query: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
     text = normalize(query)
     has_memory = bool(messages)
@@ -234,7 +384,8 @@ def conversation_mode(query: str, messages: list[dict[str, Any]]) -> dict[str, A
         ("definition_request", "Pregunta de definición o explicación",
          r"\b(que es|que significa|que quiere decir|a que se refiere|defineme)\b"),
         ("correction", "Corrección del usuario",
-         r"\b(no dije eso|eso no es|te equivocas|estas mal|incorrecto|corrige|malinterpretaste)\b"),
+         r"\b(no dije eso|eso no es|te equivocas|estas mal|incorrecto|corrige|malinterpretaste|"
+         r"ya te dije|te estoy diciendo|hablo de|estoy hablando de|me refiero|quiero decir)\b"),
         ("confusion", "Usuario confundido",
          r"\b(no entiendo|no comprendo|no me queda claro|me confunde|explicame mas simple)\b"),
         ("action_request", "Pedido de próximos pasos",
@@ -242,12 +393,13 @@ def conversation_mode(query: str, messages: list[dict[str, Any]]) -> dict[str, A
     )
     for mode_id, label, pattern in rules:
         if re.search(pattern, text):
+            deterministic = mode_id in ("source_request", "norm_request")
             return {
                 "id": mode_id,
                 "label": label,
                 "hasMemory": has_memory,
                 "status": None,
-                "deterministic": True,
+                "deterministic": deterministic,
             }
     if has_memory and (len(text.split()) <= 4 or re.search(r"\b(si|no|continua|explica|por que|como asi)\b", text)):
         return {
@@ -272,6 +424,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     messages = payload.get("memoryMessages") if isinstance(payload.get("memoryMessages"), list) else []
     current = normalize(query)
     previous = memory_text(messages)
+    replacement_turn = bool(messages) and is_replacement_language(current)
     baseline_interpretation = baseline.get("interpretation") if isinstance(baseline.get("interpretation"), dict) else {}
     authoritative_norm = bool(
         baseline_interpretation.get("normativeReference")
@@ -282,7 +435,11 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     for scenario in SCENARIOS:
         current_score, current_evidence = score_scenario(current, scenario)
         previous_score, previous_evidence = score_scenario(previous, scenario)
-        memory_contribution = previous_score * (0.5 if current_score == 0 else 0.25) if current_score < 6 else 0.0
+        memory_contribution = (
+            previous_score * (0.5 if current_score == 0 else 0.25)
+            if current_score < 6 and not replacement_turn
+            else 0.0
+        )
         total = current_score + memory_contribution
         if total <= 0:
             continue
@@ -299,6 +456,18 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     ranked.sort(key=lambda item: (-item["score"], item["id"]))
 
     top = ranked[0] if ranked else None
+    baseline_current_score = float(baseline_interpretation.get("currentAreaScore") or 0)
+    if not top and replacement_turn and baseline_current_score > 0:
+        top = {
+            "id": baseline.get("topic", {}).get("id", "tema_corregido"),
+            "area": baseline.get("area", {}),
+            "topic": baseline.get("topic", {}),
+            "score": baseline_current_score,
+            "currentScore": baseline_current_score,
+            "memoryScore": 0.0,
+            "evidence": [extract_current_focus(query)],
+            "memoryEvidence": [],
+        }
     second = ranked[1] if len(ranked) > 1 else None
     margin = (top["score"] - second["score"]) if top and second else (top["score"] if top else 0.0)
     confidence = confidence_label(top["score"] if top else 0.0, margin)
@@ -312,6 +481,13 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
 
     intent = dict(baseline)
     intent["conversationMode"] = conversation_mode(query, messages)
+    dialogue = analyze_dialogue(query, messages, ambiguous)
+    if dialogue["userGoal"]:
+        intent["objective"] = {
+            "id": dialogue["userGoal"]["id"],
+            "label": dialogue["userGoal"]["label"],
+            "confidence": "alta",
+        }
     if authoritative_norm:
         ambiguous = False
         confidence = "alta"
@@ -345,6 +521,19 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         intent["needsMoreFacts"] = True
 
     interpretation = dict(intent.get("interpretation") or {})
+    dialogue["responsePlan"]["includeSources"] = intent["conversationMode"]["id"] in (
+        "source_request", "norm_request"
+    )
+    if (
+        dialogue["speechAct"] == "question"
+        and not ambiguous
+        and intent["conversationMode"]["id"] not in ("source_request", "norm_request")
+    ):
+        dialogue["responsePlan"]["maxQuestions"] = 0
+    interpretation["dialogue"] = dialogue
+    interpretation["ignoredMemory"] = dialogue["supersedesPriorInterpretation"]
+    interpretation["currentAreaScore"] = top["currentScore"] if top else 0
+    interpretation["currentTopicScore"] = top["currentScore"] if top else 0
     interpretation["pythonBrain"] = {
         "version": ENGINE_VERSION,
         "status": "normative" if authoritative_norm else ("clarify" if ambiguous else "selected"),

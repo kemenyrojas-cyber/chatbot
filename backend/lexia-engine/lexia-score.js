@@ -108,11 +108,24 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
   const answer = String(candidate.answer || '').trim();
   const results = Array.isArray(context.results) ? context.results : [];
   const caseFile = context.caseFile || {};
+  const dialogue = context.dialogue || {};
+  const responsePlan = dialogue.responsePlan || {};
   const unsupportedArticles = candidate.unsupportedArticles || [];
   const citedReferences = answer.match(/\[[^\]]*(?:art\.?|ley|código|constitución)[^\]]*\]/gi) || [];
   const actionSignals = (answer.match(/\b(recomiendo|conviene|debes|puedes|paso|documento|plazo|verificar|solicitar|presentar)\b/gi) || []).length;
   const uncertaintySignals = (answer.match(/\b(podría|depende|habría que|siempre que|no puedo confirmar|debe verificarse|según)\b/gi) || []).length;
   const paragraphCount = answer.split(/\n\s*\n/).filter(Boolean).length;
+  const questionCount = (answer.match(/[?]/g) || []).length;
+  const focusCoverage = dialogue.currentFocus ? termCoverage(answer, [dialogue.currentFocus]) : 0.65;
+  const avoidedQuestion = normalizeText(responsePlan.avoidQuestion || '');
+  const repeatsAnsweredQuestion = Boolean(avoidedQuestion && normalizeText(answer).includes(avoidedQuestion));
+  const unwantedSourceBlock = responsePlan.includeSources === false
+    && /\b(fuentes y verificacion|fuente usada|base legal|referencia normativa)\b/i.test(normalizeText(answer));
+  const missesCorrection = Boolean(
+    dialogue.supersedesPriorInterpretation
+    && focusCoverage < 0.35
+    && !/\b(corrijo|entendido|dejo de lado|tomo tu precision)\b/i.test(normalizeText(answer))
+  );
   const sourceFidelity = unsupportedArticles.length
     ? 0.05
     : (citedReferences.length ? Math.min(1, 0.82 + results.length * 0.03) : (results.length ? 0.72 : 0.58));
@@ -134,16 +147,24 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
     sourceFidelity,
     documentFidelity,
     jurisdictionValidity: /\b(peru|perú|peruano|peruana)\b/i.test(answer) || caseFile.jurisdiction === 'Perú' ? 0.9 : 0.7,
-    caseComprehension: clamp(0.55 + caseCoverage * 0.45),
+    caseComprehension: clamp(0.45 + caseCoverage * 0.3 + focusCoverage * 0.25),
     practicalUtility: clamp(0.48 + Math.min(actionSignals, 5) * 0.09),
     naturalness: clamp(
       0.58
       + (answer.length >= 80 && answer.length <= 2200 ? 0.15 : 0)
       + (paragraphCount >= 1 && paragraphCount <= 8 ? 0.12 : 0)
       + (uncertaintySignals ? 0.08 : 0)
+      - (questionCount > Number(responsePlan.maxQuestions ?? 1) ? 0.3 : 0)
+      - (paragraphCount > Number(responsePlan.maxParagraphs || 8) ? 0.25 : 0)
+      - (repeatsAnsweredQuestion ? 0.35 : 0)
+      - (unwantedSourceBlock ? 0.2 : 0)
     ),
     hallucinationRate: unsupportedArticles.length ? 1 : 0,
-    contradictionRate: clamp(Number(candidate.contradictionRate || 0)),
+    contradictionRate: clamp(Math.max(
+      Number(candidate.contradictionRate || 0),
+      repeatsAnsweredQuestion ? 0.8 : 0,
+      missesCorrection ? 0.7 : 0
+    )),
     severeError: unsupportedArticles.length ? 1 : clamp(Number(candidate.severeError || 0))
   };
 }

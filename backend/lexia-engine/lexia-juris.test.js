@@ -122,6 +122,35 @@ test('selecciona una respuesta segura aunque la candidata insegura sea más exte
   assert.equal(selection.candidates.find(item => item.id === 'provider').hardGate.passed, false);
 });
 
+test('LEXIA-SCORE favorece una respuesta que incorpora la corrección y no repite preguntas', () => {
+  const dialogue = {
+    currentFocus: 'hablo de difamación',
+    supersedesPriorInterpretation: true,
+    responsePlan: {
+      maxQuestions: 1,
+      maxParagraphs: 3,
+      includeSources: false,
+      avoidQuestion: '¿Buscas denunciar, defender a alguien o entender la situación?'
+    }
+  };
+  const selection = selectBestCandidate([
+    {
+      id: 'conversational',
+      answer: 'Entendido, corrijo el enfoque: hablas de difamación. Dejo de lado mi interpretación anterior. ¿Qué afirmación concreta se difundió?'
+    },
+    {
+      id: 'repetitive',
+      answer: 'Fuentes y verificación\n\nEsta es una explicación extensa.\n\n¿Buscas denunciar, defender a alguien o entender la situación?\n\n¿Qué deseas hacer?\n\nIndica más datos.'
+    }
+  ], {
+    caseFile: buildCaseFile({ userQuery: 'Hablo de difamación', intent, role: 'usuario' }),
+    results: [],
+    dialogue
+  });
+
+  assert.equal(selection.selected.id, 'conversational');
+});
+
 test('el análisis dual conserva apoyo, riesgos y vacíos probatorios', () => {
   const caseFile = buildCaseFile({
     userQuery: 'Me despidieron y tengo una carta.',
@@ -148,6 +177,7 @@ test('el análisis dual conserva apoyo, riesgos y vacíos probatorios', () => {
 });
 
 test('el orquestador expone expediente, análisis dual y selección de calidad', async () => {
+  let capturedProviderMessages = [];
   const engine = createLexiaEngine({
     brain: {
       interpret: query => ({
@@ -193,13 +223,16 @@ test('el orquestador expone expediente, análisis dual y selección de calidad',
       buildLocalAnswer: () => 'Conviene revisar la carta, la fecha y la prueba antes de definir la estrategia laboral.'
     },
     providers: {
-      generate: async () => ({
+      generate: async messages => {
+        capturedProviderMessages = messages;
+        return ({
         answer: 'En este caso laboral conviene revisar la carta y verificar el plazo antes de presentar una acción.',
         provider: 'mock',
         model: 'mock-model',
         source: 'Mock',
         providerErrors: []
-      })
+        });
+      }
     },
     config: {
       temperature: () => 0.2,
@@ -219,4 +252,6 @@ test('el orquestador expone expediente, análisis dual y selección de calidad',
   assert.ok(result.metadata.dualAnalysis);
   assert.ok(result.metadata.lexiaScore.score100 > 0);
   assert.ok(['provider', 'local-synthesis'].includes(result.metadata.candidateSelection.selected));
+  assert.match(capturedProviderMessages[0].content, /CONTROL CONVERSACIONAL OBLIGATORIO/);
+  assert.match(capturedProviderMessages[0].content, /Responde primero al último turno/);
 });

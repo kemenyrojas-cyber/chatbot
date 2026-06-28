@@ -154,6 +154,38 @@ function filterRagContextForIntent(ragContext, query, intent) {
   return results.length === (ragContext?.results || []).length ? ragContext : rebuildRagContext(results);
 }
 
+function buildDialogueControlContext(intent = {}, userQuery = '') {
+  const dialogue = intent?.interpretation?.dialogue || {};
+  const plan = dialogue.responsePlan || {};
+  const lines = [
+    'CONTROL CONVERSACIONAL OBLIGATORIO:',
+    `Último mensaje del usuario: "${String(userQuery || '').trim()}".`,
+    `Acto del turno: ${dialogue.speechAct || intent?.conversationMode?.id || 'no determinado'}.`,
+    `Foco actual: ${dialogue.currentFocus || intent?.topic?.label || 'no determinado'}.`,
+    `Objetivo declarado: ${dialogue.userGoal?.label || 'aún no determinado'}.`,
+    'Responde primero al último turno. No contestes una pregunta distinta ni regreses automáticamente al tema anterior.'
+  ];
+  if (dialogue.supersedesPriorInterpretation) {
+    lines.push('El usuario corrigió o cambió el foco: reconoce la corrección en una frase y abandona explícitamente la interpretación anterior.');
+  }
+  if (dialogue.answeredPreviousQuestion) {
+    lines.push('El usuario acaba de responder una pregunta de LEXIA: incorpora esa respuesta y no vuelvas a formular la misma pregunta.');
+  }
+  if (plan.avoidQuestion) {
+    lines.push(`No repitas esta pregunta ya contestada: "${plan.avoidQuestion}".`);
+  }
+  lines.push(
+    `Extensión máxima sugerida: ${plan.maxParagraphs || 3} párrafos breves.`,
+    `Número máximo de preguntas: ${plan.maxQuestions ?? 1}.`,
+    plan.includeSources
+      ? 'El usuario está pidiendo sustento: muestra fuentes solo si son pertinentes.'
+      : 'No agregues fuentes, normas ni bloques documentales si el usuario no los pidió en este turno.',
+    'No inventes hechos para completar el caso. Distingue lo dicho por el usuario de tus inferencias.',
+    'Si falta un dato decisivo, haz una sola pregunta específica; si no falta, responde sin pregunta de cierre.'
+  );
+  return lines.join('\n');
+}
+
 function createLexiaEngine(deps) {
   const {
     brain,
@@ -173,8 +205,10 @@ function createLexiaEngine(deps) {
     const currentIntent = await brain.interpret(userQuery, conversationMemory);
     const memoryIntent = await brain.interpret(memorySearchQuery, conversationMemory);
     const intent = brain.mergeIntent(currentIntent, memoryIntent);
-    const effectiveConversationMemory = (intent?.interpretation?.topicShift || intent?.interpretation?.ignoredMemory) ? [] : conversationMemory;
-    const conversationMemoryContext = memory.buildContext(effectiveConversationMemory, intent);
+    const replacesPriorContext = Boolean(intent?.interpretation?.topicShift || intent?.interpretation?.ignoredMemory);
+    const effectiveConversationMemory = replacesPriorContext ? [] : conversationMemory;
+    const conversationMemoryContext = memory.buildContext(conversationMemory, intent);
+    const dialogueControlContext = buildDialogueControlContext(intent, userQuery);
     const caseFile = buildCaseFile({
       userQuery,
       conversationMemory: effectiveConversationMemory,
@@ -231,7 +265,10 @@ function createLexiaEngine(deps) {
     const localSearchEvaluation = knowledge.evaluateSufficiency(interpretationSearchQuery, localResults);
     knowledge.logSufficiency('Lexia Engine', interpretationSearchQuery, localSearchEvaluation);
 
-    const dialogueMode = effectiveConversationMemory.length > 0 || brain.isShortUserInput(userQuery);
+    const conversationModeId = intent?.conversationMode?.id || 'case_start';
+    const dialogueMode = !['source_request', 'norm_request'].includes(conversationModeId)
+      || conversationMemory.length > 0
+      || brain.isShortUserInput(userQuery);
     const ragContext = filterRagContextForIntent(
       knowledge.buildRagContext(interpretationSearchQuery, localResults, dialogueMode ? 3 : 8),
       userQuery,
@@ -253,13 +290,15 @@ function createLexiaEngine(deps) {
       effectiveConversationMemory
     );
 
-    if (intent?.conversationMode?.deterministic) {
+    const deterministicModes = new Set(['source_request', 'norm_request']);
+    if (intent?.conversationMode?.deterministic && deterministicModes.has(conversationModeId)) {
       const localEvaluation = evaluateCandidate({
         id: 'local-synthesis',
         answer: localSynthesis
       }, {
         caseFile,
-        results: ragContext.results
+        results: ragContext.results,
+        dialogue: intent?.interpretation?.dialogue || {}
       });
       return {
         answer: localSynthesis,
@@ -304,13 +343,12 @@ function createLexiaEngine(deps) {
     const dialogueInstruction = dialogueMode
       ? [
           'MODO DIÁLOGO:',
-          'El usuario está conversando o aclarando el caso. Prioriza entender y responder el último mensaje.',
+          'Actúa como interlocutora jurídica, no como generador de informes ni FAQ.',
+          'Demuestra escucha activa: incorpora el último dato antes de explicar cualquier cosa.',
           `Modo conversacional detectado: ${intent?.conversationMode?.label || 'No determinado'}.`,
-          'Interpreta referencias como "eso", "las leyes", "qué hago" o "explícame" usando el hilo anterior.',
-          'No repitas estructura previa. No hagas resumen de fuentes salvo que el usuario pida base legal.',
-          'Responde como chat humano con una abogada: natural, breve, interactivo y sin convertir todo en subtítulos.',
-          'Usa **negrita** dentro de frases naturales solo para la idea clave, el riesgo, la base legal o el siguiente paso.',
-          'Haz como máximo una pregunta concreta.'
+          'Usa el hilo para resolver referencias, pero da prioridad absoluta a correcciones y datos explícitos del turno actual.',
+          'No repitas estructuras, preguntas contestadas ni resúmenes anteriores.',
+          'Responde de forma natural y breve. Evita subtítulos, listas y citas salvo que sean necesarios o solicitados.'
         ].join('\n')
       : '';
     const lexiaSynthesisContext = [
@@ -327,8 +365,8 @@ function createLexiaEngine(deps) {
       '- Mantén la respuesta escaneable, pero conversacional: respuesta directa, explicación breve, paso útil y una sola pregunta final.'
     ].join('\n');
     const context = dialogueMode
-      ? [dialogueInstruction, conversationMemoryContext, caseFileContext, legalReasoningContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
-      : [conversationMemoryContext, caseFileContext, legalReasoningContext, legalGraphContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
+      ? [dialogueControlContext, dialogueInstruction, conversationMemoryContext, caseFileContext, legalReasoningContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
+      : [dialogueControlContext, conversationMemoryContext, caseFileContext, legalReasoningContext, legalGraphContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,
@@ -366,7 +404,8 @@ function createLexiaEngine(deps) {
         answer: localSynthesis
       }, {
         caseFile,
-        results: ragContext.results
+        results: ragContext.results,
+        dialogue: intent?.interpretation?.dialogue || {}
       });
       return {
         answer: localSynthesis,
@@ -426,7 +465,8 @@ function createLexiaEngine(deps) {
         }
       ], {
         caseFile,
-        results: ragContext.results
+        results: ragContext.results,
+        dialogue: intent?.interpretation?.dialogue || {}
       });
       return {
         answer: localSynthesis,
@@ -486,7 +526,8 @@ function createLexiaEngine(deps) {
       }
     ], {
       caseFile,
-      results: ragContext.results
+      results: ragContext.results,
+      dialogue: intent?.interpretation?.dialogue || {}
     });
     const selectedAnswer = selection.selected?.answer || providerResult.answer;
     const selectedProvider = selection.selected?.id === 'local-synthesis' ? 'local' : providerResult.provider;

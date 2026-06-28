@@ -1782,10 +1782,6 @@ const legalAreas = [
   }
 ];
 
-function includesAny(normalizedText, patterns) {
-  return patterns.some(pattern => normalizedText.includes(normalizeText(pattern)));
-}
-
 function countPatternScore(normalizedText, patterns, weight = 1) {
   return patterns.reduce((score, pattern) => (
     normalizedText.includes(normalizeText(pattern)) ? score + weight : score
@@ -2094,10 +2090,6 @@ function interpretLegalQuery(query, memoryMessages = []) {
   };
 }
 
-function classifyLegalIntent(query) {
-  return interpretLegalQuery(query, []);
-}
-
 async function interpretLegalQueryWithPython(query, memoryMessages = []) {
   const baseline = interpretLegalQuery(query, memoryMessages);
   const analysis = await pythonBrain.analyze({
@@ -2264,7 +2256,14 @@ function buildConversationMemoryContext(messages = [], intent = null) {
   if (intent) {
     lines.push(`Tema jurídico detectado: ${intent.area.label} / ${intent.topic.label}.`);
   }
-  lines.push('Lee esto como una conversación viva. Trata los mensajes del usuario como hechos del caso. Las respuestas de LEXIA son contexto conversacional, no hechos probados; no las repitas ni las uses para inventar datos.');
+  const dialogue = intent?.interpretation?.dialogue || {};
+  lines.push('Lee esto como una conversación viva. Los mensajes del usuario son declaraciones del caso, no hechos probados. Las respuestas anteriores de LEXIA solo muestran el hilo: no son hechos y pueden contener interpretaciones equivocadas.');
+  if (dialogue.supersedesPriorInterpretation) {
+    lines.push(`La última intervención reemplaza el enfoque anterior. Foco vigente: ${dialogue.currentFocus || intent?.topic?.label || 'última precisión del usuario'}.`);
+  }
+  if (dialogue.answeredPreviousQuestion) {
+    lines.push('La última intervención responde a una pregunta previa. Incorpora esa respuesta y avanza; no vuelvas a preguntar lo mismo.');
+  }
 
   normalized.slice(-6).forEach((message, index) => {
     const speaker = message.role === 'assistant' ? 'LEXIA' : 'Usuario';
@@ -2774,20 +2773,6 @@ function buildProgressiveGuidance(intent, reasoningProfile, graphReasoning) {
   return lines;
 }
 
-function buildTargetedMissingQuestions(intent, reasoningProfile) {
-  const missing = Array.isArray(reasoningProfile?.missingInfo) && reasoningProfile.missingInfo.length
-    ? reasoningProfile.missingInfo
-    : Array.isArray(intent?.missingInfo) ? intent.missingInfo : [];
-  const unique = [...new Set(missing)]
-    .filter(item => !String(item).startsWith('documentos relevantes:'))
-    .slice(0, 3);
-  if (!unique.length) return [];
-  return [
-    'Para afinar la respuesta, falta confirmar:',
-    ...unique.map((item, index) => `${index + 1}. ${item.charAt(0).toUpperCase()}${item.slice(1)}.`)
-  ];
-}
-
 function buildSingleLegalQuestion(intent, reasoningProfile, query = '') {
   const topicId = intent?.topic?.id || '';
   const missing = Array.isArray(reasoningProfile?.missingInfo) ? reasoningProfile.missingInfo : [];
@@ -2850,58 +2835,6 @@ function collectIntelligenceItems(results, key, limit = 5) {
     }
   }
   return items;
-}
-
-function buildLocalLegalAnalysisSections(intent, results, reasoningProfile) {
-  const topResult = Array.isArray(results)
-    ? results.find(item => {
-        const intelligence = item?.inteligencia || item?.intelligence || {};
-        return Object.keys(intelligence).length;
-      })
-    : null;
-  const rules = collectIntelligenceItems(results, 'reglas_practicas', 3);
-  const legalProblems = collectIntelligenceItems(results, 'problemas_juridicos', 3);
-  const risks = collectIntelligenceItems(results, 'riesgos', 4);
-  const documents = collectIntelligenceItems(results, 'documentos', 5);
-  const steps = collectIntelligenceItems(results, 'pasos', 5);
-  const usefulQuestions = collectIntelligenceItems(results, 'preguntas', 3);
-  const lines = [];
-
-  if (!topResult && !rules.length && !steps.length) return lines;
-
-  lines.push('**Análisis inicial**');
-  if (legalProblems.length) {
-    lines.push(`El problema jurídico principal es **${legalProblems[0]}**.`);
-  } else if (reasoningProfile?.legalIssue) {
-    lines.push(reasoningProfile.legalIssue);
-  }
-  if (rules.length) {
-    lines.push(`Criterio práctico: **${rules[0]}**.`);
-  }
-  if (risks.length) {
-    lines.push(`Riesgo a cuidar: **${risks[0]}**.`);
-  }
-
-  if (steps.length) {
-    lines.push('', '**Qué hacer ahora**');
-    steps.slice(0, 4).forEach((step, index) => {
-      lines.push(`${index + 1}. ${step.charAt(0).toUpperCase()}${step.slice(1)}.`);
-    });
-  }
-
-  if (documents.length) {
-    lines.push('', '**Documentos o pruebas útiles**');
-    lines.push(documents.slice(0, 5).join(', ') + '.');
-  }
-
-  if (usefulQuestions.length) {
-    lines.push('', '**Para darte una ruta más exacta, responde:**');
-    usefulQuestions.slice(0, 3).forEach((question, index) => {
-      lines.push(`${index + 1}. ${question}`);
-    });
-  }
-
-  return lines;
 }
 
 function getResultTitle(item) {
@@ -3085,32 +3018,6 @@ function selectBestLegalResult(results = [], intent = null) {
       || (bNorm - aNorm)
       || Number(b.relevance || 0) - Number(a.relevance || 0);
   })[0];
-}
-
-function isMinorAbuseLegalResult(item) {
-  const text = normalizeText([
-    getResultTitle(item),
-    getResultSource(item),
-    item?.materia,
-    item?.matter,
-    item?.resumen,
-    item?.excerpt,
-    getFullResultText(item)
-  ].join(' '));
-  return text.includes('abuso sexual contra menores')
-    || text.includes('menor de edad')
-    || text.includes('menores')
-    || text.includes('menores de edad')
-    || text.includes('niño')
-    || text.includes('niña')
-    || text.includes('adolescente')
-    || text.includes('tocamientos')
-    || text.includes('actos libidinosos')
-    || text.includes('art. 173')
-    || text.includes('articulo 173')
-    || text.includes('artículo 173')
-    || text.includes('176-a')
-    || text.includes('ley 30403');
 }
 
 function detectLegalCaseScopesFromResult(item) {
@@ -3722,7 +3629,6 @@ function buildKnownLawDateCorrectionAnswer(query = '', law = null) {
 }
 
 function buildCorrectionAnswer(query, intent, results = [], memoryMessages = []) {
-  const memoryState = buildConversationMemoryState(memoryMessages);
   const normalizedQuery = normalizeText(query);
   const correctionFactMatch = String(query || '').match(/\b(?:en internet dice que|seg[uú]n internet|la p[aá]gina dice que|la fuente dice que|he visto que)?\s*(?:fue\s+)?(?:promulgada|publicada|emitida|aprobada)\s+(?:el\s+)?(.{6,80})/i);
   if (correctionFactMatch || /\b(en internet dice|segun internet|según internet|la pagina dice|la página dice|la fuente dice|fue promulgada|promulgada el|publicada el)\b/.test(normalizedQuery)) {
@@ -3770,17 +3676,15 @@ function buildCorrectionAnswer(query, intent, results = [], memoryMessages = [])
       '¿Ya hay sentencia condenatoria o todavía están antes de sentencia?'
     ].join('\n');
   }
-  return [
-    'Entiendo tu corrección. Antes de cambiar la respuesta, debo contrastar tu precisión con el hilo y con una fuente verificable cuando sea un dato legal, normativo o factual.',
+  const dialogue = intent?.interpretation?.dialogue || {};
+  const correctedFocus = String(dialogue.currentFocus || query || '').replace(/\s+/g, ' ').trim();
+  const lines = [
+    `Entendido. **Corrijo el enfoque**: ${correctedFocus || 'tomo como válida tu última precisión'}.`,
     '',
-    'Por ahora no lo tomo como verdad cerrada: lo trato como **dato a verificar** y corrijo mi enfoque solo si coincide con la información disponible o con una fuente que lo sustente.',
-    '',
-    memoryState.lastUserFact
-      ? `Lo que tenía del hilo era: **${truncateForRag(memoryState.lastUserFact, 220)}**. Si tu corrección contradice ese dato, necesito verificar cuál corresponde.`
-      : 'Si me das el dato correcto en una frase y, si existe, la fuente donde aparece, rehago el enfoque desde ahí.',
-    '',
-    '¿El error está en el hecho que entendí, en la norma que cité o en el paso que te sugerí? Si tienes fuente, pásamela para contrastarla.'
-  ].join('\n');
+    'Dejo de lado mi interpretación anterior y continúo desde este dato, sin mezclarlo con el tema previo.'
+  ];
+  lines.push('', 'Para continuar desde ahí, ¿qué ocurrió concretamente en ese caso?');
+  return lines.join('\n');
 }
 
 function buildProfessionalRoleConflictAnswer(query, intent, results = [], reasoningProfile = null) {
@@ -3852,6 +3756,7 @@ function buildStatusAnswer(query, intent, results = [], reasoningProfile = null,
   scopedResults = primary ? [primary, ...scopedResults.filter(item => item !== primary)] : scopedResults;
   let legalBadges = collectLegalCitationBadges(scopedResults, 2);
   if (!legalBadges.length && !hasMinorContext) legalBadges = collectLegalCitationBadges(results, 2);
+  const includeSources = intent?.interpretation?.dialogue?.responsePlan?.includeSources === true;
   const documents = collectIntelligenceItems(scopedResults, 'documentos', 4);
   const risks = collectIntelligenceItems(scopedResults, 'riesgos', 1);
 
@@ -3861,7 +3766,7 @@ function buildStatusAnswer(query, intent, results = [], reasoningProfile = null,
       '',
       'Ahora el foco es **seguimiento, protección y pruebas**: conservar la constancia o número de denuncia, no manipular evidencias, ampliar información si aparecen nuevos datos y pedir medidas de protección si hay riesgo actual.'
     ];
-    if (legalBadges.length) {
+    if (includeSources && legalBadges.length) {
       lines.push('');
       lines.push(`Base legal relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
     }
@@ -3883,7 +3788,7 @@ function buildStatusAnswer(query, intent, results = [], reasoningProfile = null,
     '',
     'Entonces no repito la pregunta anterior. Primero hay que ordenar **hechos, fechas, personas involucradas y pruebas**; si hay riesgo actual para alguien, la prioridad práctica es protección inmediata y autoridad competente.'
   ];
-  if (legalBadges.length) {
+  if (includeSources && legalBadges.length) {
     lines.push('');
     lines.push(`Base legal relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
@@ -3901,29 +3806,39 @@ function buildStatusAnswer(query, intent, results = [], reasoningProfile = null,
 }
 
 function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null) {
-  const primary = selectBestLegalResult(results, intent);
-  let legalBadges = collectLegalCitationBadges(primary ? [primary] : [], 3);
-  if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 3);
-  const scopedResults = primary ? [primary] : results;
-  const steps = collectIntelligenceItems(scopedResults, 'pasos', 3);
-  const risks = collectIntelligenceItems(scopedResults, 'riesgos', 2);
+  const dialogue = intent?.interpretation?.dialogue || {};
+  const focus = String(dialogue.currentFocus || query || '').replace(/\s+/g, ' ').trim();
+  const lastQuestion = normalizeText(dialogue.lastAssistantQuestion || '');
+  let nextQuestion = /\b(publicaron|difundieron|compartieron|enviaron)\b/.test(normalizeText(query))
+    ? '¿En qué medio se difundió y en qué fecha aproximada?'
+    : buildSingleLegalQuestion(intent, reasoningProfile, query);
+  if (lastQuestion && normalizeText(nextQuestion) === lastQuestion) {
+    nextQuestion = '¿Qué dato puedes precisar ahora para avanzar: la fecha, la persona involucrada o lo que ocurrió después?';
+  }
   const lines = [
-    `Entiendo. Con ese dato, ya no conviene responder en abstracto: el foco queda en **${intent?.topic?.label || intent?.area?.label || 'el punto jurídico concreto'}**.`
+    `Entiendo. Incorporo este dato al caso: **${focus}**.`
   ];
+  if (nextQuestion) lines.push('', nextQuestion);
+  return lines.join('\n');
+}
 
-  if (legalBadges.length) {
-    lines.push(`La base que tengo verificada para ese enfoque es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+function buildAnsweredQuestionResponse(query, intent, reasoningProfile = null) {
+  const dialogue = intent?.interpretation?.dialogue || {};
+  const goal = dialogue.userGoal?.label;
+  const answer = String(query || '').replace(/\s+/g, ' ').trim();
+  const avoidedQuestion = normalizeText(dialogue.responsePlan?.avoidQuestion || '');
+  let nextQuestion = goal === 'defender a una persona'
+    ? '¿Esa persona ya recibió una denuncia, citación o notificación, o todavía es una consulta preventiva?'
+    : buildSingleLegalQuestion(intent, reasoningProfile, query);
+  if (avoidedQuestion && normalizeText(nextQuestion) === avoidedQuestion) {
+    nextQuestion = '¿Qué ocurrió después y en qué etapa se encuentra ahora?';
   }
-  if (risks.length) {
-    lines.push('');
-    lines.push(`El cuidado principal ahora es **${risks[0]}**.`);
-  }
-  if (steps.length) {
-    lines.push('');
-    lines.push(`Siguiente paso práctico: **${steps[0]}**.`);
-  }
-  lines.push('');
-  lines.push(buildSingleLegalQuestion(intent, reasoningProfile, query));
+  const lines = [
+    goal
+      ? `Entendido: tu objetivo es **${goal}**.`
+      : `Entendido: **${answer}**.`
+  ];
+  if (nextQuestion) lines.push('', nextQuestion);
   return lines.join('\n');
 }
 
@@ -3934,6 +3849,7 @@ function buildActionAnswer(query, intent, results = [], reasoningProfile = null)
   const documents = collectIntelligenceItems(scopedResults, 'documentos', 4);
   let legalBadges = collectLegalCitationBadges(scopedResults, 2);
   if (!legalBadges.length) legalBadges = collectLegalCitationBadges(results, 2);
+  const includeSources = intent?.interpretation?.dialogue?.responsePlan?.includeSources === true;
   const nextSteps = steps.length ? steps : (reasoningProfile?.nextSteps || []).slice(0, 3);
   const lines = ['Lo aterrizo sin vueltas.'];
 
@@ -3947,18 +3863,30 @@ function buildActionAnswer(query, intent, results = [], reasoningProfile = null)
     lines.push('');
     lines.push(`Ten a la mano: **${documents.slice(0, 4).join(', ')}**.`);
   }
-  if (legalBadges.length) {
+  if (includeSources && legalBadges.length) {
     lines.push('');
     lines.push(`Base legal visible: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
-  lines.push('');
-  lines.push(buildSingleLegalQuestion(intent, reasoningProfile, query));
+  if ((intent?.interpretation?.dialogue?.responsePlan?.maxQuestions ?? 1) > 0) {
+    lines.push('');
+    lines.push(buildSingleLegalQuestion(intent, reasoningProfile, query));
+  }
   return lines.join('\n');
 }
 
 function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = null, graphReasoning = null, memoryMessages = []) {
   const modeId = intent?.conversationMode?.id || 'case_start';
+  const dialogue = intent?.interpretation?.dialogue || {};
   const scopedResults = filterResultsForCurrentIntent(query, intent, results);
+  if (dialogue.answeredPreviousQuestion) {
+    return buildAnsweredQuestionResponse(query, intent, reasoningProfile);
+  }
+  if (dialogue.speechAct === 'correction' || dialogue.speechAct === 'topic_shift') {
+    return buildCorrectionAnswer(query, intent, scopedResults, memoryMessages);
+  }
+  if (dialogue.speechAct === 'new_fact') {
+    return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile);
+  }
   if (modeId === 'source_request' || modeId === 'norm_request') {
     const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
     if (clauseAnswer) return clauseAnswer;
@@ -3979,9 +3907,7 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
   if (modeId === 'professional_role_conflict') {
     return buildProfessionalRoleConflictAnswer(query, intent, scopedResults, reasoningProfile);
   }
-  if (modeId === 'correction') {
-    return buildCorrectionAnswer(query, intent, scopedResults, memoryMessages);
-  }
+  if (modeId === 'correction') return buildCorrectionAnswer(query, intent, scopedResults, memoryMessages);
   if (modeId === 'verification_request') {
     return buildVerificationAnswer(query, intent, scopedResults, memoryMessages);
   }
@@ -4011,12 +3937,30 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
       ]
     : null;
   const guidance = forcedBenefitsGuidance || buildProgressiveGuidance(intent, reasoningProfile, graphReasoning);
-  const localAnalysis = buildLocalLegalAnalysisSections(intent, results, reasoningProfile);
   const rules = collectIntelligenceItems(results, 'reglas_practicas', 2);
   const risks = collectIntelligenceItems(results, 'riesgos', 2);
   const steps = collectIntelligenceItems(results, 'pasos', 3);
   const documents = collectIntelligenceItems(results, 'documentos', 4);
   const legalBadges = collectLegalCitationBadges(results);
+  const includeSources = intent?.interpretation?.dialogue?.responsePlan?.includeSources === true
+    || intent?.type?.id === 'consulta_normativa';
+
+  if (intent?.needsMoreFacts || intent?.area?.id === 'area_no_determinada') {
+    const focus = String(intent?.interpretation?.dialogue?.currentFocus || query || '').replace(/\s+/g, ' ').trim();
+    return [
+      `Entiendo que necesitas ayuda con **${focus || 'una situación jurídica'}**.`,
+      '',
+      'Para no asumir algo distinto de lo que quieres decir, ¿qué ocurrió concretamente y qué necesitas lograr?'
+    ].join('\n');
+  }
+
+  if (shortInput && !memoryMessages.length) {
+    return [
+      `Entiendo: **${String(query || '').replace(/\s+/g, ' ').trim()}**.`,
+      '',
+      buildSingleLegalQuestion(intent, reasoningProfile, query)
+    ].filter(Boolean).join('\n');
+  }
 
   if (intent?.type?.id === 'consulta_normativa') {
     return buildNormativeLegalAnswer(query, intent, results);
@@ -4027,38 +3971,37 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
       lines.push(`Veo que esto cae en ${intent?.area?.label || 'un tema jurídico'}, pero necesito un dato más para aterrizarlo bien.`);
     }
 
-    if (!shortInput && rules.length) {
-      lines.push('');
-      lines.push(`**Clave jurídica:** ${rules[0]}.`);
-    }
-
-    if (legalBadges.length) {
+    if (includeSources && legalBadges.length) {
       lines.push('');
       lines.push(`Esto se fundamenta en ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
     }
 
-    if (!shortInput && risks.length) {
-      lines.push(`**Riesgo práctico:** ${risks[0]}. Conviene actuar con documentos y fechas claras.`);
-    }
-
-    if (!shortInput && steps.length) {
+    if (!shortInput && (rules.length || risks.length)) {
+      const analysis = [];
+      if (rules.length) analysis.push(`Lo principal es **${rules[0]}**`);
+      if (risks.length) analysis.push(`el cuidado más importante es **${risks[0]}**`);
       lines.push('');
-      lines.push(`**Qué hacer ahora:** ${steps.slice(0, 3).join(', ')}.`);
+      lines.push(`${analysis.join('; ')}.`);
     }
 
-    if (!shortInput && documents.length) {
+    if (!shortInput && (steps.length || documents.length)) {
+      const practical = [];
+      if (steps.length) practical.push(`Como siguiente paso, conviene ${steps.slice(0, 3).join(', ')}`);
+      if (documents.length) practical.push(`ten a la mano ${documents.slice(0, 4).join(', ')}`);
       lines.push('');
-      lines.push(`**Documentos clave:** ${documents.slice(0, 4).join(', ')}.`);
+      lines.push(`${practical.join('. ')}.`);
     }
 
-    lines.push('');
-    lines.push(normalizedQuery.includes('beneficios sociales')
-      ? '¿Sigues trabajando ahí o ya terminó la relación laboral?'
-      : buildSingleLegalQuestion(intent, reasoningProfile, query));
+    if ((intent?.interpretation?.dialogue?.responsePlan?.maxQuestions ?? 1) > 0) {
+      lines.push('');
+      lines.push(normalizedQuery.includes('beneficios sociales')
+        ? '¿Sigues trabajando ahí o ya terminó la relación laboral?'
+        : buildSingleLegalQuestion(intent, reasoningProfile, query));
+    }
   }
 
-  const sourceSummary = buildSourceSummary(results, intent);
-  if (!shortInput && results.length && !sourceSummary.includes('No encontré una fuente específica')) {
+  const sourceSummary = includeSources ? buildSourceSummary(results, intent) : '';
+  if (includeSources && !shortInput && results.length && !sourceSummary.includes('No encontré una fuente específica')) {
     lines.push('');
     lines.push(sourceSummary);
   }
@@ -4091,7 +4034,9 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   lines.push(`En tu caso, sigo tomando como punto de partida esto: **${truncateForRag(lastUserFact, 220)}**.`);
 
   const legalBadges = collectLegalCitationBadges(results);
-  if (legalBadges.length) {
+  const includeSources = intent?.interpretation?.dialogue?.responsePlan?.includeSources === true
+    || intent?.type?.id === 'consulta_normativa';
+  if (includeSources && legalBadges.length) {
     lines.push('');
     lines.push(`La base que sostiene esta orientación es ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
   }
@@ -4142,10 +4087,12 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
     lines.push(`El cuidado principal es **${risks[0]}**.`);
   }
 
-  lines.push('');
-  lines.push(isSentenceStage
-    ? '¿La fecha del miércoles es para **lectura de sentencia** y ya tiene abogado asignado o particular?'
-    : buildSingleLegalQuestion(intent, reasoningProfile, query));
+  if ((intent?.interpretation?.dialogue?.responsePlan?.maxQuestions ?? 1) > 0) {
+    lines.push('');
+    lines.push(isSentenceStage
+      ? '¿La fecha del miércoles es para **lectura de sentencia** y ya tiene abogado asignado o particular?'
+      : buildSingleLegalQuestion(intent, reasoningProfile, query));
+  }
 
   const sourceSummary = buildSourceSummary(results, intent, 2);
   const userAskedForSources = intent?.type?.id === 'consulta_normativa' || /\b(ley|leyes|articulo|artículo|norma|base legal|fuente|fundamento)\b/i.test(query);
@@ -4156,22 +4103,6 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   return lines.join('\n');
 }
 
-
-// Cargar embeddings
-let kbEmbeddings = null;
-try {
-  const embPath = path.join(aiEngineRoot, 'kb', 'embeddings.json');
-  if (fs.existsSync(embPath)) {
-    kbEmbeddings = JSON.parse(fs.readFileSync(embPath, 'utf8'));
-    console.log(`✅ Embeddings cargados: ${kbEmbeddings.length} items`);
-  }
-} catch (e) {
-  console.warn('⚠️ Embeddings no disponibles (usaremos búsqueda de texto)');
-}
-
-// Utilidades
-function dot(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
-function norm(a) { return Math.sqrt(a.reduce((s, v) => s + v * v, 0)); }
 
 function mapOpenAiError(status, errorPayload) {
   const message = errorPayload?.error?.message || '';
@@ -4692,7 +4623,8 @@ REGLAS:
 - Siempre responde en español, con tono profesional, cercano y claro.
 - Prioriza Derecho peruano salvo que el usuario indique otra jurisdicción.
 - Si el usuario escribe solo una ley, por ejemplo "Ley 29973", o solo una secuencia numérica, por ejemplo "29973", interpreta primero si puede ser una referencia normativa peruana. Identifica la ley si hay coincidencia, explica en lenguaje simple qué quiere decir y pregunta qué aspecto desea revisar. Si no hay coincidencia segura, no inventes: indica que debe verificarse en El Peruano, SPIJ o fuente oficial.
-- Si el usuario corrige a LEXIA, no aceptes automáticamente la corrección como verdadera. Contrasta el dato con el RAG, la síntesis interna, el catálogo normativo conocido o la fuente que el usuario aporte. Si la corrección es correcta, reconócelo y corrige. Si no es correcta, responde amablemente que el dato no coincide con la fuente verificada, indica exactamente la fuente usada por LEXIA y explica la diferencia sin confrontar.
+- Si el usuario corrige el tema, su objetivo, su rol o lo que quiso decir, acepta esa precisión como estado actual de la conversación, reconoce el error brevemente y abandona la interpretación anterior. No le pidas una fuente para explicar qué quiso decir.
+- Si la corrección afirma un dato externo verificable —por ejemplo contenido, fecha o vigencia de una norma—, distingue esa afirmación de la corrección conversacional y contrástala con el RAG, el catálogo conocido o la fuente aportada antes de presentarla como verdadera.
 - En fechas normativas distingue siempre entre promulgación, publicación y vigencia. Si el usuario confunde una fecha de publicación con una de promulgación, aclara esa diferencia con la fuente.
 - Si falta información clave, responde con supuestos explícitos y preguntas concretas.
 - Advierte cuando sea necesaria revisión de un abogado o documento real.

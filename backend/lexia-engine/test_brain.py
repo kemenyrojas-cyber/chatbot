@@ -114,6 +114,115 @@ class BrainScenarioMatrixTest(unittest.TestCase):
         })
         self.assertEqual(result["intent"]["conversationMode"]["id"], "source_request")
 
+    def test_short_answer_updates_goal_and_does_not_repeat_question(self):
+        question = "¿Buscas denunciar, defender a alguien o entender la situación?"
+        result = analyze({
+            "query": "Defender a alguien",
+            "memoryMessages": [
+                {"role": "user", "content": "Tengo un problema y necesito orientación."},
+                {"role": "assistant", "content": question},
+            ],
+            "baseline": {},
+        })
+        dialogue = result["intent"]["interpretation"]["dialogue"]
+        self.assertEqual(dialogue["speechAct"], "answer")
+        self.assertEqual(dialogue["userGoal"]["id"], "defense")
+        self.assertTrue(dialogue["answeredPreviousQuestion"])
+        self.assertEqual(dialogue["responsePlan"]["avoidQuestion"], question)
+
+    def test_explicit_correction_replaces_prior_interpretation(self):
+        baseline = {
+            "area": {"id": "derecho_penal", "label": "Derecho Penal", "confidence": "media"},
+            "topic": {"id": "difamacion", "label": "Difamación", "confidence": "media"},
+            "interpretation": {"currentAreaScore": 8, "currentTopicScore": 8},
+        }
+        result = analyze({
+            "query": "Ya te dije que hablo de difamación",
+            "memoryMessages": [
+                {"role": "user", "content": "Antes estaba consultando por otro asunto."},
+                {"role": "assistant", "content": "¿Quieres información sobre ese asunto anterior?"},
+            ],
+            "baseline": baseline,
+        })
+        dialogue = result["intent"]["interpretation"]["dialogue"]
+        self.assertEqual(dialogue["speechAct"], "correction")
+        self.assertEqual(dialogue["currentFocus"].lower(), "difamación")
+        self.assertTrue(dialogue["supersedesPriorInterpretation"])
+        self.assertEqual(dialogue["memoryPolicy"], "replace")
+        self.assertFalse(dialogue["answeredPreviousQuestion"])
+        self.assertTrue(result["intent"]["interpretation"]["ignoredMemory"])
+
+    def test_response_plan_is_brief_and_does_not_add_unrequested_sources(self):
+        result = analyze({
+            "query": "Me pasó algo y quiero explicarlo",
+            "memoryMessages": [],
+            "baseline": {},
+        })
+        plan = result["intent"]["interpretation"]["dialogue"]["responsePlan"]
+        self.assertLessEqual(plan["maxParagraphs"], 3)
+        self.assertEqual(plan["maxQuestions"], 1)
+        self.assertFalse(plan["includeSources"])
+
+    def test_short_statement_that_does_not_answer_when_is_new_fact(self):
+        result = analyze({
+            "query": "Publicaron comentarios falsos sobre esa persona",
+            "memoryMessages": [
+                {"role": "assistant", "content": "¿Cuándo ocurrió el hecho principal?"}
+            ],
+            "baseline": {},
+        })
+        dialogue = result["intent"]["interpretation"]["dialogue"]
+        self.assertEqual(dialogue["speechAct"], "new_fact")
+        self.assertFalse(dialogue["answeredPreviousQuestion"])
+
+    def test_date_answer_really_answers_when_question(self):
+        result = analyze({
+            "query": "Fue ayer por la tarde",
+            "memoryMessages": [
+                {"role": "assistant", "content": "¿Cuándo ocurrió el hecho principal?"}
+            ],
+            "baseline": {},
+        })
+        dialogue = result["intent"]["interpretation"]["dialogue"]
+        self.assertEqual(dialogue["speechAct"], "answer")
+        self.assertTrue(dialogue["answeredPreviousQuestion"])
+
+    def test_direct_question_can_finish_without_automatic_question(self):
+        baseline = {
+            "area": {"id": "derecho_civil", "label": "Derecho Civil", "confidence": "alta"},
+            "topic": {"id": "civil_contratos", "label": "Contratos", "confidence": "alta"},
+            "interpretation": {"currentAreaScore": 10, "currentTopicScore": 10},
+        }
+        result = analyze({
+            "query": "¿Qué puedo hacer ante este incumplimiento de contrato?",
+            "baseline": baseline,
+        })
+        plan = result["intent"]["interpretation"]["dialogue"]["responsePlan"]
+        self.assertEqual(result["intent"]["interpretation"]["dialogue"]["speechAct"], "question")
+        self.assertEqual(plan["maxQuestions"], 0)
+
+    def test_false_publications_are_understood_as_honor_case(self):
+        result = analyze({
+            "query": "¿Qué puedo hacer si publicaron comentarios falsos sobre mí ayer?",
+            "baseline": {},
+            "memoryMessages": [],
+        })
+        dialogue = result["intent"]["interpretation"]["dialogue"]
+        self.assertEqual(result["intent"]["topic"]["id"], "penal_honor")
+        self.assertEqual(dialogue["speechAct"], "question")
+        self.assertEqual(dialogue["responsePlan"]["maxQuestions"], 0)
+
+    def test_replacement_words_do_not_invent_prior_context(self):
+        result = analyze({
+            "query": "Me refiero a un caso de difamación",
+            "baseline": {},
+            "memoryMessages": [],
+        })
+        dialogue = result["intent"]["interpretation"]["dialogue"]
+        self.assertEqual(dialogue["speechAct"], "case_start")
+        self.assertEqual(dialogue["memoryPolicy"], "new")
+        self.assertFalse(dialogue["supersedesPriorInterpretation"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1197,85 +1197,6 @@ summary:focus-visible,
     padding: 18px;
 }
 
-.recent-panel {
-    min-height: 302px;
-}
-
-.recent-list {
-    margin-top: 18px;
-    display: grid;
-    gap: 17px;
-}
-
-.recent-list article {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr);
-    align-items: start;
-    gap: 10px;
-}
-
-.recent-list span {
-    color: #315A9C;
-    font-size: 15px;
-}
-
-.recent-list p {
-    overflow: hidden;
-    color: #0B1B3A;
-    font-size: 11px;
-    font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.history-item details {
-    min-width: 0;
-}
-
-.history-item summary {
-    cursor: pointer;
-    list-style: none;
-}
-
-.history-item summary::-webkit-details-marker {
-    display: none;
-}
-
-.history-item summary strong,
-.history-item summary small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.history-item summary strong {
-    color: #0B1B3A;
-    font-size: 12px;
-}
-
-.history-item summary small {
-    margin-top: 4px;
-    color: #4B6388;
-    font-size: 11px;
-}
-
-.history-answer {
-    margin-top: 10px;
-    padding: 12px;
-    border-radius: 8px;
-    background: #F6F9FE;
-    color: #1F3356;
-    font-size: 12px;
-    line-height: 1.55;
-}
-
-.recent-list time {
-    grid-column: 2;
-    color: #6D7F9E;
-    font-size: 10px;
-}
-
 .empty-state {
     min-height: 132px;
     padding: 18px;
@@ -2000,21 +1921,6 @@ summary:focus-visible,
     .chat-view {
         grid-template-columns: 280px minmax(0, 1fr);
     }
-}
-
-.message {
-    padding: 10px 12px;
-    border-radius: 8px;
-    font-size: 12px;
-}
-
-.message.bot {
-    background: #EAF2FF;
-}
-
-.message.user {
-    background: #2563EB;
-    color: #FFFFFF;
 }
 
 @media (max-width: 1180px) {
