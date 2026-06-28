@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260626-history-view">
+    <link rel="stylesheet" href="/css/style.css?v=20260628-documents-view">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -264,6 +264,66 @@
                 </div>
             </section>
 
+            <section class="documents-view" id="documentsView" tabindex="-1" aria-labelledby="documentsTitle" hidden>
+                <header class="documents-header">
+                    <div>
+                        <span class="module-eyebrow">Gestión documental</span>
+                        <h2 id="documentsTitle">Mis documentos</h2>
+                        <p>Organiza y conserva tus archivos legales en un espacio privado.</p>
+                    </div>
+                    <button class="documents-primary-button" id="uploadDocumentButton" type="button">
+                        <i class="fa-solid fa-arrow-up-from-bracket icon" aria-hidden="true"></i>
+                        Subir documento
+                    </button>
+                    <input id="documentFileInput" type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.png,.jpg,.jpeg" multiple hidden>
+                </header>
+
+                <div class="document-summary" aria-label="Resumen de documentos">
+                    <article>
+                        <span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span>
+                        <div><strong id="documentTotalCount">0</strong><small>Documentos</small></div>
+                    </article>
+                    <article>
+                        <span><i class="fa-regular fa-hard-drive icon" aria-hidden="true"></i></span>
+                        <div><strong id="documentTotalSize">0 KB</strong><small>Almacenamiento local</small></div>
+                    </article>
+                    <article>
+                        <span><i class="fa-regular fa-clock icon" aria-hidden="true"></i></span>
+                        <div><strong id="documentRecentCount">0</strong><small>Subidos esta semana</small></div>
+                    </article>
+                </div>
+
+                <section class="documents-panel">
+                    <div class="documents-toolbar">
+                        <label class="documents-search" for="documentSearchInput">
+                            <i class="fa-solid fa-magnifying-glass icon" aria-hidden="true"></i>
+                            <input id="documentSearchInput" type="search" placeholder="Buscar por nombre..." autocomplete="off">
+                        </label>
+                        <label class="documents-filter">
+                            <span class="sr-only">Filtrar documentos por tipo</span>
+                            <select id="documentTypeFilter">
+                                <option value="all">Todos los tipos</option>
+                                <option value="pdf">PDF</option>
+                                <option value="word">Word</option>
+                                <option value="text">Texto</option>
+                                <option value="image">Imágenes</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="document-drop-zone" id="documentDropZone" tabindex="0" role="button" aria-label="Subir documentos. Presiona Enter o arrastra archivos aquí.">
+                        <span><i class="fa-solid fa-cloud-arrow-up icon" aria-hidden="true"></i></span>
+                        <div>
+                            <strong>Arrastra tus documentos aquí</strong>
+                            <small>o haz clic para seleccionarlos · PDF, Word, texto e imágenes · máximo 25 MB</small>
+                        </div>
+                    </div>
+
+                    <div class="documents-status" id="documentsStatus" role="status" aria-live="polite" hidden></div>
+                    <div class="documents-list" id="documentsList" role="list" aria-label="Documentos guardados"></div>
+                </section>
+            </section>
+
             <section class="chat-view" id="legalChatView" hidden>
                 <aside class="chat-history-panel">
                     <div class="chat-history-head">
@@ -303,7 +363,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260626-history-view"></script>
+    <script src="/js/app.js?v=20260628-documents-view"></script>
 </body>
 </html>
 
