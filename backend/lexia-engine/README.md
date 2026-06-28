@@ -20,6 +20,43 @@ Estado actual:
 
 Esta carpeta inicia la separación formal del motor. En esta fase, el orquestador recibe dependencias del backend existente para no romper endpoints ni cambiar la base de datos. Las siguientes fases deben extraer cada responsabilidad a su propio módulo.
 
+## Cerebro Python
+
+El análisis previo a la recuperación jurídica se ejecuta en `brain.py`
+mediante un proceso persistente administrado por `python-brain.js`. Python
+recibe la consulta, la memoria útil y la interpretación base; devuelve el
+mismo contrato de intención consumido por el orquestador, además de:
+
+- escenarios jurídicos candidatos;
+- evidencia lingüística por escenario;
+- interpretación principal y alternativas;
+- confianza y margen entre candidatos;
+- uso o descarte de memoria contradictoria;
+- decisión de continuar o pedir aclaración.
+
+El resto de LEXIA conserva el flujo existente: Node gestiona la API, cuentas
+y conversaciones; Knowledge conserva el RAG; Reasoner estructura el análisis
+jurídico; Providers redacta y contrasta las respuestas.
+
+Si Python no está disponible o excede el tiempo configurado, el puente
+devuelve el intérprete base y registra `pythonBrain.status = "fallback"` sin
+interrumpir la consulta.
+
+Configuración:
+
+```text
+LEXIA_PYTHON_BRAIN_ENABLED=true
+LEXIA_PYTHON_BRAIN_TIMEOUT_MS=2500
+LEXIA_PYTHON_EXECUTABLE=python3
+```
+
+Pruebas:
+
+```text
+python3 -m unittest discover -s backend/lexia-engine -p test_brain.py -v
+npm --prefix backend test
+```
+
 ## LEXIA-JURIS
 
 El ciclo de análisis implementado es:

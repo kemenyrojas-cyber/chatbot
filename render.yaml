@@ -1,10 +1,8 @@
 services:
   - type: web
     name: lexia-backend
-    env: node
+    env: docker
     branch: main
-    buildCommand: npm run build
-    startCommand: npm start
     plan: free
     envVars:
       - key: SUPABASE_DATABASE_URL
@@ -17,6 +15,10 @@ services:
         value: ensemble
       - key: AI_PROVIDER_TIMEOUT_MS
         value: "45000"
+      - key: LEXIA_PYTHON_BRAIN_ENABLED
+        value: "true"
+      - key: LEXIA_PYTHON_BRAIN_TIMEOUT_MS
+        value: "2500"
       - key: LEGAL_ALLOWED_SOURCE_HOSTS
         value: elperuano.pe,www.elperuano.pe,tc.gob.pe,www.tc.gob.pe,pj.gob.pe,www.pj.gob.pe,gob.pe,www.gob.pe,sunarp.gob.pe,www.sunarp.gob.pe,sunafil.gob.pe,www.sunafil.gob.pe,lpderecho.pe,www.lpderecho.pe,estudioderechoylibertad.com,www.estudioderechoylibertad.com
       - key: LEGAL_DISCOVERY_SEED_URLS

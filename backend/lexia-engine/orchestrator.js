@@ -170,8 +170,8 @@ function createLexiaEngine(deps) {
     const prompt = String(options.prompt || `Consulta del usuario:\n${userQuery}`);
     const conversationMemory = memory.normalizeMessages(options.conversationMemory || []);
     const memorySearchQuery = memory.buildSearchQuery(userQuery, conversationMemory);
-    const currentIntent = brain.interpret(userQuery, conversationMemory);
-    const memoryIntent = brain.interpret(memorySearchQuery, conversationMemory);
+    const currentIntent = await brain.interpret(userQuery, conversationMemory);
+    const memoryIntent = await brain.interpret(memorySearchQuery, conversationMemory);
     const intent = brain.mergeIntent(currentIntent, memoryIntent);
     const effectiveConversationMemory = (intent?.interpretation?.topicShift || intent?.interpretation?.ignoredMemory) ? [] : conversationMemory;
     const conversationMemoryContext = memory.buildContext(effectiveConversationMemory, intent);

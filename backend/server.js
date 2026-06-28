@@ -11,6 +11,7 @@ const dotenv = require('dotenv');
 const { createLexiaEngine } = require('./lexia-engine/orchestrator');
 const { createRateLimiter } = require('./lexia-engine/flow-control');
 const { createKnowledgeEngine } = require('./lexia-engine/knowledge');
+const { createPythonBrain } = require('./lexia-engine/python-brain');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -53,6 +54,10 @@ const preferGrok = !forceLocalProvider && (['grok', 'xai'].includes(configuredAi
 const preferGroq = !forceLocalProvider && (['groq', 'grock'].includes(configuredAiProvider) || (configuredAiProvider === 'grok' && Boolean(groqKey) && !xAiKey) || process.env.GROQ_PREFER === 'true' || process.env.GROCK_PREFER === 'true');
 const preferOllama = !forceLocalProvider && (configuredAiProvider === 'ollama' || process.env.OLLAMA_PREFER === 'true');
 const providerTimeoutMs = Number(process.env.AI_PROVIDER_TIMEOUT_MS || 45000);
+const pythonBrain = createPythonBrain({
+  enabled: process.env.LEXIA_PYTHON_BRAIN_ENABLED !== 'false',
+  timeoutMs: Number(process.env.LEXIA_PYTHON_BRAIN_TIMEOUT_MS || 2500)
+});
 const aiProviderConfig = {
   openai: {
     apiKey: openAiKey,
@@ -2091,6 +2096,28 @@ function interpretLegalQuery(query, memoryMessages = []) {
 
 function classifyLegalIntent(query) {
   return interpretLegalQuery(query, []);
+}
+
+async function interpretLegalQueryWithPython(query, memoryMessages = []) {
+  const baseline = interpretLegalQuery(query, memoryMessages);
+  const analysis = await pythonBrain.analyze({
+    query: String(query || ''),
+    memoryMessages: normalizeMemoryMessages(memoryMessages),
+    baseline
+  });
+  if (!analysis.available || !analysis.ok || !analysis.intent) {
+    return {
+      ...baseline,
+      interpretation: {
+        ...(baseline.interpretation || {}),
+        pythonBrain: {
+          status: 'fallback',
+          reason: analysis.reason || 'Python Brain no devolvió un análisis válido.'
+        }
+      }
+    };
+  }
+  return analysis.intent;
 }
 
 function mergeConversationIntent(currentIntent, memoryIntent) {
@@ -4681,7 +4708,7 @@ function getLexiaEngine() {
 
   lexiaEngineInstance = createLexiaEngine({
     brain: {
-      interpret: interpretLegalQuery,
+      interpret: interpretLegalQueryWithPython,
       mergeIntent: mergeConversationIntent,
       buildInterpretationSearchQuery,
       isGreetingOnly,
@@ -4927,13 +4954,13 @@ function buildKnownLawReferenceAnswer(query, results = []) {
   return lines.join('\n');
 }
 
-app.post('/api/legal-intent', (req, res) => {
+app.post('/api/legal-intent', async (req, res) => {
   const query = String(req.body?.query || req.body?.prompt || '').trim();
   if (!query) {
     return res.status(400).json({ error: 'La consulta es obligatoria.' });
   }
   const memoryMessages = Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : [];
-  const intent = interpretLegalQuery(extractUserQuery(query), memoryMessages);
+  const intent = await interpretLegalQueryWithPython(extractUserQuery(query), memoryMessages);
   const includeGraph = req.body?.includeGraph === true;
   const localResults = includeGraph
     ? getCombinedLegalKnowledgeCorpus()
@@ -4961,11 +4988,12 @@ app.post('/api/legal-query', async (req, res) => {
 
   await ensureLegalKnowledgeAvailable();
   const results = searchLegalEngine(query);
+  const intent = await interpretLegalQueryWithPython(query, []);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(query, results);
   logLocalSearchSufficiency('/api/legal-query', query, localSearchEvaluation);
   return res.json({
     query,
-    intent: classifyLegalIntent(query),
+    intent,
     results,
     searched: shouldSearchLegalEngine(query),
     localSearchStatus: localSearchEvaluation.localSearchStatus,
@@ -5377,11 +5405,12 @@ app.post('/api/legal-search', async (req, res) => {
 
   await ensureLegalKnowledgeAvailable();
   const results = searchLegalKnowledgeBase(query);
+  const intent = await interpretLegalQueryWithPython(query, []);
   const localSearchEvaluation = evaluateLocalSearchSufficiency(query, results);
   logLocalSearchSufficiency('/api/legal-search', query, localSearchEvaluation);
   return res.json({
     query,
-    intent: classifyLegalIntent(query),
+    intent,
     results,
     searched: shouldSearchLegalEngine(query),
     localSearchStatus: localSearchEvaluation.localSearchStatus,
