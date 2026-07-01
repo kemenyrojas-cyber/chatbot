@@ -7,6 +7,23 @@
     let activeUtterance = null;
     let lastLabel = "";
     let lastSpokenAt = 0;
+    let validationAnnouncementTimer = null;
+    const validationStatus = document.createElement("div");
+    validationStatus.setAttribute("role", "alert");
+    validationStatus.setAttribute("aria-live", "assertive");
+    validationStatus.setAttribute("aria-atomic", "true");
+    Object.assign(validationStatus.style, {
+        position: "absolute",
+        width: "1px",
+        height: "1px",
+        padding: "0",
+        margin: "-1px",
+        overflow: "hidden",
+        clip: "rect(0, 0, 0, 0)",
+        whiteSpace: "nowrap",
+        border: "0"
+    });
+    document.body.appendChild(validationStatus);
 
     function normalize(value) {
         return String(value || "").replace(/\s+/g, " ").trim();
@@ -61,19 +78,11 @@
         activeUtterance = null;
     }
 
-    function speakControl(target, force = false) {
-        const control = target?.closest?.(controlSelector);
-        if (!control) return;
-
-        const label = describeControl(control);
-        const now = Date.now();
-        if (!label || (!force && label === lastLabel && now - lastSpokenAt < 900)) return;
-
+    function speakMessage(message) {
+        const text = normalize(message);
+        if (!text) return;
         stopSpeaking();
-        lastLabel = label;
-        lastSpokenAt = now;
-
-        const utterance = new SpeechSynthesisUtterance(label);
+        const utterance = new SpeechSynthesisUtterance(text);
         const voice = getVoice();
         if (voice) utterance.voice = voice;
         utterance.lang = voice?.lang || "es-PE";
@@ -89,9 +98,46 @@
         speech.speak(utterance);
     }
 
+    function speakControl(target, force = false) {
+        const control = target?.closest?.(controlSelector);
+        if (!control) return;
+
+        const label = describeControl(control);
+        const now = Date.now();
+        if (!label || (!force && label === lastLabel && now - lastSpokenAt < 900)) return;
+
+        lastLabel = label;
+        lastSpokenAt = now;
+        speakMessage(label);
+    }
+
+    function getValidationMessage(control) {
+        const label = getControlLabel(control) || "Este campo";
+        if (control.validity?.valueMissing) return `${label} es obligatorio. Completa este campo.`;
+        if (control.validity?.typeMismatch) return `Ingresa un dato válido en ${label}.`;
+        if (control.validity?.tooShort) return `${label} debe tener al menos ${control.minLength} caracteres.`;
+        if (control.validity?.patternMismatch) return `${label} no tiene el formato requerido.`;
+        return control.validationMessage || `${label} contiene un error. Revisa este campo.`;
+    }
+
     document.addEventListener("pointerdown", event => speakControl(event.target, true), true);
     document.addEventListener("pointerover", event => speakControl(event.target));
     document.addEventListener("focusin", event => speakControl(event.target, true));
+    document.addEventListener("invalid", event => {
+        if (validationAnnouncementTimer) return;
+        const control = event.target;
+        const message = getValidationMessage(control);
+        validationAnnouncementTimer = window.setTimeout(() => {
+            validationAnnouncementTimer = null;
+            validationStatus.textContent = "";
+            window.setTimeout(() => {
+                validationStatus.textContent = message;
+            }, 30);
+            lastLabel = message;
+            lastSpokenAt = Date.now();
+            speakMessage(message);
+        }, 120);
+    }, true);
     document.addEventListener("pointerout", event => {
         const currentControl = event.target?.closest?.(controlSelector);
         if (!currentControl || currentControl.contains(event.relatedTarget)) return;
