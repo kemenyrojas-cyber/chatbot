@@ -5,6 +5,7 @@
     const speech = window.speechSynthesis;
     const controlSelector = "a, button, input, select, textarea, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])";
     let activeUtterance = null;
+    let speechStartTimer = null;
     let lastLabel = "";
     let lastSpokenAt = 0;
     let validationAnnouncementTimer = null;
@@ -74,6 +75,10 @@
     }
 
     function stopSpeaking() {
+        if (speechStartTimer) {
+            window.clearTimeout(speechStartTimer);
+            speechStartTimer = null;
+        }
         speech.cancel();
         activeUtterance = null;
     }
@@ -81,21 +86,30 @@
     function speakMessage(message) {
         const text = normalize(message);
         if (!text) return;
+        const shouldDelay = speech.speaking || speech.pending;
         stopSpeaking();
-        const utterance = new SpeechSynthesisUtterance(text);
-        const voice = getVoice();
-        if (voice) utterance.voice = voice;
-        utterance.lang = voice?.lang || "es-PE";
-        utterance.rate = 0.95;
-        activeUtterance = utterance;
-        utterance.addEventListener("end", () => {
-            if (activeUtterance === utterance) activeUtterance = null;
-        }, { once: true });
-        utterance.addEventListener("error", () => {
-            if (activeUtterance === utterance) activeUtterance = null;
-        }, { once: true });
-        speech.resume?.();
-        speech.speak(utterance);
+        const startSpeech = () => {
+            speechStartTimer = null;
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voice = getVoice();
+            if (voice) utterance.voice = voice;
+            utterance.lang = voice?.lang || "es-PE";
+            utterance.rate = 0.95;
+            activeUtterance = utterance;
+            utterance.addEventListener("end", () => {
+                if (activeUtterance === utterance) activeUtterance = null;
+            }, { once: true });
+            utterance.addEventListener("error", () => {
+                if (activeUtterance === utterance) activeUtterance = null;
+            }, { once: true });
+            speech.resume?.();
+            speech.speak(utterance);
+        };
+        if (shouldDelay) {
+            speechStartTimer = window.setTimeout(startSpeech, 60);
+        } else {
+            startSpeech();
+        }
     }
 
     function speakControl(target, force = false) {
@@ -136,7 +150,7 @@
             lastLabel = message;
             lastSpokenAt = Date.now();
             speakMessage(message);
-        }, 120);
+        }, 250);
     }, true);
     document.addEventListener("pointerout", event => {
         const currentControl = event.target?.closest?.(controlSelector);
