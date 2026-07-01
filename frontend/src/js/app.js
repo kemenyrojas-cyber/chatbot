@@ -253,6 +253,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let voiceAssistEnabled = localStorage.getItem("lexiaVoiceAssist") === "true";
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
+    let activeSpeechUtterance = null;
     const voiceIntroMessage = "si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback";
 
     function loadList(key) {
@@ -549,15 +550,23 @@ document.addEventListener("DOMContentLoaded", () => {
         const text = String(message || "").replace(/\s+/g, " ").trim();
         if (!text || !("speechSynthesis" in window)) return;
         if (!options.force && !voiceAssistEnabled) return;
-        window.speechSynthesis.resume?.();
-        window.speechSynthesis.cancel();
+        const speech = window.speechSynthesis;
+        if (speech.speaking || speech.pending) speech.cancel();
+        speech.resume?.();
         const utterance = new SpeechSynthesisUtterance(text);
         const voice = getSpeechVoice();
         if (voice) utterance.voice = voice;
         utterance.lang = voice?.lang || "es-PE";
         utterance.rate = 0.95;
         utterance.pitch = 1;
-        window.speechSynthesis.speak(utterance);
+        activeSpeechUtterance = utterance;
+        utterance.addEventListener("end", () => {
+            if (activeSpeechUtterance === utterance) activeSpeechUtterance = null;
+        }, { once: true });
+        utterance.addEventListener("error", () => {
+            if (activeSpeechUtterance === utterance) activeSpeechUtterance = null;
+        }, { once: true });
+        speech.speak(utterance);
     }
 
     function normalizeSpeechText(value) {
@@ -658,11 +667,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function bindVoiceIntroHover() {
         document.querySelectorAll("[data-voice-intro]").forEach(element => {
-            ["mouseenter", "pointerenter", "mousemove"].forEach(eventName => {
-                element.addEventListener(eventName, event => {
-                    if (voiceAssistEnabled) return;
-                    speakVoiceIntroFromTarget(event.target);
-                });
+            element.addEventListener("pointerenter", event => {
+                if (voiceAssistEnabled) return;
+                speakVoiceIntroFromTarget(event.currentTarget);
             });
         });
     }
