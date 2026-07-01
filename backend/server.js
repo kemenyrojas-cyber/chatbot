@@ -5313,6 +5313,66 @@ function classifyUploadedCaseFile(text = '', intent = {}) {
   };
 }
 
+function getResponsesApiText(data = {}) {
+  if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  return (Array.isArray(data.output) ? data.output : [])
+    .flatMap(item => Array.isArray(item?.content) ? item.content : [])
+    .filter(content => content?.type === 'output_text' && content.text)
+    .map(content => String(content.text).trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+async function analyzeScannedCaseFileWithOpenAI(file) {
+  if (!openAiKey) {
+    throw new Error('El expediente parece escaneado y el servicio OCR no está configurado.');
+  }
+
+  const model = envValue('OPENAI_OCR_MODEL', openAiModel || 'gpt-4o-mini');
+  const response = await fetchWithTimeout(`${openAiBaseUrl}/responses`, {
+    method: 'POST',
+    timeoutMs: Number(process.env.OPENAI_OCR_TIMEOUT_MS || 120000),
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      max_output_tokens: Number(process.env.OPENAI_OCR_MAX_OUTPUT_TOKENS || 7000),
+      input: [{
+        role: 'user',
+        content: [
+          {
+            type: 'input_file',
+            filename: String(file.originalname || 'expediente.pdf'),
+            file_data: `data:application/pdf;base64,${file.buffer.toString('base64')}`
+          },
+          {
+            type: 'input_text',
+            text: [
+              'Analiza este expediente judicial peruano escaneado leyendo las imágenes de todas sus páginas.',
+              'No inventes contenido ilegible ni datos ausentes. Indica expresamente cualquier página o sección que no puedas leer.',
+              'Responde en español y comienza con "Clasificación del expediente": materia, tipo de proceso, etapa, urgencia y etiquetas.',
+              'Luego incluye partes y roles, resumen ejecutivo, cronología, pretensiones, pruebas, resoluciones o actuaciones, inconsistencias, vacíos, plazos y riesgos, y próximos pasos.',
+              'Distingue hechos alegados de hechos acreditados y fundamenta los hallazgos en el contenido visible del archivo.'
+            ].join('\n')
+          }
+        ]
+      }]
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error?.message || `El OCR respondió con estado ${response.status}.`);
+  }
+  const answer = getResponsesApiText(data);
+  if (answer.length < 120) {
+    throw new Error('El OCR no pudo recuperar suficiente información legible del expediente.');
+  }
+  return { answer, model };
+}
+
 app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async (req, res) => {
   try {
     const file = req.file || null;
@@ -5320,15 +5380,35 @@ app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async
 
     const originalName = String(file.originalname || 'expediente.pdf').trim();
     const extractedText = (await extractTextFromLegalUpload(file, {})).replace(/\u0000/g, '').trim();
+    let scannedAnalysis = null;
     if (extractedText.length < 120) {
-      return res.status(400).json({ error: 'El expediente no contiene suficiente texto legible para analizarlo.' });
+      const isPdf = path.extname(originalName).toLowerCase() === '.pdf'
+        || String(file.mimetype || '').toLowerCase().includes('pdf');
+      if (!isPdf) {
+        return res.status(400).json({ error: 'El expediente no contiene suficiente texto legible para analizarlo.' });
+      }
+      scannedAnalysis = await analyzeScannedCaseFileWithOpenAI(file);
     }
 
     const maxCharacters = Number(process.env.CASE_FILE_MAX_TEXT_CHARS || 70000);
     const wasTruncated = extractedText.length > maxCharacters;
-    const documentText = extractedText.slice(0, maxCharacters);
+    const documentText = scannedAnalysis?.answer || extractedText.slice(0, maxCharacters);
     const classificationIntent = await interpretLegalQueryWithPython(documentText.slice(0, 15000), []);
     const classification = classifyUploadedCaseFile(documentText, classificationIntent);
+    if (scannedAnalysis) {
+      return res.json({
+        ok: true,
+        fileName: originalName,
+        answer: scannedAnalysis.answer,
+        classification,
+        caseFile: null,
+        quality: null,
+        provider: 'openai-vision-ocr',
+        model: scannedAnalysis.model,
+        truncated: false,
+        ocr: true
+      });
+    }
     const userQuery = `Analiza jurídicamente el expediente "${originalName}".`;
     const prompt = [
       'Actúa como analista jurídico peruano y revisa únicamente el contenido del expediente proporcionado.',

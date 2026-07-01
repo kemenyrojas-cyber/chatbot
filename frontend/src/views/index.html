@@ -323,6 +323,43 @@
                     <div class="documents-status" id="documentsStatus" role="status" aria-live="polite" hidden></div>
                     <div class="documents-list" id="documentsList" role="list" aria-label="Expedientes guardados"></div>
                 </section>
+
+                <section class="case-reviewer" id="caseReviewer" aria-labelledby="caseReviewerTitle" hidden>
+                    <header class="case-reviewer-header">
+                        <div>
+                            <span class="module-eyebrow">Expediente abierto</span>
+                            <h3 id="caseReviewerTitle">Análisis visual del expediente</h3>
+                            <p id="caseReviewerStatus" role="status" aria-live="polite">Preparando documento...</p>
+                        </div>
+                        <button class="chat-secondary-button" id="closeCaseReviewer" type="button">
+                            <i class="fa-solid fa-xmark icon" aria-hidden="true"></i>
+                            Cerrar expediente
+                        </button>
+                    </header>
+                    <div class="case-reviewer-layout">
+                        <div class="case-pdf-pages" id="casePdfPages" aria-label="Páginas del expediente"></div>
+                        <aside class="case-findings" aria-label="Clasificación y datos del expediente">
+                            <h4>Ficha del expediente</h4>
+                            <dl>
+                                <div><dt>Número</dt><dd id="caseFindingNumber">Analizando...</dd></div>
+                                <div><dt>Año</dt><dd id="caseFindingYear">Analizando...</dd></div>
+                                <div><dt>Jurisdicción</dt><dd id="caseFindingJurisdiction">Analizando...</dd></div>
+                                <div><dt>Acusado / parte</dt><dd id="caseFindingAccused">Analizando...</dd></div>
+                                <div><dt>Materia</dt><dd id="caseFindingArea">Analizando...</dd></div>
+                                <div><dt>Etapa</dt><dd id="caseFindingStage">Analizando...</dd></div>
+                                <div><dt>Urgencia</dt><dd id="caseFindingUrgency">Analizando...</dd></div>
+                            </dl>
+                            <div class="case-important-points">
+                                <h4>Puntos importantes</h4>
+                                <ul id="caseImportantPoints"><li>LEXIA está revisando el expediente.</li></ul>
+                            </div>
+                            <details class="case-analysis-report" open>
+                                <summary>Informe del análisis</summary>
+                                <div id="caseAnalysisReport">El informe aparecerá mientras LEXIA analiza el expediente.</div>
+                            </details>
+                        </aside>
+                    </div>
+                </section>
             </section>
 
             <section class="chat-view" id="legalChatView" hidden>
@@ -364,7 +401,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260701-case-classification"></script>
+    <script src="/js/app.js?v=20260701-visual-case-reviewer"></script>
 </body>
 </html>
 

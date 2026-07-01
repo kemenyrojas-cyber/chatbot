@@ -40,6 +40,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const documentTotalCount = document.getElementById("documentTotalCount");
     const documentTotalSize = document.getElementById("documentTotalSize");
     const documentRecentCount = document.getElementById("documentRecentCount");
+    const caseReviewer = document.getElementById("caseReviewer");
+    const closeCaseReviewer = document.getElementById("closeCaseReviewer");
+    const caseReviewerTitle = document.getElementById("caseReviewerTitle");
+    const caseReviewerStatus = document.getElementById("caseReviewerStatus");
+    const casePdfPages = document.getElementById("casePdfPages");
+    const caseFindingNumber = document.getElementById("caseFindingNumber");
+    const caseFindingYear = document.getElementById("caseFindingYear");
+    const caseFindingJurisdiction = document.getElementById("caseFindingJurisdiction");
+    const caseFindingAccused = document.getElementById("caseFindingAccused");
+    const caseFindingArea = document.getElementById("caseFindingArea");
+    const caseFindingStage = document.getElementById("caseFindingStage");
+    const caseFindingUrgency = document.getElementById("caseFindingUrgency");
+    const caseImportantPoints = document.getElementById("caseImportantPoints");
+    const caseAnalysisReport = document.getElementById("caseAnalysisReport");
     const chatSessionList = document.getElementById("chatSessionList");
     const chatThread = document.getElementById("chatThread");
     const chatComposerInput = document.getElementById("chatComposerInput");
@@ -250,6 +264,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let canSuggestBrainSources = false;
     let canCurateBrainSources = false;
     let documentDatabasePromise = null;
+    let pdfJsPromise = null;
+    let caseRenderingToken = 0;
     let voiceAssistEnabled = localStorage.getItem("lexiaVoiceAssist") === "true";
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
@@ -1035,6 +1051,230 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function loadPdfJs() {
+        if (!pdfJsPromise) {
+            pdfJsPromise = import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.624/build/pdf.min.mjs")
+                .then(pdfjs => {
+                    pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs";
+                    return pdfjs;
+                });
+        }
+        return pdfJsPromise;
+    }
+
+    function resetCaseReviewer(item) {
+        documentsView?.classList.add("reviewing");
+        if (caseReviewer) caseReviewer.hidden = false;
+        if (caseReviewerTitle) caseReviewerTitle.textContent = item.name;
+        if (caseReviewerStatus) caseReviewerStatus.textContent = "Abriendo expediente y preparando análisis...";
+        if (casePdfPages) casePdfPages.innerHTML = "";
+        [
+            caseFindingNumber,
+            caseFindingYear,
+            caseFindingJurisdiction,
+            caseFindingAccused,
+            caseFindingArea,
+            caseFindingStage,
+            caseFindingUrgency
+        ].forEach(element => {
+            if (element) element.textContent = "Analizando...";
+        });
+        if (caseImportantPoints) caseImportantPoints.innerHTML = "<li>LEXIA está revisando el expediente.</li>";
+        if (caseAnalysisReport) caseAnalysisReport.textContent = "El informe aparecerá mientras LEXIA analiza el expediente.";
+    }
+
+    function closeCaseReview() {
+        caseRenderingToken += 1;
+        documentsView?.classList.remove("reviewing");
+        if (caseReviewer) caseReviewer.hidden = true;
+        renderDocuments();
+        focusRegion(documentsView);
+    }
+
+    function firstMatch(text, patterns) {
+        for (const pattern of patterns) {
+            const match = String(text || "").match(pattern);
+            if (match?.[1]) return normalizeSpeechText(match[1]).slice(0, 140);
+        }
+        return "";
+    }
+
+    function extractCaseFields(text) {
+        const number = firstMatch(text, [
+            /(?:expediente|exp\.?)\s*(?:n[.°ºo]*\s*)?[:\-]?\s*([0-9]{1,7}(?:[-/][0-9A-Z]{1,10}){1,7})/i,
+            /\b([0-9]{3,7}-20[0-9]{2}-[0-9]{1,6}-[A-Z]{2,8}-[A-Z]{2,8}(?:-[0-9]{2})?)\b/i
+        ]);
+        const year = firstMatch(number || text, [/\b(20[0-9]{2}|19[0-9]{2})\b/]);
+        const jurisdiction = firstMatch(text, [
+            /(Corte Superior de Justicia de\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúÑñ ]{2,80})/i,
+            /((?:\d+[.°º]?\s*)?(?:Juzgado|Sala)\s+(?:Penal|Civil|Laboral|Constitucional|de Familia|Mixta)[^.\n]{0,80})/i
+        ]);
+        const accused = firstMatch(text, [
+            /(?:acusado|imputado|procesado|investigado)\s*[:\-]\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ,.'-]{4,100})/i,
+            /(?:contra|seguido contra)\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ,.'-]{4,100})\s+(?:por|como)/i,
+            /(?:demandado|demandada)\s*[:\-]\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ,.'-]{4,100})/i
+        ]);
+        return { number, year, jurisdiction, accused };
+    }
+
+    function updateExtractedCaseFields(text) {
+        const fields = extractCaseFields(text);
+        if (fields.number && caseFindingNumber) caseFindingNumber.textContent = fields.number;
+        if (fields.year && caseFindingYear) caseFindingYear.textContent = fields.year;
+        if (fields.jurisdiction && caseFindingJurisdiction) caseFindingJurisdiction.textContent = fields.jurisdiction;
+        if (fields.accused && caseFindingAccused) caseFindingAccused.textContent = fields.accused;
+    }
+
+    function getImportantTextItems(items = []) {
+        const pattern = /\b(expediente|acusad[oa]|imputad[oa]|procesad[oa]|demandad[oa]|sentencia|resuelve|fallo|delito|prueba|juzgado|sala|fiscal|agraviad[oa]|audiencia|apelaci[oó]n|casaci[oó]n|medida cautelar|plazo)\b/i;
+        return items.filter(item => pattern.test(String(item.str || "")));
+    }
+
+    function updateImportantPoints(items = []) {
+        if (!caseImportantPoints) return;
+        const existing = new Set(Array.from(caseImportantPoints.querySelectorAll("li")).map(item => item.textContent));
+        if (existing.has("LEXIA está revisando el expediente.")) {
+            caseImportantPoints.innerHTML = "";
+            existing.clear();
+        }
+        getImportantTextItems(items).forEach(item => {
+            const point = normalizeSpeechText(item.str);
+            if (point.length < 8 || existing.has(point) || existing.size >= 10) return;
+            existing.add(point);
+            const listItem = document.createElement("li");
+            listItem.textContent = point;
+            caseImportantPoints.appendChild(listItem);
+        });
+    }
+
+    function drawCaseHighlights(pdfjs, items, viewport, canvas, outputScale) {
+        const context = canvas.getContext("2d");
+        context.scale(outputScale, outputScale);
+        getImportantTextItems(items).forEach(item => {
+            const transform = pdfjs.Util.transform(viewport.transform, item.transform);
+            const fontHeight = Math.max(8, Math.hypot(transform[2], transform[3]));
+            const x = transform[4];
+            const y = transform[5] - fontHeight;
+            const width = Math.max(18, item.width * viewport.scale);
+            context.fillStyle = "rgba(250, 204, 21, 0.24)";
+            context.fillRect(x - 2, y - 1, width + 4, fontHeight + 3);
+            context.strokeStyle = "rgba(220, 38, 38, 0.88)";
+            context.lineWidth = 1.6;
+            context.beginPath();
+            context.moveTo(x, y + fontHeight + 2);
+            context.lineTo(x + width, y + fontHeight + 2);
+            context.stroke();
+        });
+    }
+
+    async function renderPdfCaseFile(blob, token) {
+        const pdfjs = await loadPdfJs();
+        if (token !== caseRenderingToken) return;
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        let accumulatedText = "";
+        let textItemsFound = 0;
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            if (token !== caseRenderingToken) return;
+            const page = await pdf.getPage(pageNumber);
+            const baseViewport = page.getViewport({ scale: 1 });
+            const availableWidth = Math.max(320, Math.min(900, (casePdfPages?.clientWidth || 900) - 40));
+            const scale = Math.min(1.6, availableWidth / baseViewport.width);
+            const viewport = page.getViewport({ scale });
+            const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+            const pageElement = document.createElement("article");
+            pageElement.className = "case-pdf-page";
+            pageElement.style.width = `${Math.floor(viewport.width)}px`;
+            pageElement.setAttribute("aria-label", `Página ${pageNumber} del expediente`);
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = `${Math.floor(viewport.width)}px`;
+            canvas.style.height = `${Math.floor(viewport.height)}px`;
+            const highlights = document.createElement("canvas");
+            highlights.className = "case-page-highlights";
+            highlights.width = canvas.width;
+            highlights.height = canvas.height;
+            highlights.style.width = canvas.style.width;
+            highlights.style.height = canvas.style.height;
+            const badge = document.createElement("span");
+            badge.className = "case-page-number";
+            badge.textContent = `Página ${pageNumber}`;
+            pageElement.append(canvas, highlights, badge);
+            casePdfPages?.appendChild(pageElement);
+
+            await page.render({
+                canvasContext: canvas.getContext("2d"),
+                transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+                viewport
+            }).promise;
+            const textContent = await page.getTextContent();
+            const items = textContent.items.filter(item => item.str?.trim());
+            textItemsFound += items.length;
+            accumulatedText += `\n${items.map(item => item.str).join(" ")}`;
+            drawCaseHighlights(pdfjs, items, viewport, highlights, outputScale);
+            updateExtractedCaseFields(accumulatedText);
+            updateImportantPoints(items);
+            if (!items.length) {
+                const ocrNote = document.createElement("span");
+                ocrNote.className = "case-page-ocr-note";
+                ocrNote.textContent = "Página escaneada · OCR en proceso";
+                pageElement.appendChild(ocrNote);
+            }
+            if (caseReviewerStatus) {
+                caseReviewerStatus.textContent = `Página ${pageNumber} de ${pdf.numPages} revisada y marcada.`;
+            }
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+        if (caseReviewerStatus && textItemsFound) {
+            caseReviewerStatus.textContent = `${pdf.numPages} páginas abiertas. LEXIA continúa con el análisis jurídico.`;
+        }
+    }
+
+    function updateCaseAnalysisPanel(data = {}) {
+        const classification = data.classification || {};
+        if (caseFindingArea) caseFindingArea.textContent = classification.area || "Por determinar";
+        if (caseFindingStage) caseFindingStage.textContent = classification.stage || "Por determinar";
+        if (caseFindingUrgency) caseFindingUrgency.textContent = classification.urgency || "Normal";
+        updateExtractedCaseFields(data.answer || "");
+        if (caseFindingNumber?.textContent === "Analizando...") caseFindingNumber.textContent = "No identificado";
+        if (caseFindingYear?.textContent === "Analizando...") caseFindingYear.textContent = "No identificado";
+        if (caseFindingJurisdiction?.textContent === "Analizando...") caseFindingJurisdiction.textContent = "No identificada";
+        if (caseFindingAccused?.textContent === "Analizando...") caseFindingAccused.textContent = "No identificado";
+        if (caseAnalysisReport) caseAnalysisReport.innerHTML = formatChatContent(data.answer || "No se obtuvo un informe.");
+
+        const reportPoints = String(data.answer || "")
+            .split(/\r?\n/)
+            .map(line => line.replace(/^[-*#\d.\s]+/, "").trim())
+            .filter(line => line.length >= 24 && /\b(riesgo|prueba|plazo|resoluci[oó]n|sentencia|pretensi[oó]n|inconsistencia|urgencia|acusad|imputad)\b/i.test(line))
+            .slice(0, 10);
+        if (reportPoints.length && caseImportantPoints) {
+            caseImportantPoints.innerHTML = reportPoints.map(point => `<li>${escapeHtml(point)}</li>`).join("");
+        }
+    }
+
+    function openCaseReview(item, blob) {
+        caseRenderingToken += 1;
+        const token = caseRenderingToken;
+        resetCaseReviewer(item);
+        if (item.extension === "pdf") {
+            void renderPdfCaseFile(blob, token).catch(error => {
+                if (caseReviewerStatus) caseReviewerStatus.textContent = `No se pudo mostrar el PDF: ${error.message}`;
+            });
+            return;
+        }
+        blob.text().then(text => {
+            if (token !== caseRenderingToken || !casePdfPages) return;
+            const pre = document.createElement("pre");
+            pre.className = "case-text-document";
+            pre.textContent = text;
+            casePdfPages.appendChild(pre);
+            updateExtractedCaseFields(text);
+            if (caseReviewerStatus) caseReviewerStatus.textContent = "Expediente de texto abierto. LEXIA continúa con el análisis.";
+        });
+    }
+
     async function analyzeDocument(id) {
         const item = getDocuments().find(document => document.id === id);
         if (!item) return;
@@ -1054,6 +1294,7 @@ document.addEventListener("DOMContentLoaded", () => {
             announce(`LEXIA está analizando el expediente ${item.name}.`);
             const blob = await getDocumentFile(id);
             if (!blob) throw new Error("El contenido del expediente ya no está disponible en este navegador.");
+            openCaseReview(item, blob);
 
             const formData = new FormData();
             formData.append("file", new File([blob], item.name, { type: item.mimeType }));
@@ -1072,45 +1313,19 @@ document.addEventListener("DOMContentLoaded", () => {
                     : document
             ));
             saveList(storageKeys.documents, storedDocuments);
-            renderDocuments();
-            activeChatSessionId = null;
-            const session = createChatSession(`Análisis de ${item.name}`);
-            const createdAt = new Date().toISOString();
-            session.title = `Análisis: ${item.name}`.slice(0, 120);
-            session.messages = [
-                {
-                    id: `${session.id}:user:${createdAt}`,
-                    role: "user",
-                    content: `Analiza jurídicamente el expediente ${item.name}.`,
-                    createdAt
-                },
-                {
-                    id: `${session.id}:assistant:${createdAt}`,
-                    role: "assistant",
-                    content: data.answer || "No se obtuvo un análisis válido.",
-                    createdAt,
-                    metadata: {
-                        classification: data.classification || null,
-                        caseFile: data.caseFile || null,
-                        quality: data.quality || null,
-                        truncated: Boolean(data.truncated)
-                    }
-                }
-            ];
-            activeChatSessionId = session.id;
-            upsertChatSession(session);
+            updateCaseAnalysisPanel(data);
             const classificationSummary = data.classification
                 ? `${data.classification.area} · ${data.classification.stage} · urgencia ${String(data.classification.urgency).toLowerCase()}`
                 : "clasificación pendiente de revisión";
             addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
-            setDocumentsStatus(`Expediente clasificado: ${classificationSummary}.`);
-            history.replaceState(null, "", `${window.location.pathname}${window.location.search}#consulta-ia`);
-            showView("chat");
-            renderChatSessions();
-            renderChatThread();
+            setDocumentsStatus(`${data.ocr ? "Expediente escaneado procesado con OCR. " : ""}Expediente clasificado: ${classificationSummary}.`);
+            if (caseReviewerStatus) {
+                caseReviewerStatus.textContent = `${data.ocr ? "OCR completado. " : ""}Análisis jurídico finalizado: ${classificationSummary}.`;
+            }
             announce(`Análisis del expediente ${item.name} completado.`);
         } catch (error) {
             setDocumentsStatus(error.message || "No se pudo analizar el expediente.", "error");
+            if (caseReviewerStatus) caseReviewerStatus.textContent = error.message || "No se pudo analizar el expediente.";
             announce(`No se pudo analizar el expediente. ${error.message || ""}`);
         } finally {
             if (analyzeButton) {
@@ -1811,6 +2026,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     uploadDocumentButton?.addEventListener("click", () => documentFileInput?.click());
+    closeCaseReviewer?.addEventListener("click", closeCaseReview);
     documentDropZone?.addEventListener("click", () => documentFileInput?.click());
     documentDropZone?.addEventListener("keydown", event => {
         if (event.key !== "Enter" && event.key !== " ") return;

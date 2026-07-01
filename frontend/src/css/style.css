@@ -1108,6 +1108,194 @@ summary:focus-visible,
     font-size: 11px;
 }
 
+.documents-view.reviewing > .documents-header,
+.documents-view.reviewing > .document-summary,
+.documents-view.reviewing > .documents-panel {
+    display: none;
+}
+
+.case-reviewer[hidden] {
+    display: none !important;
+}
+
+.case-reviewer {
+    min-height: calc(100vh - 230px);
+}
+
+.case-reviewer-header {
+    margin-bottom: 18px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.case-reviewer-header h3 {
+    margin-top: 5px;
+    color: #0B1B3A;
+    font-size: 22px;
+}
+
+.case-reviewer-header p {
+    margin-top: 6px;
+    color: #526680;
+    font-size: 12px;
+}
+
+.case-reviewer-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    align-items: start;
+    gap: 18px;
+}
+
+.case-pdf-pages {
+    min-height: 620px;
+    padding: 18px;
+    border: 1px solid #DCE6F4;
+    border-radius: 12px;
+    background: #DCE4EF;
+    display: grid;
+    justify-items: center;
+    gap: 18px;
+    overflow: auto;
+}
+
+.case-pdf-page {
+    position: relative;
+    max-width: 100%;
+    background: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(15, 38, 75, 0.16);
+}
+
+.case-pdf-page canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.case-text-document {
+    width: min(100%, 850px);
+    min-height: 620px;
+    margin: 0;
+    padding: 34px;
+    background: #FFFFFF;
+    color: #182C4D;
+    box-shadow: 0 8px 24px rgba(15, 38, 75, 0.16);
+    font: 12px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+    white-space: pre-wrap;
+}
+
+.case-page-highlights {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.case-page-number,
+.case-page-ocr-note {
+    position: absolute;
+    z-index: 2;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.case-page-number {
+    top: 8px;
+    right: 8px;
+    padding: 5px 8px;
+    background: rgba(7, 28, 63, 0.82);
+    color: #FFFFFF;
+}
+
+.case-page-ocr-note {
+    left: 10px;
+    bottom: 10px;
+    padding: 5px 9px;
+    background: rgba(254, 243, 199, 0.94);
+    color: #92400E;
+}
+
+.case-findings {
+    position: sticky;
+    top: 18px;
+    padding: 18px;
+    border: 1px solid #DCE6F4;
+    border-radius: 12px;
+    background: #FFFFFF;
+    box-shadow: 0 8px 24px rgba(21, 48, 91, 0.08);
+}
+
+.case-findings h4 {
+    color: #13284C;
+    font-size: 14px;
+}
+
+.case-findings dl {
+    margin-top: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.case-findings dl > div {
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: #F5F8FC;
+}
+
+.case-findings dt {
+    color: #71819A;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.case-findings dd {
+    margin-top: 3px;
+    color: #102A56;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.case-important-points {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #E4EBF5;
+}
+
+.case-important-points ul {
+    margin: 10px 0 0;
+    padding-left: 18px;
+    color: #405675;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.case-analysis-report {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #E4EBF5;
+}
+
+.case-analysis-report summary {
+    color: #17325F;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.case-analysis-report > div {
+    max-height: 430px;
+    margin-top: 10px;
+    padding-right: 5px;
+    color: #405675;
+    font-size: 11px;
+    line-height: 1.55;
+    overflow: auto;
+}
+
 .section-header,
 .panel-title {
     display: flex;
@@ -1994,6 +2182,15 @@ summary:focus-visible,
         grid-template-columns: 1fr;
     }
 
+    .case-reviewer-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .case-findings {
+        position: static;
+        order: -1;
+    }
+
     .document-list-head,
     .document-item {
         grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.4fr) 176px;
@@ -2066,7 +2263,8 @@ summary:focus-visible,
     }
 
     .documents-header,
-    .documents-toolbar {
+    .documents-toolbar,
+    .case-reviewer-header {
         align-items: stretch;
         flex-direction: column;
     }
