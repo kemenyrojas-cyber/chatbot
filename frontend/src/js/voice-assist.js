@@ -10,6 +10,7 @@
     let speakingCharacter = false;
     let lastLabel = "";
     let lastSpokenAt = 0;
+    let lastEmptyFieldNoticeAt = 0;
     let validationAnnouncementTimer = null;
     const validationStatus = document.createElement("div");
     validationStatus.setAttribute("role", "alert");
@@ -198,12 +199,27 @@
     document.addEventListener("pointerdown", event => speakControl(event.target, true), true);
     document.addEventListener("pointerover", event => speakControl(event.target));
     document.addEventListener("focusin", event => speakControl(event.target, true));
+    document.addEventListener("keydown", event => {
+        const control = event.target;
+        if (!control.matches?.("input[type='text'], input[type='email'], input[type='password'], input:not([type]), textarea")) return;
+        if (!["Backspace", "Delete"].includes(event.key) || control.value.length > 0) return;
+
+        const now = Date.now();
+        if (now - lastEmptyFieldNoticeAt < 900) return;
+        lastEmptyFieldNoticeAt = now;
+        speakMessage(`${getControlLabel(control) || "El campo"} ya está vacío.`);
+    });
     document.addEventListener("input", event => {
         const control = event.target;
         if (!control.matches?.("input[type='text'], input[type='email'], input[type='password'], input:not([type]), textarea")) return;
 
         if (event.inputType?.startsWith("delete")) {
-            speakTypedCharacter("borrado");
+            if (control.value.length === 0) {
+                lastEmptyFieldNoticeAt = Date.now();
+                speakMessage(`${getControlLabel(control) || "El campo"} quedó vacío.`);
+            } else {
+                speakTypedCharacter("borrado");
+            }
             return;
         }
         if (event.inputType === "insertFromPaste") {
