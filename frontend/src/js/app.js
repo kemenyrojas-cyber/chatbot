@@ -937,6 +937,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="document-actions">
                         <button class="document-action analyze" type="button" data-document-analyze title="Analizar expediente ${escapeHtml(item.name)}" aria-label="Analizar expediente ${escapeHtml(item.name)}">
                             <i class="fa-solid fa-magnifying-glass-chart icon" aria-hidden="true"></i>
+                            <span>Analizar</span>
                         </button>
                         <button class="document-action" type="button" data-document-download title="Descargar ${escapeHtml(item.name)}" aria-label="Descargar ${escapeHtml(item.name)}">
                             <i class="fa-solid fa-download icon" aria-hidden="true"></i>
@@ -957,6 +958,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const maxBytes = 25 * 1024 * 1024;
         const metadata = loadList(storageKeys.documents);
         let imported = 0;
+        const analyzableDocumentIds = [];
         const errors = [];
 
         setDocumentsStatus(`Guardando ${files.length === 1 ? "documento" : `${files.length} documentos`}...`);
@@ -985,6 +987,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     size: file.size,
                     createdAt: new Date().toISOString()
                 });
+                if (["pdf", "txt"].includes(extension)) analyzableDocumentIds.push(id);
                 imported += 1;
             } catch (error) {
                 errors.push(`${file.name}: ${error.message}`);
@@ -1003,6 +1006,11 @@ document.addEventListener("DOMContentLoaded", () => {
             setDocumentsStatus(`${imported} ${imported === 1 ? "documento guardado" : "documentos guardados"} correctamente.`);
         }
         if (documentFileInput) documentFileInput.value = "";
+        if (files.length === 1 && analyzableDocumentIds.length === 1) {
+            await analyzeDocument(analyzableDocumentIds[0]);
+        } else if (analyzableDocumentIds.length > 1) {
+            setDocumentsStatus(`${imported} expedientes guardados. Usa el botón Analizar del expediente que deseas revisar primero.`);
+        }
     }
 
     async function downloadDocument(id) {
