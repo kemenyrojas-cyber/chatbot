@@ -70,12 +70,13 @@
                 </div>
 
                 <div class="topbar-actions">
-                    <label class="voice-toggle" for="voiceAssistToggle" data-voice-intro="si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback">
-                        <input id="voiceAssistToggle" type="checkbox" role="switch" aria-label="Activar asistencia por voz">
+                    <label class="voice-toggle" for="voiceAssistToggle" data-voice-intro="Si eres una persona con discapacidad visual, haz clic para activarme y brindarte asesoría por voz mediante el sistema TalkBack." title="Haz clic para activar la asistencia por voz">
+                        <input id="voiceAssistToggle" type="checkbox" role="switch" aria-label="Activar asistencia por voz" aria-describedby="voiceAssistInstructions">
                         <span class="voice-toggle-track" aria-hidden="true">
                             <span class="voice-toggle-thumb"></span>
                         </span>
                         <span class="voice-toggle-text">Voz</span>
+                        <span id="voiceAssistInstructions" class="sr-only">Si eres una persona con discapacidad visual, haz clic para activar la asistencia por voz.</span>
                     </label>
                     <label class="search-box">
                         <span class="sr-only">Buscar en LEXIA</span>
@@ -363,7 +364,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260630-voice-hover-fix"></script>
+    <script src="/js/app.js?v=20260630-voice-activation-fix"></script>
 </body>
 </html>
 

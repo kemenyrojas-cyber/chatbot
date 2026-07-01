@@ -254,7 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
     let activeSpeechUtterance = null;
-    const voiceIntroMessage = "si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback";
+    const voiceIntroMessage = "Si eres una persona con discapacidad visual, haz clic para activarme y brindarte asesoría por voz mediante el sistema TalkBack.";
 
     function loadList(key) {
         try {
@@ -569,6 +569,12 @@ document.addEventListener("DOMContentLoaded", () => {
         speech.speak(utterance);
     }
 
+    function stopSpeaking() {
+        if (!("speechSynthesis" in window)) return;
+        window.speechSynthesis.cancel();
+        activeSpeechUtterance = null;
+    }
+
     function normalizeSpeechText(value) {
         return String(value || "").replace(/\s+/g, " ").trim();
     }
@@ -671,6 +677,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (voiceAssistEnabled) return;
                 speakVoiceIntroFromTarget(event.currentTarget);
             });
+            element.addEventListener("pointerleave", () => {
+                stopSpeaking();
+                lastSpokenLabel = "";
+                lastSpokenAt = 0;
+            });
         });
     }
 
@@ -684,7 +695,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         announce(voiceAssistEnabled ? "Asistencia por voz activa." : "Asistencia por voz desactivada.");
         if (shouldSpeak) {
-            speak(voiceAssistEnabled ? "Asistencia por voz activa. Te diré por qué botón o control estás pasando." : "Asistencia por voz desactivada.", { force: true });
+            speak(voiceAssistEnabled ? `${voiceIntroMessage} Asistencia por voz activa. Te diré por qué botón o control estás pasando.` : "Asistencia por voz desactivada.", { force: true });
         }
     }
 

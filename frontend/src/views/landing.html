@@ -62,12 +62,13 @@
                         </div>
 
                         <div class="flex items-center gap-4">
-                            <label class="landing-voice-toggle inline-flex min-h-[46px] cursor-pointer select-none items-center gap-2 rounded-md border border-soft/60 bg-white/5 px-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/10" for="landingVoiceAssistToggle" data-voice-intro="si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback">
-                                <input id="landingVoiceAssistToggle" class="peer sr-only" type="checkbox" role="switch" aria-label="Activar asistencia por voz">
+                            <label class="landing-voice-toggle inline-flex min-h-[46px] cursor-pointer select-none items-center gap-2 rounded-md border border-soft/60 bg-white/5 px-3 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/10" for="landingVoiceAssistToggle" data-voice-intro="Si eres una persona con discapacidad visual, haz clic para activarme y brindarte asesoría por voz mediante el sistema TalkBack." title="Haz clic para activar la asistencia por voz">
+                                <input id="landingVoiceAssistToggle" class="peer sr-only" type="checkbox" role="switch" aria-label="Activar asistencia por voz" aria-describedby="landingVoiceInstructions">
                                 <span class="landing-voice-track flex h-6 w-11 items-center rounded-full bg-slate-500 p-0.5 transition peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white" aria-hidden="true">
                                     <span class="landing-voice-thumb h-5 w-5 rounded-full bg-white shadow transition"></span>
                                 </span>
                                 <span>Voz</span>
+                                <span id="landingVoiceInstructions" class="sr-only">Si eres una persona con discapacidad visual, haz clic para activar la asistencia por voz.</span>
                             </label>
                             <a href="/login" class="hidden rounded-md border border-soft/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/8 sm:inline-flex">Iniciar sesión</a>
                             <a href="/registro" class="rounded-md bg-bluex px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:bg-blue-500">Registrarse</a>
@@ -192,7 +193,7 @@
             let lastLabel = "";
             let lastAt = 0;
             let activeSpeechUtterance = null;
-            const voiceIntroMessage = "si eres una persona con discapacidad visual dale click para activarme y brindarte asesoria por voz mediante el sistema talback";
+            const voiceIntroMessage = "Si eres una persona con discapacidad visual, haz clic para activarme y brindarte asesoría por voz mediante el sistema TalkBack.";
 
             function announce(message) {
                 if (!status || !message) return;
@@ -229,6 +230,12 @@
                     if (activeSpeechUtterance === utterance) activeSpeechUtterance = null;
                 }, { once: true });
                 speech.speak(utterance);
+            }
+
+            function stopSpeaking() {
+                if (!("speechSynthesis" in window)) return;
+                window.speechSynthesis.cancel();
+                activeSpeechUtterance = null;
             }
 
             function normalizeSpeechText(value) {
@@ -317,6 +324,11 @@
                         if (enabled) return;
                         speakVoiceIntroFromTarget(event.currentTarget);
                     });
+                    element.addEventListener("pointerleave", () => {
+                        stopSpeaking();
+                        lastLabel = "";
+                        lastAt = 0;
+                    });
                 });
             }
 
@@ -330,7 +342,7 @@
                 }
                 announce(enabled ? "Asistencia por voz activa." : "Asistencia por voz desactivada.");
                 if (shouldSpeak) {
-                    speak(enabled ? "Asistencia por voz activa. Te diré por qué botón o control estás pasando." : "Asistencia por voz desactivada.", true);
+                    speak(enabled ? `${voiceIntroMessage} Asistencia por voz activa. Te diré por qué botón o control estás pasando.` : "Asistencia por voz desactivada.", true);
                 }
             }
 
