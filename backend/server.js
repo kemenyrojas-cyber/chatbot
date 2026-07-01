@@ -135,6 +135,13 @@ const legalIngestUpload = multer({
     files: 1
   }
 });
+const caseFileAnalysisUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: Number(process.env.CASE_FILE_MAX_MB || 25) * 1024 * 1024,
+    files: 1
+  }
+});
 
 if (!openAiKey) {
   console.warn('\n⚠️ WARNING: OPENAI_API_KEY no está configurada.');
@@ -5260,6 +5267,63 @@ app.get('/api/legal-brain/status', (req, res) => {
     canSuggest: Boolean(email),
     canCurate: isLegalCuratorEmail(email)
   });
+});
+
+app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async (req, res) => {
+  try {
+    const file = req.file || null;
+    if (!file) return res.status(400).json({ error: 'Debes seleccionar un expediente.' });
+
+    const originalName = String(file.originalname || 'expediente.pdf').trim();
+    const extractedText = (await extractTextFromLegalUpload(file, {})).replace(/\u0000/g, '').trim();
+    if (extractedText.length < 120) {
+      return res.status(400).json({ error: 'El expediente no contiene suficiente texto legible para analizarlo.' });
+    }
+
+    const maxCharacters = Number(process.env.CASE_FILE_MAX_TEXT_CHARS || 70000);
+    const wasTruncated = extractedText.length > maxCharacters;
+    const documentText = extractedText.slice(0, maxCharacters);
+    const userQuery = `Analiza jurídicamente el expediente "${originalName}".`;
+    const prompt = [
+      'Actúa como analista jurídico peruano y revisa únicamente el contenido del expediente proporcionado.',
+      'No inventes hechos, fechas, normas, partes ni actuaciones. Distingue claramente entre hechos alegados, hechos acreditados y datos faltantes.',
+      'Entrega un informe estructurado con: identificación y materia probable; partes y roles; etapa procesal; resumen ejecutivo; cronología; pretensiones y posiciones; medios probatorios; resoluciones o actuaciones relevantes; inconsistencias y vacíos; plazos o riesgos detectados; y próximos pasos sugeridos.',
+      'Si un dato no aparece o no es legible, indícalo expresamente. Este análisis es de apoyo y debe verificarse con el expediente completo.',
+      wasTruncated
+        ? `Advertencia técnica: por tamaño, se analizaron los primeros ${maxCharacters.toLocaleString('es-PE')} caracteres del archivo.`
+        : '',
+      `Nombre del expediente: ${originalName}`,
+      '',
+      'CONTENIDO DEL EXPEDIENTE:',
+      documentText
+    ].filter(Boolean).join('\n');
+
+    const result = await runLegalIntelligence({
+      userQuery,
+      prompt,
+      conversationMemory: [],
+      role: String(req.body?.role || 'abogado-independiente'),
+      sessionId: String(req.body?.sessionId || '').trim(),
+      providerConfig: aiProviderConfig
+    });
+
+    return res.json({
+      ok: true,
+      fileName: originalName,
+      answer: result.answer,
+      caseFile: result.metadata?.caseFile || null,
+      quality: result.metadata?.lexiaScore || null,
+      provider: result.provider,
+      model: result.model,
+      truncated: wasTruncated
+    });
+  } catch (error) {
+    console.error('Error analizando expediente:', error.message);
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'El expediente supera el límite de 25 MB.' });
+    }
+    return res.status(400).json({ error: error.message || 'No se pudo analizar el expediente.' });
+  }
 });
 
 app.post('/api/legal-ingest', legalIngestUpload.single('file'), async (req, res) => {

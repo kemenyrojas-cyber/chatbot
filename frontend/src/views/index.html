@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260628-documents-nav-fix">
+    <link rel="stylesheet" href="/css/style.css?v=20260701-case-analysis">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -31,7 +31,7 @@
                 <a class="nav-item active" href="#inicio" data-action="home"><span><i class="fa-solid fa-house icon" aria-hidden="true"></i></span> Inicio</a>
                 <a class="nav-item" href="#consulta-ia" data-action="new-query"><span><i class="fa-regular fa-comment-dots icon" aria-hidden="true"></i></span> Consulta jurídica</a>
                 <a class="nav-item" href="#historial" data-action="history"><span><i class="fa-solid fa-clock-rotate-left icon" aria-hidden="true"></i></span> Historial</a>
-                <a class="nav-item" href="#documentos" data-documents-link><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span> Documentos</a>
+                <a class="nav-item" href="#documentos" data-documents-link><span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span> Expedientes</a>
                 <a class="nav-item" href="#clientes" data-action="clients"><span><i class="fa-regular fa-address-book icon" aria-hidden="true"></i></span> Clientes</a>
                 <a class="nav-item" href="#casos" data-action="cases"><span><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i></span> Casos</a>
                 <a class="nav-item" href="#agenda" data-action="agenda"><span><i class="fa-regular fa-calendar-check icon" aria-hidden="true"></i></span> Agenda</a>
@@ -268,21 +268,21 @@
             <section class="documents-view" id="documentos" tabindex="-1" aria-labelledby="documentsTitle" hidden>
                 <header class="documents-header">
                     <div>
-                        <span class="module-eyebrow">Gestión documental</span>
-                        <h2 id="documentsTitle">Mis documentos</h2>
-                        <p>Organiza y conserva tus archivos legales en un espacio privado.</p>
+                        <span class="module-eyebrow">Análisis jurídico documental</span>
+                        <h2 id="documentsTitle">Análisis de expedientes</h2>
+                        <p>Organiza tus expedientes y obtén cronologías, pruebas, riesgos, vacíos y próximos pasos.</p>
                     </div>
                     <button class="documents-primary-button" id="uploadDocumentButton" type="button">
                         <i class="fa-solid fa-arrow-up-from-bracket icon" aria-hidden="true"></i>
-                        Subir documento
+                        Subir expediente
                     </button>
                     <input id="documentFileInput" type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.png,.jpg,.jpeg" multiple hidden>
                 </header>
 
-                <div class="document-summary" aria-label="Resumen de documentos">
+                <div class="document-summary" aria-label="Resumen de expedientes">
                     <article>
                         <span><i class="fa-regular fa-file-lines icon" aria-hidden="true"></i></span>
-                        <div><strong id="documentTotalCount">0</strong><small>Documentos</small></div>
+                        <div><strong id="documentTotalCount">0</strong><small>Expedientes</small></div>
                     </article>
                     <article>
                         <span><i class="fa-regular fa-hard-drive icon" aria-hidden="true"></i></span>
@@ -312,16 +312,16 @@
                         </label>
                     </div>
 
-                    <div class="document-drop-zone" id="documentDropZone" tabindex="0" role="button" aria-label="Subir documentos. Presiona Enter o arrastra archivos aquí.">
+                    <div class="document-drop-zone" id="documentDropZone" tabindex="0" role="button" aria-label="Subir expedientes. Presiona Enter o arrastra archivos aquí.">
                         <span><i class="fa-solid fa-cloud-arrow-up icon" aria-hidden="true"></i></span>
                         <div>
-                            <strong>Arrastra tus documentos aquí</strong>
-                            <small>o haz clic para seleccionarlos · PDF, Word, texto e imágenes · máximo 25 MB</small>
+                            <strong>Arrastra tus expedientes aquí</strong>
+                            <small>PDF y texto pueden analizarse con LEXIA · máximo 25 MB</small>
                         </div>
                     </div>
 
                     <div class="documents-status" id="documentsStatus" role="status" aria-live="polite" hidden></div>
-                    <div class="documents-list" id="documentsList" role="list" aria-label="Documentos guardados"></div>
+                    <div class="documents-list" id="documentsList" role="list" aria-label="Expedientes guardados"></div>
                 </section>
             </section>
 
@@ -364,7 +364,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260630-voice-activation-fix"></script>
+    <script src="/js/app.js?v=20260701-case-analysis"></script>
 </body>
 </html>
 

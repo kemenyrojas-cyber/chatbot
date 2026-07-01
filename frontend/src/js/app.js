@@ -912,8 +912,8 @@ document.addEventListener("DOMContentLoaded", () => {
             documentsList.innerHTML = `
                 <div class="documents-empty" role="status">
                     <span><i class="${hasFilters ? "fa-solid fa-magnifying-glass" : "fa-regular fa-folder-open"} icon" aria-hidden="true"></i></span>
-                    <strong>${hasFilters ? "No encontramos documentos" : "Aún no tienes documentos"}</strong>
-                    <small>${hasFilters ? "Prueba con otro nombre o tipo de archivo." : "Sube tu primer archivo para empezar a organizarlo."}</small>
+                    <strong>${hasFilters ? "No encontramos expedientes" : "Aún no tienes expedientes"}</strong>
+                    <small>${hasFilters ? "Prueba con otro nombre o tipo de archivo." : "Sube tu primer expediente para analizarlo."}</small>
                 </div>
             `;
             return;
@@ -921,7 +921,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         documentsList.innerHTML = `
             <div class="document-list-head" aria-hidden="true">
-                <span>Documento</span><span>Tamaño</span><span>Fecha de carga</span><span>Acciones</span>
+                <span>Expediente</span><span>Tamaño</span><span>Fecha de carga</span><span>Acciones</span>
             </div>
             ${visibleDocuments.map(item => `
                 <article class="document-item" role="listitem" data-document-id="${escapeHtml(item.id)}">
@@ -935,6 +935,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     <span>${formatFileSize(item.size)}</span>
                     <span>${formatDate(item.createdAt)}</span>
                     <div class="document-actions">
+                        <button class="document-action analyze" type="button" data-document-analyze title="Analizar expediente ${escapeHtml(item.name)}" aria-label="Analizar expediente ${escapeHtml(item.name)}">
+                            <i class="fa-solid fa-magnifying-glass-chart icon" aria-hidden="true"></i>
+                        </button>
                         <button class="document-action" type="button" data-document-download title="Descargar ${escapeHtml(item.name)}" aria-label="Descargar ${escapeHtml(item.name)}">
                             <i class="fa-solid fa-download icon" aria-hidden="true"></i>
                         </button>
@@ -1017,6 +1020,80 @@ document.addEventListener("DOMContentLoaded", () => {
             announce(`Descargando ${item.name}.`);
         } catch (error) {
             setDocumentsStatus(error.message, "error");
+        }
+    }
+
+    async function analyzeDocument(id) {
+        const item = getDocuments().find(document => document.id === id);
+        if (!item) return;
+        if (!["pdf", "txt"].includes(item.extension)) {
+            setDocumentsStatus("Para analizar el contenido usa un expediente PDF o de texto.", "error");
+            return;
+        }
+
+        const itemElement = documentsList?.querySelector(`[data-document-id="${CSS.escape(id)}"]`);
+        const analyzeButton = itemElement?.querySelector("[data-document-analyze]");
+        try {
+            if (analyzeButton) {
+                analyzeButton.disabled = true;
+                analyzeButton.setAttribute("aria-busy", "true");
+            }
+            setDocumentsStatus(`Analizando ${item.name}. Esto puede tardar unos momentos...`);
+            announce(`LEXIA está analizando el expediente ${item.name}.`);
+            const blob = await getDocumentFile(id);
+            if (!blob) throw new Error("El contenido del expediente ya no está disponible en este navegador.");
+
+            const formData = new FormData();
+            formData.append("file", new File([blob], item.name, { type: item.mimeType }));
+            formData.append("email", currentEmail);
+            formData.append("role", currentRole);
+            const response = await fetch(`${getApiBase()}/api/case-files/analyze`, {
+                method: "POST",
+                body: formData
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || "No se pudo analizar el expediente.");
+
+            activeChatSessionId = null;
+            const session = createChatSession(`Análisis de ${item.name}`);
+            const createdAt = new Date().toISOString();
+            session.title = `Análisis: ${item.name}`.slice(0, 120);
+            session.messages = [
+                {
+                    id: `${session.id}:user:${createdAt}`,
+                    role: "user",
+                    content: `Analiza jurídicamente el expediente ${item.name}.`,
+                    createdAt
+                },
+                {
+                    id: `${session.id}:assistant:${createdAt}`,
+                    role: "assistant",
+                    content: data.answer || "No se obtuvo un análisis válido.",
+                    createdAt,
+                    metadata: {
+                        caseFile: data.caseFile || null,
+                        quality: data.quality || null,
+                        truncated: Boolean(data.truncated)
+                    }
+                }
+            ];
+            activeChatSessionId = session.id;
+            upsertChatSession(session);
+            addNotification("Expediente analizado", `LEXIA terminó el análisis de ${item.name}.`);
+            setDocumentsStatus(`Análisis de ${item.name} completado.`);
+            history.replaceState(null, "", `${window.location.pathname}${window.location.search}#consulta-ia`);
+            showView("chat");
+            renderChatSessions();
+            renderChatThread();
+            announce(`Análisis del expediente ${item.name} completado.`);
+        } catch (error) {
+            setDocumentsStatus(error.message || "No se pudo analizar el expediente.", "error");
+            announce(`No se pudo analizar el expediente. ${error.message || ""}`);
+        } finally {
+            if (analyzeButton) {
+                analyzeButton.disabled = false;
+                analyzeButton.removeAttribute("aria-busy");
+            }
         }
     }
 
@@ -1741,6 +1818,9 @@ document.addEventListener("DOMContentLoaded", () => {
     documentsList?.addEventListener("click", event => {
         const item = event.target.closest("[data-document-id]");
         if (!item) return;
+        if (event.target.closest("[data-document-analyze]")) {
+            void analyzeDocument(item.dataset.documentId);
+        }
         if (event.target.closest("[data-document-download]")) {
             void downloadDocument(item.dataset.documentId);
         }

@@ -958,7 +958,7 @@ summary:focus-visible,
 .document-list-head,
 .document-item {
     display: grid;
-    grid-template-columns: minmax(240px, 1.5fr) minmax(110px, 0.5fr) minmax(130px, 0.55fr) 112px;
+    grid-template-columns: minmax(240px, 1.5fr) minmax(110px, 0.5fr) minmax(130px, 0.55fr) 126px;
     align-items: center;
     gap: 16px;
 }
@@ -1052,6 +1052,15 @@ summary:focus-visible,
 .document-action:hover {
     border-color: #9CB9E6;
     background: #F3F7FD;
+}
+
+.document-action.analyze {
+    color: #1D4ED8;
+}
+
+.document-action.analyze:hover {
+    border-color: #93C5FD;
+    background: #EFF6FF;
 }
 
 .document-action.delete:hover {
@@ -1981,7 +1990,7 @@ summary:focus-visible,
 
     .document-list-head,
     .document-item {
-        grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.4fr) 100px;
+        grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.4fr) 126px;
     }
 
     .document-list-head span:nth-child(3),
