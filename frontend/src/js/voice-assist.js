@@ -6,6 +6,8 @@
     const controlSelector = "a, button, input, select, textarea, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])";
     let activeUtterance = null;
     let speechStartTimer = null;
+    let characterQueue = [];
+    let speakingCharacter = false;
     let lastLabel = "";
     let lastSpokenAt = 0;
     let validationAnnouncementTimer = null;
@@ -79,8 +81,17 @@
             window.clearTimeout(speechStartTimer);
             speechStartTimer = null;
         }
+        characterQueue = [];
+        speakingCharacter = false;
         speech.cancel();
         activeUtterance = null;
+    }
+
+    function configureUtterance(utterance) {
+        const voice = getVoice();
+        if (voice) utterance.voice = voice;
+        utterance.lang = voice?.lang || "es-PE";
+        utterance.rate = 0.95;
     }
 
     function speakMessage(message) {
@@ -91,10 +102,7 @@
         const startSpeech = () => {
             speechStartTimer = null;
             const utterance = new SpeechSynthesisUtterance(text);
-            const voice = getVoice();
-            if (voice) utterance.voice = voice;
-            utterance.lang = voice?.lang || "es-PE";
-            utterance.rate = 0.95;
+            configureUtterance(utterance);
             activeUtterance = utterance;
             utterance.addEventListener("end", () => {
                 if (activeUtterance === utterance) activeUtterance = null;
@@ -110,6 +118,55 @@
         } else {
             startSpeech();
         }
+    }
+
+    function speakNextCharacter() {
+        const text = characterQueue.shift();
+        if (!text) {
+            speakingCharacter = false;
+            activeUtterance = null;
+            return;
+        }
+
+        speakingCharacter = true;
+        const utterance = new SpeechSynthesisUtterance(text);
+        configureUtterance(utterance);
+        utterance.rate = 1.15;
+        activeUtterance = utterance;
+        const continueQueue = () => {
+            if (activeUtterance === utterance) activeUtterance = null;
+            speakNextCharacter();
+        };
+        utterance.addEventListener("end", continueQueue, { once: true });
+        utterance.addEventListener("error", continueQueue, { once: true });
+        speech.resume?.();
+        speech.speak(utterance);
+    }
+
+    function speakTypedCharacter(text) {
+        if (!speakingCharacter) {
+            stopSpeaking();
+            characterQueue.push(text);
+            speakNextCharacter();
+            return;
+        }
+        characterQueue.push(text);
+    }
+
+    function describeCharacter(character) {
+        const names = {
+            " ": "espacio",
+            "@": "arroba",
+            ".": "punto",
+            ",": "coma",
+            "-": "guion",
+            "_": "guion bajo",
+            "/": "barra",
+            "\\": "barra invertida",
+            ":": "dos puntos",
+            ";": "punto y coma"
+        };
+        return names[character] || character;
     }
 
     function speakControl(target, force = false) {
@@ -137,6 +194,24 @@
     document.addEventListener("pointerdown", event => speakControl(event.target, true), true);
     document.addEventListener("pointerover", event => speakControl(event.target));
     document.addEventListener("focusin", event => speakControl(event.target, true));
+    document.addEventListener("input", event => {
+        const control = event.target;
+        if (!control.matches?.("input[type='text'], input[type='email'], input[type='password'], input:not([type]), textarea")) return;
+
+        if (event.inputType?.startsWith("delete")) {
+            speakTypedCharacter("borrado");
+            return;
+        }
+        if (event.inputType === "insertFromPaste") {
+            speakTypedCharacter("texto pegado");
+            return;
+        }
+        if (!event.data) return;
+
+        Array.from(event.data).forEach(character => {
+            speakTypedCharacter(control.matches("input[type='password']") ? "carácter" : describeCharacter(character));
+        });
+    });
     document.addEventListener("invalid", event => {
         if (validationAnnouncementTimer) return;
         const control = event.target;
