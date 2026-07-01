@@ -5,6 +5,7 @@ const fetch = global.fetch || require('node-fetch');
 const cors = require('cors');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const { PDFDocument } = require('pdf-lib');
 const cheerio = require('cheerio');
 const { Pool } = require('pg');
 const dotenv = require('dotenv');
@@ -5323,7 +5324,7 @@ function getResponsesApiText(data = {}) {
     .join('\n\n');
 }
 
-async function analyzeScannedCaseFileWithOpenAI(file) {
+async function analyzeScannedCaseFileWithOpenAI(file, options = {}) {
   if (!openAiKey) {
     throw new Error('El expediente parece escaneado y el servicio OCR no está configurado.');
   }
@@ -5339,7 +5340,7 @@ async function analyzeScannedCaseFileWithOpenAI(file) {
     },
     body: JSON.stringify({
       model,
-      max_output_tokens: Number(process.env.OPENAI_OCR_MAX_OUTPUT_TOKENS || 7000),
+      max_output_tokens: Number(options.maxOutputTokens || process.env.OPENAI_OCR_MAX_OUTPUT_TOKENS || 7000),
       input: [{
         role: 'user',
         content: [
@@ -5351,10 +5352,11 @@ async function analyzeScannedCaseFileWithOpenAI(file) {
           {
             type: 'input_text',
             text: [
-              'Analiza este expediente judicial peruano escaneado leyendo las imágenes de todas sus páginas.',
+              `Analiza este bloque de un expediente judicial peruano escaneado${options.pageRange ? ` (${options.pageRange})` : ''}, leyendo las imágenes de sus páginas.`,
               'No inventes contenido ilegible ni datos ausentes. Indica expresamente cualquier página o sección que no puedas leer.',
               'Responde en español y comienza con "Clasificación del expediente": materia, tipo de proceso, etapa, urgencia y etiquetas.',
-              'Luego incluye partes y roles, resumen ejecutivo, cronología, pretensiones, pruebas, resoluciones o actuaciones, inconsistencias, vacíos, plazos y riesgos, y próximos pasos.',
+              'Luego incluye partes y roles, cronología, pretensiones, pruebas, resoluciones o actuaciones, inconsistencias, vacíos, plazos, riesgos y próximos pasos.',
+              'Sé conciso, conserva números, nombres y fechas exactas, y señala la página correspondiente cuando sea visible.',
               'Distingue hechos alegados de hechos acreditados y fundamenta los hallazgos en el contenido visible del archivo.'
             ].join('\n')
           }
@@ -5373,6 +5375,82 @@ async function analyzeScannedCaseFileWithOpenAI(file) {
   return { answer, model };
 }
 
+async function splitScannedPdf(file, pagesPerChunk = 20) {
+  const source = await PDFDocument.load(file.buffer, { ignoreEncryption: true });
+  const pageCount = source.getPageCount();
+  if (pageCount <= pagesPerChunk) {
+    return [{ file, startPage: 1, endPage: pageCount }];
+  }
+
+  const chunks = [];
+  for (let startIndex = 0; startIndex < pageCount; startIndex += pagesPerChunk) {
+    const endIndex = Math.min(startIndex + pagesPerChunk, pageCount);
+    const target = await PDFDocument.create();
+    const indices = Array.from({ length: endIndex - startIndex }, (_, index) => startIndex + index);
+    const pages = await target.copyPages(source, indices);
+    pages.forEach(page => target.addPage(page));
+    const bytes = await target.save({ useObjectStreams: false });
+    chunks.push({
+      file: {
+        ...file,
+        originalname: `${path.parse(file.originalname || 'expediente').name}-paginas-${startIndex + 1}-${endIndex}.pdf`,
+        buffer: Buffer.from(bytes),
+        size: bytes.length,
+        mimetype: 'application/pdf'
+      },
+      startPage: startIndex + 1,
+      endPage: endIndex
+    });
+  }
+  return chunks;
+}
+
+async function analyzeScannedPdfInChunks(file) {
+  const pagesPerChunk = Math.max(5, Number(process.env.OPENAI_OCR_PAGES_PER_CHUNK || 30));
+  const concurrency = Math.max(1, Math.min(5, Number(process.env.OPENAI_OCR_CONCURRENCY || 4)));
+  const chunks = await splitScannedPdf(file, pagesPerChunk);
+  if (chunks.length === 1) {
+    const result = await analyzeScannedCaseFileWithOpenAI(file);
+    return { ...result, chunks: 1 };
+  }
+
+  const results = new Array(chunks.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, chunks.length) }, async () => {
+    while (nextIndex < chunks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const chunk = chunks[index];
+      try {
+        results[index] = await analyzeScannedCaseFileWithOpenAI(chunk.file, {
+          pageRange: `páginas ${chunk.startPage} a ${chunk.endPage}`,
+          maxOutputTokens: Number(process.env.OPENAI_OCR_CHUNK_MAX_OUTPUT_TOKENS || 2500)
+        });
+      } catch (error) {
+        results[index] = {
+          answer: `Páginas ${chunk.startPage}-${chunk.endPage}: no pudieron analizarse (${error.message}).`,
+          error: true
+        };
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  const successful = results.filter(result => result && !result.error);
+  if (!successful.length) {
+    throw new Error('El OCR no pudo analizar ninguno de los bloques del expediente.');
+  }
+  const answer = results.map((result, index) => {
+    const chunk = chunks[index];
+    return `## Páginas ${chunk.startPage}-${chunk.endPage}\n${result.answer}`;
+  }).join('\n\n');
+  return {
+    answer,
+    model: successful[0].model,
+    chunks: chunks.length
+  };
+}
+
 app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async (req, res) => {
   try {
     const file = req.file || null;
@@ -5387,7 +5465,7 @@ app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async
       if (!isPdf) {
         return res.status(400).json({ error: 'El expediente no contiene suficiente texto legible para analizarlo.' });
       }
-      scannedAnalysis = await analyzeScannedCaseFileWithOpenAI(file);
+      scannedAnalysis = await analyzeScannedPdfInChunks(file);
     }
 
     const maxCharacters = Number(process.env.CASE_FILE_MAX_TEXT_CHARS || 70000);
@@ -5406,7 +5484,8 @@ app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async
         provider: 'openai-vision-ocr',
         model: scannedAnalysis.model,
         truncated: false,
-        ocr: true
+        ocr: true,
+        ocrChunks: scannedAnalysis.chunks
       });
     }
     const userQuery = `Analiza jurídicamente el expediente "${originalName}".`;

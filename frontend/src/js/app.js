@@ -1229,6 +1229,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (caseReviewerStatus && textItemsFound) {
             caseReviewerStatus.textContent = `${pdf.numPages} páginas abiertas. LEXIA continúa con el análisis jurídico.`;
+        } else if (caseReviewerStatus) {
+            const estimatedBlocks = Math.ceil(pdf.numPages / 30);
+            caseReviewerStatus.textContent = `${pdf.numPages} páginas escaneadas abiertas. OCR jurídico procesando aproximadamente ${estimatedBlocks} bloques en paralelo; el informe aparecerá al terminar.`;
         }
     }
 
@@ -1285,6 +1288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const itemElement = documentsList?.querySelector(`[data-document-id="${CSS.escape(id)}"]`);
         const analyzeButton = itemElement?.querySelector("[data-document-analyze]");
+        let analysisProgressTimer = null;
         try {
             if (analyzeButton) {
                 analyzeButton.disabled = true;
@@ -1295,6 +1299,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const blob = await getDocumentFile(id);
             if (!blob) throw new Error("El contenido del expediente ya no está disponible en este navegador.");
             openCaseReview(item, blob);
+            const analysisStartedAt = Date.now();
+            analysisProgressTimer = window.setInterval(() => {
+                if (!caseReviewerStatus || caseReviewer?.hidden) return;
+                const elapsedSeconds = Math.max(1, Math.round((Date.now() - analysisStartedAt) / 1000));
+                caseReviewerStatus.textContent = `Análisis jurídico en curso · ${elapsedSeconds} segundos. Los expedientes escaneados grandes se procesan por bloques.`;
+            }, 15000);
 
             const formData = new FormData();
             formData.append("file", new File([blob], item.name, { type: item.mimeType }));
@@ -1320,7 +1330,7 @@ document.addEventListener("DOMContentLoaded", () => {
             addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
             setDocumentsStatus(`${data.ocr ? "Expediente escaneado procesado con OCR. " : ""}Expediente clasificado: ${classificationSummary}.`);
             if (caseReviewerStatus) {
-                caseReviewerStatus.textContent = `${data.ocr ? "OCR completado. " : ""}Análisis jurídico finalizado: ${classificationSummary}.`;
+                caseReviewerStatus.textContent = `${data.ocr ? `OCR completado${data.ocrChunks ? ` en ${data.ocrChunks} bloques` : ""}. ` : ""}Análisis jurídico finalizado: ${classificationSummary}.`;
             }
             announce(`Análisis del expediente ${item.name} completado.`);
         } catch (error) {
@@ -1328,6 +1338,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (caseReviewerStatus) caseReviewerStatus.textContent = error.message || "No se pudo analizar el expediente.";
             announce(`No se pudo analizar el expediente. ${error.message || ""}`);
         } finally {
+            if (analysisProgressTimer) window.clearInterval(analysisProgressTimer);
             if (analyzeButton) {
                 analyzeButton.disabled = false;
                 analyzeButton.removeAttribute("aria-busy");
