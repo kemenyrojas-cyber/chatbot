@@ -146,8 +146,12 @@
     function speakTypedCharacter(text) {
         if (!speakingCharacter) {
             stopSpeaking();
+            speakingCharacter = true;
             characterQueue.push(text);
-            speakNextCharacter();
+            speechStartTimer = window.setTimeout(() => {
+                speechStartTimer = null;
+                speakNextCharacter();
+            }, 80);
             return;
         }
         characterQueue.push(text);
