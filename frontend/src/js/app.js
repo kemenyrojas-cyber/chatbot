@@ -929,7 +929,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         <span class="document-file-icon ${escapeHtml(item.type)}"><i class="${getDocumentIcon(item.type)} icon" aria-hidden="true"></i></span>
                         <div>
                             <strong title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</strong>
-                            <small>${escapeHtml(String(item.extension || item.type).toUpperCase())}</small>
+                            <small>${escapeHtml([
+                                String(item.extension || item.type).toUpperCase(),
+                                item.classification?.area,
+                                item.classification?.stage
+                            ].filter(Boolean).join(" · "))}</small>
                         </div>
                     </div>
                     <span>${formatFileSize(item.size)}</span>
@@ -1062,6 +1066,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || "No se pudo analizar el expediente.");
 
+            const storedDocuments = loadList(storageKeys.documents).map(document => (
+                document.id === id
+                    ? { ...document, classification: data.classification || null, analyzedAt: new Date().toISOString() }
+                    : document
+            ));
+            saveList(storageKeys.documents, storedDocuments);
+            renderDocuments();
             activeChatSessionId = null;
             const session = createChatSession(`Análisis de ${item.name}`);
             const createdAt = new Date().toISOString();
@@ -1079,6 +1090,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     content: data.answer || "No se obtuvo un análisis válido.",
                     createdAt,
                     metadata: {
+                        classification: data.classification || null,
                         caseFile: data.caseFile || null,
                         quality: data.quality || null,
                         truncated: Boolean(data.truncated)
@@ -1087,8 +1099,11 @@ document.addEventListener("DOMContentLoaded", () => {
             ];
             activeChatSessionId = session.id;
             upsertChatSession(session);
-            addNotification("Expediente analizado", `LEXIA terminó el análisis de ${item.name}.`);
-            setDocumentsStatus(`Análisis de ${item.name} completado.`);
+            const classificationSummary = data.classification
+                ? `${data.classification.area} · ${data.classification.stage} · urgencia ${String(data.classification.urgency).toLowerCase()}`
+                : "clasificación pendiente de revisión";
+            addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
+            setDocumentsStatus(`Expediente clasificado: ${classificationSummary}.`);
             history.replaceState(null, "", `${window.location.pathname}${window.location.search}#consulta-ia`);
             showView("chat");
             renderChatSessions();

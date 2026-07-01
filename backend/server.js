@@ -5269,6 +5269,50 @@ app.get('/api/legal-brain/status', (req, res) => {
   });
 });
 
+function classifyUploadedCaseFile(text = '', intent = {}) {
+  const normalized = normalizeText(text);
+  const stageRules = [
+    ['Ejecución de sentencia', /\b(ejecucion de sentencia|requerimiento de pago|remate|ejecucion forzada)\b/],
+    ['Impugnación', /\b(recurso de apelacion|recurso de casacion|recurso de queja|agravios)\b/],
+    ['Sentencia emitida', /\b(sentencia|fallo|parte resolutiva)\b/],
+    ['Juicio o audiencia', /\b(juicio oral|audiencia unica|audiencia de pruebas|audiencia preliminar)\b/],
+    ['Etapa acusatoria', /\b(acusacion fiscal|auto de enjuiciamiento|sobreseimiento)\b/],
+    ['Investigación', /\b(investigacion preparatoria|diligencias preliminares|formalizacion de la investigacion)\b/],
+    ['Etapa postulatoria', /\b(admision de demanda|contestacion de demanda|demanda admitida|emplazamiento)\b/]
+  ];
+  const stage = stageRules.find(([, pattern]) => pattern.test(normalized))?.[0] || 'Etapa por determinar';
+  const urgencySignals = [];
+  if (/\b(detencion|detenido|prision preventiva|peligro inmediato|violencia|amenaza de muerte)\b/.test(normalized)) urgencySignals.push('riesgo personal o restricción de libertad');
+  if (/\b(vence|vencimiento|plazo|ultimo dia|medida cautelar|audiencia programada)\b/.test(normalized)) urgencySignals.push('plazo o actuación urgente');
+  const urgency = urgencySignals.some(signal => signal.includes('riesgo personal')) ? 'Alta' : urgencySignals.length ? 'Media' : 'Normal';
+  const tags = [
+    [/\bdemanda\b/, 'demanda'],
+    [/\bdenuncia\b/, 'denuncia'],
+    [/\bsentencia\b/, 'sentencia'],
+    [/\bapelacion\b/, 'apelación'],
+    [/\bcasacion\b/, 'casación'],
+    [/\bmedida cautelar\b/, 'medida cautelar'],
+    [/\bprueba|medio probatorio\b/, 'prueba'],
+    [/\baudiencia\b/, 'audiencia']
+  ].filter(([pattern]) => pattern.test(normalized)).map(([, label]) => label).slice(0, 6);
+  const areaLabel = intent?.area?.label && !/no determinad/i.test(intent.area.label)
+    ? intent.area.label
+    : 'Materia por determinar';
+  const typeLabel = intent?.topic?.label && !/no determinad/i.test(intent.topic.label)
+    ? intent.topic.label
+    : 'Tipo de expediente por determinar';
+
+  return {
+    area: areaLabel,
+    type: typeLabel,
+    stage,
+    urgency,
+    urgencySignals,
+    tags,
+    confidence: intent?.area?.confidence || 'media'
+  };
+}
+
 app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async (req, res) => {
   try {
     const file = req.file || null;
@@ -5283,11 +5327,15 @@ app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async
     const maxCharacters = Number(process.env.CASE_FILE_MAX_TEXT_CHARS || 70000);
     const wasTruncated = extractedText.length > maxCharacters;
     const documentText = extractedText.slice(0, maxCharacters);
+    const classificationIntent = await interpretLegalQueryWithPython(documentText.slice(0, 15000), []);
+    const classification = classifyUploadedCaseFile(documentText, classificationIntent);
     const userQuery = `Analiza jurídicamente el expediente "${originalName}".`;
     const prompt = [
       'Actúa como analista jurídico peruano y revisa únicamente el contenido del expediente proporcionado.',
       'No inventes hechos, fechas, normas, partes ni actuaciones. Distingue claramente entre hechos alegados, hechos acreditados y datos faltantes.',
-      'Entrega un informe estructurado con: identificación y materia probable; partes y roles; etapa procesal; resumen ejecutivo; cronología; pretensiones y posiciones; medios probatorios; resoluciones o actuaciones relevantes; inconsistencias y vacíos; plazos o riesgos detectados; y próximos pasos sugeridos.',
+      'Inicia el informe con una sección titulada "Clasificación del expediente" y muestra materia, tipo, etapa, urgencia y etiquetas.',
+      `Clasificación preliminar: materia ${classification.area}; tipo ${classification.type}; etapa ${classification.stage}; urgencia ${classification.urgency}; etiquetas ${classification.tags.join(', ') || 'sin etiquetas concluyentes'}.`,
+      'Después entrega: partes y roles; resumen ejecutivo; cronología; pretensiones y posiciones; medios probatorios; resoluciones o actuaciones relevantes; inconsistencias y vacíos; plazos o riesgos detectados; y próximos pasos sugeridos.',
       'Si un dato no aparece o no es legible, indícalo expresamente. Este análisis es de apoyo y debe verificarse con el expediente completo.',
       wasTruncated
         ? `Advertencia técnica: por tamaño, se analizaron los primeros ${maxCharacters.toLocaleString('es-PE')} caracteres del archivo.`
@@ -5311,6 +5359,7 @@ app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async
       ok: true,
       fileName: originalName,
       answer: result.answer,
+      classification,
       caseFile: result.metadata?.caseFile || null,
       quality: result.metadata?.lexiaScore || null,
       provider: result.provider,
