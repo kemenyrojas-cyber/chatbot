@@ -7,11 +7,18 @@
 
 ### ✅ MOTOR JURÍDICO LOCAL
 - **Normativa**
+- **Doctrina**
 - **Jurisprudencia**
 - **Casaciones**
 - **Sentencias TC**
 - Resultados ordenados por relevancia desde `/api/legal-search`
 - Análisis de expedientes sin servicios generativos externos
+
+## 🗺️ Roadmap adaptado
+
+LEXIA adopta un roadmap de cuatro fases —piloto confiable, escala profesional, interoperabilidad institucional y expansión regional responsable— basado en capacidades reales y puertas de avance medibles.
+
+Consulta [docs/ROADMAP_LEXIA.md](docs/ROADMAP_LEXIA.md) para revisar la línea base, hitos, inversión estimada, KPI y criterios de salida de cada fase.
 
 ### 🔎 OCR y análisis documental local
 - Poppler convierte PDFs escaneados en imágenes por lotes
@@ -168,7 +175,7 @@ Al ejecutar `npm run ingest-lpderecho`, se actualizan:
 
 1. **`ai-engine/kb/legal_knowledge_base.json`**
    - Base estructurada que consume `/api/legal-search`
-   - Modulos: normativa, jurisprudencia, casaciones y sentencias TC
+   - Módulos: normativa, doctrina, jurisprudencia, casaciones y sentencias TC
 
 2. **`ai-engine/kb/lpderecho_content.md`**
    - Vista legible del contenido procesado
@@ -238,9 +245,9 @@ curl -X POST http://localhost:3000/api/legal-search \
 ### Respuesta
 ```json
 {
-  "answer": "Según la legislación peruana...",
-  "source": "LEXIA (lpderecho.pe + OpenAI)",
-  "model": "gpt-3.5-turbo"
+  "answer": "Según la información jurídica pertinente al caso...",
+  "source": "LEXIA",
+  "model": "integrated-legal-reasoning"
 }
 ```
 
