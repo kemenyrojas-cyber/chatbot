@@ -1945,6 +1945,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function showView(viewName) {
         currentView = viewName;
+        mainPanel?.classList.toggle("dashboard-mode", viewName === "dashboard");
         const showChat = viewName === "chat" || viewName === "history";
         const showHistory = viewName === "history";
         const showBrain = viewName === "brain";
@@ -1952,6 +1953,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const showCases = viewName === "cases";
         if (showBrain && !canSuggestBrainSources) {
             currentView = "dashboard";
+            mainPanel?.classList.toggle("dashboard-mode", true);
             dashboardView.hidden = false;
             legalChatView.hidden = true;
             if (brainView) brainView.hidden = true;

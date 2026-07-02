@@ -256,12 +256,12 @@ summary:focus-visible,
     background: linear-gradient(180deg, #071B4A 0 371px, var(--bg) 371px);
 }
 
-.main-panel.chat-mode {
+.main-panel:not(.dashboard-mode) {
     padding-top: 18px;
     background: linear-gradient(180deg, #071B4A 0 165px, var(--bg) 165px);
 }
 
-.main-panel.chat-mode .topbar {
+.main-panel:not(.dashboard-mode) .topbar {
     display: none;
 }
 
