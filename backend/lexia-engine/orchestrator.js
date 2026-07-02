@@ -82,7 +82,8 @@ const legalCaseScopeRules = [
   { id: 'family_divorce', pattern: /\b(divorcio|separacion|separarme|divorciarme)\b/ },
   { id: 'custody', pattern: /\b(tenencia|custodia|visitas|regimen de visitas|patria potestad)\b/ },
   { id: 'contract', pattern: /\b(contrato|incumplimiento|clausula|compraventa|arrendamiento|alquiler|obligacion contractual)\b/ },
-  { id: 'constitutional', pattern: /\b(amparo|habeas corpus|habeas data|constitucion|derecho fundamental|debido proceso|derecho de defensa)\b/ }
+  { id: 'constitutional', pattern: /\b(amparo|habeas corpus|habeas data|constitucion|derecho fundamental|debido proceso|derecho de defensa)\b/ },
+  { id: 'discrimination', pattern: /\b(discriminacion|discriminatorio|trato desigual|derecho a la igualdad|no discriminacion)\b/ }
 ];
 
 function detectLegalCaseScopes(text = '') {
@@ -138,7 +139,7 @@ function resultLooksLikeArea(item = {}, areaId = '') {
   if (areaId === 'derecho_consumidor') return /\b(consumidor|indecopi|proveedor|servicio educativo|universidad|matricula|pension|libro de reclamaciones)\b/.test(text);
   if (areaId === 'derecho_civil') return /\b(derecho civil|derecho procesal civil|procesal civil|contrato|compraventa|propiedad|posesion|inmueble|obligacion|arrendamiento)\b/.test(text);
   if (areaId === 'derecho_familia') return /\b(derecho de familia|alimentos|divorcio|tenencia|custodia|visitas|patria potestad)\b/.test(text);
-  if (areaId === 'derecho_constitucional') return /\b(constitucion|constitucional|amparo|habeas corpus|habeas data|derecho fundamental|debido proceso)\b/.test(text);
+  if (areaId === 'derecho_constitucional') return /\b(constitucion|constitucional|amparo|habeas corpus|habeas data|derecho fundamental|debido proceso|discriminacion|igualdad|trato desigual)\b/.test(text);
   return false;
 }
 

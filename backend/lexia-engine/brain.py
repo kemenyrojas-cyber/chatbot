@@ -159,6 +159,15 @@ SCENARIOS = (
         ("resolucion", "notificacion", "apelacion", "plazo"),
     ),
     Scenario(
+        "discriminacion", "derecho_constitucional", "Derecho Constitucional",
+        "Igualdad y no discriminación",
+        ("caso de discriminacion", "trato discriminatorio", "trato desigual",
+         "me discriminaron", "fui discriminado", "fui discriminada"),
+        ("discriminacion", "discriminaron", "discriminatorio", "igualdad", "trato desigual"),
+        ("sexo", "genero", "raza", "origen", "discapacidad", "edad", "religion",
+         "orientacion sexual", "trabajo", "empleo", "colegio", "universidad", "servicio"),
+    ),
+    Scenario(
         "constitucional", "derecho_constitucional", "Derecho Constitucional",
         "Protección constitucional",
         ("proceso de amparo", "habeas corpus", "habeas data", "derecho fundamental"),
@@ -190,6 +199,7 @@ STRONG_SIGNALS = {
     "detenido", "custodia", "patria potestad", "alimentos", "divorcio",
     "posesion", "propiedad", "despido", "planilla", "indecopi", "municipalidad",
     "entidad publica", "sunat", "habeas corpus", "habeas data", "amparo",
+    "discriminacion", "discriminatorio", "igualdad",
 }
 
 

@@ -41,12 +41,24 @@ class BrainScenarioMatrixTest(unittest.TestCase):
             ("Quiero reclamar ante Indecopi contra un proveedor.", "derecho_consumidor"),
             ("La municipalidad me impuso una multa administrativa.", "derecho_administrativo"),
             ("Quiero presentar un proceso de amparo.", "derecho_constitucional"),
+            ("Tengo un caso de discriminación.", "derecho_constitucional"),
+            ("Me dieron un trato desigual por mi discapacidad.", "derecho_constitucional"),
             ("SUNAT inició una fiscalización tributaria.", "derecho_tributario"),
             ("Hay un conflicto entre los accionistas de la empresa.", "derecho_comercial"),
         )
         for query, area in cases:
             with self.subTest(query=query):
                 self.assert_area(query, area)
+
+    def test_discrimination_has_specific_topic_instead_of_ambiguous_area(self):
+        result = analyze({
+            "query": "Tengo un caso de discriminación",
+            "baseline": {},
+            "memoryMessages": [],
+        })
+        self.assertEqual(result["intent"]["area"]["id"], "derecho_constitucional")
+        self.assertEqual(result["intent"]["topic"]["id"], "discriminacion")
+        self.assertFalse(result["intent"]["needsMoreFacts"])
 
     def test_ambiguous_language_requests_clarification(self):
         for query in ("Tengo un problema de tenencia.", "Necesito ayuda legal.", "Qué puedo hacer"):

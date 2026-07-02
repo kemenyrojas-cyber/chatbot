@@ -1728,10 +1728,13 @@ const legalAreas = [
       'habeas corpus', 'habeas data', 'accion de cumplimiento', 'acción de cumplimiento',
       'tribunal constitucional', 'tc', 'articulo constitucional', 'artículo constitucional',
       'debido proceso', 'tutela jurisdiccional', 'derecho de defensa', 'derecho a la defensa',
-      'garantias procesales', 'garantías procesales', 'defensa en juicio'
+      'garantias procesales', 'garantías procesales', 'defensa en juicio',
+      'discriminacion', 'discriminación', 'trato discriminatorio', 'trato desigual',
+      'igualdad', 'derecho a la igualdad', 'no discriminacion', 'no discriminación'
     ],
     topics: [
       { id: 'constitucion', label: 'Constitución', keywords: ['constitucion', 'constitución', 'constituci', 'derechos fundamentales'] },
+      { id: 'discriminacion', label: 'Igualdad y no discriminación', keywords: ['discriminacion', 'discriminación', 'trato discriminatorio', 'trato desigual', 'igualdad', 'derecho a la igualdad', 'no discriminacion', 'no discriminación'] },
       { id: 'debido_proceso_defensa', label: 'Debido proceso y derecho de defensa', keywords: ['debido proceso', 'tutela jurisdiccional', 'derecho de defensa', 'derecho a la defensa', 'garantias procesales', 'garantías procesales', 'defensa en juicio'] },
       { id: 'habeas_data', label: 'Hábeas data', keywords: ['habeas data', 'datos personales', 'acceso a informacion', 'acceso a información'] },
       { id: 'amparo', label: 'Amparo', keywords: ['amparo', 'derechos constitucionales'] },
@@ -2445,6 +2448,16 @@ function buildTopicGuidance(intent) {
     ];
   }
 
+  if (topicId === 'discriminacion') {
+    return [
+      'La discriminación es un problema jurídico reconocible cuando existe un **trato diferente o una exclusión sin justificación objetiva**, especialmente si se relaciona con características como origen, sexo, discapacidad, edad, religión u otra condición protegida.',
+      '',
+      'Para analizar el caso hay que comparar cómo te trataron frente a otras personas en una situación semejante, identificar quién tomó la decisión y precisar el motivo aparente. Conserva mensajes, correos, anuncios, reglamentos, nombres de testigos y cualquier explicación que te hayan dado.',
+      '',
+      'La vía aplicable cambia según el ámbito: trabajo, consumo, educación, función pública, vivienda u otro. Primero debe ubicarse ese contexto antes de definir autoridad, reclamo o proceso.'
+    ];
+  }
+
   if (topicId === 'robo') {
     return [
       'El robo implica apoderarse de un bien ajeno usando violencia o amenaza. Esa violencia o intimidación es lo que lo diferencia del hurto.',
@@ -2875,6 +2888,7 @@ function buildSingleLegalQuestion(intent, reasoningProfile, query = '') {
   if (topicId === 'extorsion') return '¿La amenaza sigue activa ahora o solo tienes los mensajes guardados?';
   if (topicId === 'violencia_pareja') return '¿La persona está a salvo ahora mismo o hay riesgo de una nueva agresión?';
   if (topicId === 'homicidio') return '¿Estás consultando como familiar de la víctima, investigado o abogado de una parte?';
+  if (topicId === 'discriminacion') return '¿En qué ámbito ocurrió la discriminación y qué motivo crees que originó el trato diferente?';
   if (intent?.area?.id === 'derecho_penal') {
     if (/\b(denunciado|investigado|condenado|sentenciado|imputado|acusado)\b/.test(normalizedQuery)) {
       return '¿Estás del lado de la defensa o estás evaluando una acción contra esa persona?';
@@ -2903,6 +2917,7 @@ function getLegalQuestionSlot(question = '') {
     ['procedural_status', /\b(denuncia|citacion|notificacion|estado del proceso|etapa se encuentra)\b/],
     ['evidence', /\b(prueba|documento|mensaje|audio|video|captura|testigo|dato concreto)\b/],
     ['safety', /\b(amenaza sigue|a salvo|riesgo|peligro|agresion)\b/],
+    ['discrimination_context', /\b(ambito ocurrio|discriminacion|motivo crees|trato diferente)\b/],
     ['role', /\b(victima|investigad|condenad|defensa|parte|demandante|demandado)\b/],
     ['contract_status', /\b(sigues trabajando|termino la relacion|carta de despido|verbalmente)\b/],
     ['case_progress', /\b(que ocurrio despues|que paso despues)\b/]
@@ -2910,8 +2925,8 @@ function getLegalQuestionSlot(question = '') {
   return slots.find(([, pattern]) => pattern.test(normalized))?.[0] || '';
 }
 
-function buildUnaskedLegalQuestion(intent, reasoningProfile, query = '', memoryMessages = []) {
-  const candidate = buildSingleLegalQuestion(intent, reasoningProfile, query);
+function buildUnaskedLegalQuestion(intent, reasoningProfile, query = '', memoryMessages = [], preferredQuestion = '') {
+  const candidate = preferredQuestion || buildSingleLegalQuestion(intent, reasoningProfile, query);
   if (!candidate) return '';
   const normalizedCandidate = normalizeText(candidate);
   const candidateSlot = getLegalQuestionSlot(candidate);
@@ -4069,6 +4084,61 @@ function buildAnsweredQuestionResponse(query, intent, results = [], reasoningPro
   return lines.join('\n');
 }
 
+function buildDiscriminationAnswer(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
+  const dialogue = intent?.interpretation?.dialogue || {};
+  const knownContext = normalizeText([
+    query,
+    ...normalizeMemoryMessages(memoryMessages)
+      .filter(message => message.role === 'user')
+      .map(message => message.content)
+  ].join(' '));
+  const hasDiscriminationContext = /\b(trabajo|laboral|empleo|consumo|tienda|servicio|educacion|educación|colegio|universidad|entidad publica|entidad pública|funcion publica|función pública|vivienda|alquiler)\b/.test(knownContext);
+  const hasSuspectedGround = /\b(sexo|genero|género|raza|origen|nacionalidad|discapacidad|edad|religion|religión|orientacion sexual|orientación sexual|embarazo|idioma|condicion economica|condición económica)\b/.test(knownContext);
+  let lines = [...buildTopicGuidance(intent)];
+  if (/\b(trabajo|laboral|empleo)\b/.test(knownContext)) {
+    lines = [
+      'En el ámbito laboral, el análisis debe centrarse en si hubo una **decisión desfavorable o un trato desigual sin justificación objetiva** en el acceso al empleo, las condiciones de trabajo, la remuneración, el ascenso o el cese.',
+      '',
+      'Ordena cuatro elementos: qué decisión tomó el empleador, quién la tomó, cómo fueron tratadas otras personas comparables y qué indicios vinculan la diferencia con el motivo discriminatorio. Conserva correos, mensajes, evaluaciones, convocatorias, políticas internas, boletas y testigos.',
+      '',
+      'No basta una percepción aislada, pero tampoco es indispensable que exista una confesión expresa: la secuencia de hechos, comparaciones y explicaciones inconsistentes puede ser relevante para evaluar el caso.'
+    ];
+  } else if (/\b(consumo|tienda|servicio)\b/.test(knownContext)) {
+    lines = [
+      'En una relación de consumo, debe revisarse si se negó, restringió o encareció un producto o servicio mediante un **trato desigual sin justificación objetiva**.',
+      '',
+      'Conserva comprobantes, publicidad, condiciones ofrecidas, grabaciones permitidas, mensajes, nombres de testigos y la identificación del establecimiento. También compara qué condición recibieron otras personas en una situación semejante.',
+      '',
+      'La diferencia entre un mal servicio y discriminación está en el trato comparativo, la falta de justificación y el posible motivo de exclusión.'
+    ];
+  } else if (/\b(educacion|educación|colegio|universidad)\b/.test(knownContext)) {
+    lines = [
+      'En educación, debe revisarse si una decisión de admisión, permanencia, evaluación, acceso o disciplina produjo un **trato desigual sin justificación objetiva**.',
+      '',
+      'Conserva reglamentos, comunicaciones, evaluaciones, solicitudes, respuestas institucionales y datos de casos comparables. Identifica también quién decidió y qué razón formal comunicó.',
+      '',
+      'El análisis debe distinguir una regla académica general de una aplicación selectiva o una negativa de ajustes que pueda afectar la igualdad.'
+    ];
+  }
+  const legalBadges = collectLegalCitationBadges(results, 2);
+  if (dialogue.responsePlan?.includeSources === true && legalBadges.length) {
+    lines.push('', `Base jurídica relacionada: ${legalBadges.map(item => `[${item}]`).join(' ')}.`);
+  }
+  const needsClarification = !hasDiscriminationContext || !hasSuspectedGround;
+  const mayAsk = needsClarification && (
+    (dialogue.responsePlan?.maxQuestions ?? 1) > 0
+    || dialogue.responsePlan?.questionFatigue !== true
+  );
+  const preferredQuestion = !hasDiscriminationContext
+    ? '¿En qué ámbito ocurrió la discriminación y qué motivo crees que originó el trato diferente?'
+    : '¿Qué motivo crees que originó el trato diferente?';
+  const nextQuestion = mayAsk
+    ? buildUnaskedLegalQuestion(intent, reasoningProfile, query, memoryMessages, preferredQuestion)
+    : '';
+  if (nextQuestion) lines.push('', nextQuestion);
+  return lines.join('\n');
+}
+
 function buildActionAnswer(query, intent, results = [], reasoningProfile = null) {
   const primary = selectBestLegalResult(results, intent);
   const scopedResults = primary ? [primary] : results;
@@ -4111,6 +4181,12 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
     const exactArticleAnswer = buildExactArticleTextAnswer(query, intent, scopedResults, memoryMessages);
     if (exactArticleAnswer) return exactArticleAnswer;
     return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
+  }
+  if (
+    intent?.topic?.id === 'discriminacion'
+    && ['case_start', 'follow_up', 'new_fact'].includes(modeId)
+  ) {
+    return buildDiscriminationAnswer(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (dialogue.answeredPreviousQuestion) {
     return buildAnsweredQuestionResponse(query, intent, scopedResults, reasoningProfile, memoryMessages);
