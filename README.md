@@ -37,7 +37,7 @@ npm install --prefix backend
 
 ### 2. Configurar el motor local
 
-El `Dockerfile` instala automáticamente Poppler, Tesseract y los idiomas español e inglés. Para ejecución sin Docker debes instalar `pdftoppm`, `pdfinfo` y `tesseract` en el sistema.
+El `Dockerfile` instala Poppler y Tesseract como ruta optimizada. Si esos ejecutables no existen, LEXIA usa automáticamente el motor autocontenido PDF.js + Tesseract.js con los idiomas español e inglés incluidos en el backend.
 
 Crea archivo `.env`:
 ```env

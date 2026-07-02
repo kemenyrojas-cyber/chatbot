@@ -14,7 +14,7 @@ const { createLexiaEngine } = require('./lexia-engine/orchestrator');
 const { createRateLimiter } = require('./lexia-engine/flow-control');
 const { createKnowledgeEngine } = require('./lexia-engine/knowledge');
 const { createPythonBrain } = require('./lexia-engine/python-brain');
-const { ocrPdfLocally } = require('./lexia-engine/local-ocr');
+const { ensureLocalOcrAvailable, ocrPdfLocally } = require('./lexia-engine/local-ocr');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -5269,6 +5269,21 @@ app.get('/api/legal-brain/status', (req, res) => {
     configured,
     canSuggest: Boolean(email),
     canCurate: isLegalCuratorEmail(email)
+  });
+});
+
+app.get('/api/health', async (req, res) => {
+  let ocr;
+  try {
+    ocr = await ensureLocalOcrAvailable();
+  } catch (error) {
+    ocr = { available: false, error: error.message };
+  }
+  return res.status(ocr.available ? 200 : 503).json({
+    ok: Boolean(ocr.available),
+    service: 'lexia',
+    ocr,
+    caseAnalysisProvider: 'local'
   });
 });
 
