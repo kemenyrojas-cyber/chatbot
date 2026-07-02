@@ -136,7 +136,7 @@ let notificationsDbReady = null;
 const legalIngestUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: Number(process.env.LEGAL_INGEST_MAX_FILE_MB || 10) * 1024 * 1024,
+    fileSize: Number(process.env.LEGAL_INGEST_MAX_FILE_MB || 75) * 1024 * 1024,
     files: 1
   }
 });

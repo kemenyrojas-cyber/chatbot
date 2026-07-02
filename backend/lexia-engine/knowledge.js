@@ -123,6 +123,7 @@ function inferLegalKnowledgeModule(fileName, text, preferredModule = '') {
   if (legalKnowledgeModules.includes(normalizedPreferred)) return normalizedPreferred;
 
   const normalized = normalizeText(`${fileName} ${text.slice(0, 12000)}`);
+  if (/\b(tratado|manual|principios de derecho|parte general|doctrina|profesor|obra)\b/.test(normalized)) return 'doctrina';
   if (normalized.includes('tribunal constitucional') || normalized.includes('sentencia del tribunal constitucional')) return 'sentencias_tc';
   if (normalized.includes('casacion') || normalized.includes('casación')) return 'casaciones';
   if (normalized.includes('jurisprudencia') || normalized.includes('sentencia') || normalized.includes('precedente')) return 'jurisprudencia';
@@ -172,9 +173,16 @@ function extractLegalSignals(text) {
   };
 }
 
-function splitTextForLegalKnowledge(text, maxChunks = 8) {
+function splitTextForLegalKnowledge(
+  text,
+  maxChunks = Number(process.env.LEGAL_INGEST_MAX_CHUNKS || 1000),
+  targetChars = Number(process.env.LEGAL_INGEST_CHUNK_CHARS || 12000)
+) {
   const clean = String(text || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   if (!clean) return [];
+  const safeMaxChunks = Math.max(8, Math.min(2000, Number(maxChunks) || 1000));
+  const safeTargetChars = Math.max(2400, Math.min(24000, Number(targetChars) || 12000));
+  const overlapChars = Math.min(400, Math.floor(safeTargetChars * 0.04));
 
   const sections = clean
     .split(/\n{2,}|(?=^#{1,3}\s)|(?=\bArticulo\s+\d)|(?=\bArtículo\s+\d)/im)
@@ -185,15 +193,15 @@ function splitTextForLegalKnowledge(text, maxChunks = 8) {
   const chunks = [];
   let pending = '';
   const flushPending = () => {
-    if (!pending || chunks.length >= maxChunks) return;
+    if (!pending || chunks.length >= safeMaxChunks) return;
     chunks.push(pending);
     pending = '';
   };
 
   for (const section of source) {
-    if (chunks.length >= maxChunks) break;
-    if (section.length <= 2400) {
-      if (!pending || pending.length + section.length + 2 <= 2400) {
+    if (chunks.length >= safeMaxChunks) break;
+    if (section.length <= safeTargetChars) {
+      if (!pending || pending.length + section.length + 2 <= safeTargetChars) {
         pending = pending ? `${pending}\n\n${section}` : section;
       } else {
         flushPending();
@@ -202,8 +210,9 @@ function splitTextForLegalKnowledge(text, maxChunks = 8) {
       continue;
     }
     flushPending();
-    for (let index = 0; index < section.length && chunks.length < maxChunks; index += 2200) {
-      chunks.push(section.slice(index, index + 2400).trim());
+    const step = safeTargetChars - overlapChars;
+    for (let index = 0; index < section.length && chunks.length < safeMaxChunks; index += step) {
+      chunks.push(section.slice(index, index + safeTargetChars).trim());
     }
   }
   flushPending();
@@ -267,7 +276,7 @@ function shouldSearchLegalEngine(query) {
   if (shouldSearchLegalEngineFromServer) return shouldSearchLegalEngineFromServer(query);
   return getQueryTerms(query).length >= 2;
 }
-const legalKnowledgeModules = ['normativa', 'jurisprudencia', 'casaciones', 'sentencias_tc'];
+const legalKnowledgeModules = ['normativa', 'doctrina', 'jurisprudencia', 'casaciones', 'sentencias_tc'];
 
 function normalizeLegalKnowledgeRecord(moduleName, item, index) {
   const id = String(item?.id || `${moduleName}-${index + 1}`);
@@ -388,6 +397,7 @@ function scoreLegalKnowledgeRecord(record, query, terms) {
   }
 
   if (record.modulo === 'normativa') score += 3;
+  if (record.modulo === 'doctrina') score += 1;
   if (record.modulo === 'jurisprudencia') score += 4;
   if (record.modulo === 'casaciones') score += 4;
   if (record.modulo === 'sentencias_tc') score += 4;
@@ -882,6 +892,7 @@ function scoreSourceQuality(item) {
   if (itemHasExternalUrl(item)) score += 15;
   if (isOfficialLegalSource(item)) score += 100;
   if ((item?.module || item?.modulo) === 'normativa') score += 24;
+  if ((item?.module || item?.modulo) === 'doctrina') score += 4;
   if ((item?.module || item?.modulo) === 'sentencias_tc') score += 18;
   if ((item?.module || item?.modulo) === 'casaciones') score += 14;
   if (isSecondaryLegalSource(item)) score -= 35;
@@ -1211,6 +1222,9 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     'CONTEXTO RAG RECUPERADO DE LA BASE LOCAL DE LEXIA:',
     'Usa estas referencias solo como apoyo. Primero responde al caso y al último mensaje del usuario; no conviertas la respuesta en un resumen de fuentes.'
   ];
+  if (merged.some(item => item.module === 'doctrina')) {
+    context.push('Las referencias marcadas como doctrina explican conceptos y argumentos, pero no son normas vinculantes. Si son extranjeras o históricas, no las presentes como derecho peruano vigente y contrástalas con normativa peruana aplicable.');
+  }
 
   merged.forEach((item, index) => {
     const sourceId = `R${index + 1}`;

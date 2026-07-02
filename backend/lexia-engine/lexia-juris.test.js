@@ -20,7 +20,11 @@ const {
 } = require('./orchestrator');
 const { createKnowledgeEngine } = require('./knowledge');
 
-const { buildSourceSummary } = createKnowledgeEngine({
+const {
+  buildSourceSummary,
+  splitTextForLegalKnowledge,
+  inferLegalKnowledgeModule
+} = createKnowledgeEngine({
   aiEngineRoot: path.resolve(__dirname, '../../ai-engine')
 });
 
@@ -79,6 +83,25 @@ test('las fuentes visibles no exponen archivos ni identificadores internos', () 
 
   assert.doesNotMatch(summary, /ingested_|\.md|base local|LEXIA/i);
   assert.match(summary, /Artículo 18/);
+});
+
+test('la ingesta doctrinal conserva libros extensos y no los clasifica como normativa', () => {
+  const longTreatise = Array.from(
+    { length: 9000 },
+    (_, index) => `Sección ${index + 1}. Desarrollo doctrinal sobre acción, jurisdicción, prueba y proceso civil.`
+  ).join('\n\n');
+  const chunks = splitTextForLegalKnowledge(longTreatise);
+  const recoveredText = chunks.join(' ');
+
+  assert.ok(chunks.length > 8);
+  assert.ok(recoveredText.includes('Sección 9000.'));
+  assert.equal(
+    inferLegalKnowledgeModule(
+      'principios de derecho procesal civil.pdf',
+      'Tratado doctrinal elaborado por un profesor universitario.'
+    ),
+    'doctrina'
+  );
 });
 
 test('la recuperación normativa no mezcla Constitución, Código Penal y Código Civil', () => {
