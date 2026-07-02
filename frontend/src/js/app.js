@@ -1174,24 +1174,77 @@ document.addEventListener("DOMContentLoaded", () => {
         if (fields.accused && caseFindingAccused) caseFindingAccused.textContent = fields.accused;
     }
 
+    const caseHighlightRules = [
+        {
+            id: "decision",
+            label: "Decisión",
+            pattern: /\b(resuelve|fallo|declara(?:r)?\s+(?:fundad[oa]|infundad[oa]|improcedente)|dispone|ordena|confirma|revoca|absuelve|condena)\b/i,
+            fill: "rgba(34, 197, 94, 0.20)",
+            stroke: "rgba(21, 128, 61, 0.72)"
+        },
+        {
+            id: "deadline",
+            label: "Plazo o urgencia",
+            pattern: /\b(plazo|vence|vencimiento|d[ií]as?\s+h[aá]biles?|bajo\s+apercibimiento|audiencia\s+(?:programada|señalada)|medida\s+cautelar)\b/i,
+            fill: "rgba(239, 68, 68, 0.16)",
+            stroke: "rgba(185, 28, 28, 0.70)"
+        },
+        {
+            id: "party",
+            label: "Parte o interviniente",
+            pattern: /\b(demandante|demandad[oa]|acusad[oa]|imputad[oa]|procesad[oa]|investigad[oa]|agraviad[oa]|juez|especialista\s+legal)(?:\s*[:\-]\s*.+)?$/i,
+            fill: "rgba(139, 92, 246, 0.17)",
+            stroke: "rgba(109, 40, 217, 0.68)"
+        },
+        {
+            id: "identifier",
+            label: "Dato del expediente",
+            pattern: /(?:\b(?:expediente|notificaci[oó]n|resoluci[oó]n)\s*(?:n[.°ºo]*)?\s*[:\-]?\s*[0-9][0-9A-Z°º./-]{2,}|\b[0-9]{3,7}-20[0-9]{2}-[0-9]{1,6}-[A-Z]{2,8}-[A-Z]{2,8}(?:-[0-9]{2})?\b|\b(?:materia|juzgado|corte\s+superior)\s*[:\-]\s*.{3,})/i,
+            fill: "rgba(37, 99, 235, 0.17)",
+            stroke: "rgba(29, 78, 216, 0.68)"
+        },
+        {
+            id: "action",
+            label: "Actuación procesal",
+            pattern: /\b(sentencia|resoluci[oó]n\s+(?:n[.°ºo]*|\d|uno|dos|tres)|demanda(?:\s+admitida)?|contestaci[oó]n|audiencia|apelaci[oó]n|casaci[oó]n|notificaci[oó]n)\b/i,
+            fill: "rgba(245, 158, 11, 0.18)",
+            stroke: "rgba(180, 83, 9, 0.70)"
+        }
+    ];
+
     function getImportantTextItems(items = []) {
-        const pattern = /\b(expediente|acusad[oa]|imputad[oa]|procesad[oa]|demandad[oa]|sentencia|resuelve|fallo|delito|prueba|juzgado|sala|fiscal|agraviad[oa]|audiencia|apelaci[oó]n|casaci[oó]n|medida cautelar|plazo)\b/i;
-        return items.filter(item => pattern.test(String(item.str || "")));
+        const seen = new Set();
+        return items
+            .map(item => {
+                const text = normalizeSpeechText(item.str);
+                const rule = caseHighlightRules.find(candidate => candidate.pattern.test(text));
+                return rule ? { item, rule, text } : null;
+            })
+            .filter(entry => {
+                if (!entry || entry.text.length < 6) return false;
+                const key = `${entry.rule.id}:${entry.text.toLowerCase()}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .slice(0, 16);
     }
 
     function updateImportantPoints(items = []) {
         if (!caseImportantPoints) return;
-        const existing = new Set(Array.from(caseImportantPoints.querySelectorAll("li")).map(item => item.textContent));
+        const existing = new Set(Array.from(caseImportantPoints.querySelectorAll("li")).map(item => item.dataset.point || item.textContent));
         if (existing.has("LEXIA está revisando el expediente.")) {
             caseImportantPoints.innerHTML = "";
             existing.clear();
         }
-        getImportantTextItems(items).forEach(item => {
-            const point = normalizeSpeechText(item.str);
+        getImportantTextItems(items).forEach(({ text: point, rule }) => {
             if (point.length < 8 || existing.has(point) || existing.size >= 10) return;
             existing.add(point);
             const listItem = document.createElement("li");
-            listItem.textContent = point;
+            listItem.dataset.point = point;
+            const category = document.createElement("strong");
+            category.textContent = `${rule.label}: `;
+            listItem.append(category, document.createTextNode(point));
             caseImportantPoints.appendChild(listItem);
         });
     }
@@ -1199,20 +1252,28 @@ document.addEventListener("DOMContentLoaded", () => {
     function drawCaseHighlights(pdfjs, items, viewport, canvas, outputScale) {
         const context = canvas.getContext("2d");
         context.scale(outputScale, outputScale);
-        getImportantTextItems(items).forEach(item => {
+        getImportantTextItems(items).forEach(({ item, rule }) => {
             const transform = pdfjs.Util.transform(viewport.transform, item.transform);
             const fontHeight = Math.max(8, Math.hypot(transform[2], transform[3]));
             const x = transform[4];
             const y = transform[5] - fontHeight;
             const width = Math.max(18, item.width * viewport.scale);
-            context.fillStyle = "rgba(250, 204, 21, 0.24)";
-            context.fillRect(x - 2, y - 1, width + 4, fontHeight + 3);
-            context.strokeStyle = "rgba(220, 38, 38, 0.88)";
-            context.lineWidth = 1.6;
-            context.beginPath();
-            context.moveTo(x, y + fontHeight + 2);
-            context.lineTo(x + width, y + fontHeight + 2);
-            context.stroke();
+            const left = x - 2;
+            const top = y - 1;
+            const highlightWidth = width + 4;
+            const highlightHeight = fontHeight + 3;
+            context.fillStyle = rule.fill;
+            context.strokeStyle = rule.stroke;
+            context.lineWidth = 1;
+            if (typeof context.roundRect === "function") {
+                context.beginPath();
+                context.roundRect(left, top, highlightWidth, highlightHeight, 2);
+                context.fill();
+                context.stroke();
+            } else {
+                context.fillRect(left, top, highlightWidth, highlightHeight);
+                context.strokeRect(left, top, highlightWidth, highlightHeight);
+            }
         });
     }
 

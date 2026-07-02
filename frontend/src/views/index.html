@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260701-auto-case-analysis">
+    <link rel="stylesheet" href="/css/style.css?v=20260701-semantic-case-highlights">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -336,6 +336,13 @@
                             Cerrar expediente
                         </button>
                     </header>
+                    <div class="case-highlight-legend" aria-label="Leyenda del resaltado jurídico">
+                        <span class="identifier">Dato del expediente</span>
+                        <span class="party">Parte o interviniente</span>
+                        <span class="action">Actuación procesal</span>
+                        <span class="deadline">Plazo o urgencia</span>
+                        <span class="decision">Decisión</span>
+                    </div>
                     <div class="case-reviewer-layout">
                         <div class="case-pdf-pages" id="casePdfPages" aria-label="Páginas del expediente"></div>
                         <aside class="case-findings" aria-label="Clasificación y datos del expediente">
@@ -401,7 +408,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260701-local-ocr-architecture"></script>
+    <script src="/js/app.js?v=20260701-semantic-case-highlights"></script>
 </body>
 </html>
 

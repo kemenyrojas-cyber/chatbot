@@ -1192,6 +1192,55 @@ summary:focus-visible,
     pointer-events: none;
 }
 
+.case-highlight-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin: -4px 0 14px;
+    color: #405675;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.case-highlight-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.case-highlight-legend span::before {
+    width: 9px;
+    height: 9px;
+    border: 1px solid;
+    border-radius: 3px;
+    content: "";
+}
+
+.case-highlight-legend .identifier::before {
+    border-color: rgba(29, 78, 216, 0.68);
+    background: rgba(37, 99, 235, 0.17);
+}
+
+.case-highlight-legend .party::before {
+    border-color: rgba(109, 40, 217, 0.68);
+    background: rgba(139, 92, 246, 0.17);
+}
+
+.case-highlight-legend .action::before {
+    border-color: rgba(180, 83, 9, 0.70);
+    background: rgba(245, 158, 11, 0.18);
+}
+
+.case-highlight-legend .deadline::before {
+    border-color: rgba(185, 28, 28, 0.70);
+    background: rgba(239, 68, 68, 0.16);
+}
+
+.case-highlight-legend .decision::before {
+    border-color: rgba(21, 128, 61, 0.72);
+    background: rgba(34, 197, 94, 0.20);
+}
+
 .case-page-number,
 .case-page-ocr-note {
     position: absolute;
