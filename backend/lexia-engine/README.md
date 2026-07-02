@@ -120,3 +120,7 @@ La respuesta incluye:
 - `quality`: dimensiones, penalizaciones y puntuación LEXIA-SCORE.
 - `diagnostics.dualAnalysis`: apoyo, contraargumentos, riesgos y vacíos.
 - `diagnostics.candidateSelection`: candidato elegido y resultado del control de seguridad.
+
+## Roadmap
+
+Hay un roadmap adaptado a LEXIA en la raíz del repositorio: ../ROADMAP_LEXIA.md. Ahí se mapean fases, hitos técnicos y operativos, y próximos pasos recomendados.

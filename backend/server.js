@@ -16,6 +16,7 @@ const { createKnowledgeEngine } = require('./lexia-engine/knowledge');
 const { createPythonBrain } = require('./lexia-engine/python-brain');
 const { ensureLocalOcrAvailable, ocrPdfLocally } = require('./lexia-engine/local-ocr');
 const { extractDerivedLegalKnowledge } = require('./lexia-engine/derived-knowledge');
+const metrics = require('./metrics');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -159,6 +160,23 @@ if (ollamaEnabled) {
 app.use(express.json({ limit: '15mb' }));
 app.use(cors());
 app.use(['/api/chat', '/api/legal-query', '/api/legal-search', '/api/legal-engine/feed', '/api/legal-engine/discover'], lexiaQueryRateLimiter);
+
+// Health and metrics endpoints (lightweight, no external providers required)
+app.get('/health', (req, res) => {
+  try {
+    return res.json({ ok: true, time: new Date().toISOString(), metrics: metrics.snapshot() });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/metrics', (req, res) => {
+  try {
+    return res.json(metrics.snapshot());
+  } catch (e) {
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -6575,6 +6593,8 @@ app.post('/api/legal-search', async (req, res) => {
 
 app.post('/api/chat', async (req, res) => {
   try {
+    metrics.increment('totalRequests');
+    metrics.increment('chatRequests');
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'El prompt es obligatorio.' });
     const userQuery = extractUserQuery(prompt);
@@ -6626,6 +6646,15 @@ app.post('/api/chat', async (req, res) => {
       caseFile: req.body?.caseFile,
       providerConfig: aiProviderConfig
     });
+    // Metrics: provider and fallback tracking
+    try {
+      const provider = intelligenceResult.provider || (intelligenceResult.fallback ? 'local' : 'local');
+      metrics.incProvider(provider);
+      if (intelligenceResult.fallback) metrics.increment('chatFallbacks');
+      else metrics.increment('chatSuccess');
+    } catch (e) {
+      // ignore metrics errors
+    }
     const persisted = await persistAnswer(intelligenceResult.answer, intelligenceResult.metadata);
 
     return res.json({
@@ -6657,6 +6686,7 @@ app.post('/api/chat', async (req, res) => {
       persisted
     });
   } catch (error) {
+    metrics.increment('errors');
     console.error('❌ Error interno:', error);
     const query = extractUserQuery(req.body?.prompt);
     const localResults = query ? searchLegalKnowledgeBase(query) : [];

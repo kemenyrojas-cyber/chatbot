@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lexia — Dashboard ligero</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; padding: 24px; }
+    .card { border: 1px solid #ddd; padding: 12px; margin: 8px 0; border-radius: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    pre { background:#f7f7f7; padding:8px; overflow:auto }
+  </style>
+</head>
+<body>
+  <h1>Dashboard ligero — LEXIA</h1>
+  <p>Este dashboard usa únicamente métricas locales y no requiere APIs de pago.</p>
+  <div class="grid">
+    <div class="card">
+      <strong>Uptime</strong>
+      <div id="uptime">—</div>
+    </div>
+    <div class="card">
+      <strong>Contadores</strong>
+      <div id="counters">—</div>
+    </div>
+    <div class="card">
+      <strong>Proveedores usados</strong>
+      <div id="providers">—</div>
+    </div>
+    <div class="card">
+      <strong>Memoria</strong>
+      <pre id="memory">—</pre>
+    </div>
+  </div>
+
+  <script>
+    async function loadMetrics() {
+      try {
+        const res = await fetch('/api/metrics');
+        const data = await res.json();
+        document.getElementById('uptime').textContent = new Date(data.startedAt).toLocaleString() + ' (' + Math.round(data.uptimeMs/1000) + 's)';
+        const counters = data.counters || {};
+        document.getElementById('counters').innerHTML = Object.entries(counters).filter(([k])=>k!=='providerCalls').map(([k,v]) => `<div><strong>${k}:</strong> ${JSON.stringify(v)}</div>`).join('');
+        const providers = counters.providerCalls || {};
+        document.getElementById('providers').innerHTML = Object.entries(providers).map(([k,v])=>`<div>${k}: ${v}</div>`).join('') || 'ninguno';
+        document.getElementById('memory').textContent = JSON.stringify(data.memory,null,2);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadMetrics();
+    setInterval(loadMetrics, 5000);
+  </script>
+</body>
+</html>
