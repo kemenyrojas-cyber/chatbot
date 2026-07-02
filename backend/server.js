@@ -1778,13 +1778,13 @@ const legalAreas = [
   {
     id: 'derecho_civil',
     label: 'Derecho Civil',
-    keywords: ['civil', 'contrato', 'compraventa', 'propiedad', 'posesion', 'posesión', 'inmueble', 'terreno', 'predio', 'vecino', 'lindero', 'linderos', 'construyo', 'construyó', 'edifico', 'edificó', 'herencia', 'sucesion', 'sucesión'],
+    keywords: ['civil', 'contrato', 'compraventa', 'propiedad', 'posesion', 'posesión', 'inmueble', 'terreno', 'predio', 'vecino', 'lindero', 'linderos', 'construyo', 'construyó', 'edifico', 'edificó', 'herencia', 'sucesion', 'sucesión', 'arrendamiento', 'alquiler', 'inquilino', 'arrendatario', 'desalojo', 'heredero', 'fallecido', 'fallecio', 'falleció'],
     topics: [
-      { id: 'contrato', label: 'Contrato', keywords: ['contrato', 'clausula', 'cláusula'] },
+      { id: 'contrato', label: 'Contrato', keywords: ['contrato', 'clausula', 'cláusula', 'arrendamiento', 'alquiler', 'inquilino', 'arrendatario'] },
       { id: 'compraventa', label: 'Compraventa', keywords: ['compraventa', 'compra venta'] },
-      { id: 'posesion', label: 'Posesión', keywords: ['posesion', 'posesión', 'posesion precaria', 'posesión precaria'] },
+      { id: 'posesion', label: 'Posesión', keywords: ['posesion', 'posesión', 'posesion precaria', 'posesión precaria', 'desalojo', 'no quiere salir'] },
       { id: 'propiedad_inmueble', label: 'Propiedad inmueble', keywords: ['propiedad', 'terreno', 'predio', 'inmueble', 'lindero', 'linderos', 'construyo', 'construyó'] },
-      { id: 'herencia', label: 'Herencia', keywords: ['herencia', 'sucesion', 'sucesión', 'testamento'] }
+      { id: 'herencia', label: 'Herencia', keywords: ['herencia', 'sucesion', 'sucesión', 'testamento', 'heredero', 'fallecido', 'fallecio', 'falleció', 'bienes de mi padre', 'bienes de mi madre'] }
     ]
   },
   {
@@ -2171,7 +2171,40 @@ async function interpretLegalQueryWithPython(query, memoryMessages = []) {
       }
     };
   }
-  return analysis.intent;
+  const pythonIntent = analysis.intent;
+  const pythonAreaUsable = pythonIntent?.area?.id
+    && pythonIntent.area.id !== 'area_no_determinada'
+    && pythonIntent.area.confidence !== 'baja';
+  const pythonTopicUsable = pythonIntent?.topic?.id
+    && !['tema_no_determinado', 'tema_ambiguo'].includes(pythonIntent.topic.id)
+    && pythonIntent.topic.confidence !== 'baja';
+  const area = pythonAreaUsable ? pythonIntent.area : baseline.area;
+  const topic = pythonTopicUsable ? pythonIntent.topic : baseline.topic;
+
+  return {
+    ...baseline,
+    ...pythonIntent,
+    type: pythonIntent.type || baseline.type,
+    area,
+    topic,
+    objective: pythonIntent.objective || baseline.objective,
+    conversationMode: pythonIntent.conversationMode || baseline.conversationMode,
+    concepts: [...new Set([...(pythonIntent.concepts || []), ...(baseline.concepts || [])])].slice(0, 12),
+    complexity: pythonIntent.complexity || baseline.complexity,
+    missingInfo: pythonIntent.missingInfo || baseline.missingInfo,
+    originalQuery: pythonIntent.originalQuery || baseline.originalQuery,
+    needsMoreFacts: baseline.type?.id !== 'consulta_normativa' && (
+      !area?.id
+      || area.id === 'area_no_determinada'
+      || !topic?.id
+      || ['tema_no_determinado', 'tema_ambiguo'].includes(topic.id)
+    ),
+    interpretation: {
+      ...(baseline.interpretation || {}),
+      ...(pythonIntent.interpretation || {}),
+      baselinePreserved: !pythonAreaUsable || !pythonTopicUsable
+    }
+  };
 }
 
 function mergeConversationIntent(currentIntent, memoryIntent) {
@@ -2506,6 +2539,22 @@ function buildTopicGuidance(intent) {
     ];
   }
 
+  if (topicId === 'contrato') {
+    return [
+      'En un problema contractual, hay que comparar **lo que se pactó, lo que cada parte cumplió y el incumplimiento concreto**.',
+      '',
+      'Conserva el contrato y sus anexos, comprobantes de pago, cartas, mensajes y cualquier requerimiento previo. Si se trata de un alquiler, también importa quién ocupa el inmueble, cuánto se debe y si el contrato sigue vigente.'
+    ];
+  }
+
+  if (topicId === 'herencia') {
+    return [
+      'En una herencia, ningún familiar puede apropiarse por sí solo de todos los bienes si existen otros herederos con derechos.',
+      '',
+      'Primero hay que identificar a los posibles herederos, verificar si existe testamento o sucesión intestada y ubicar los bienes. Reúne partidas de nacimiento y defunción, testamento si existe, partidas registrales y documentos de propiedad.'
+    ];
+  }
+
   if (topicId === 'divorcio') {
     return [
       'En divorcio, la ruta depende de si ambas partes están de acuerdo y de si hay hijos, bienes o pensión de alimentos por resolver.',
@@ -2523,9 +2572,9 @@ function buildTopicGuidance(intent) {
   }
 
   return [
-    `Con lo que me dices, esto se debe mirar desde ${intent?.area?.label || 'el área legal aplicable'}, pero falta aterrizar el hecho central.`,
+    'Ya hay un punto jurídico que podemos empezar a ordenar con lo que me cuentas.',
     '',
-    'Para darte una respuesta útil, necesito ubicar qué pasó, cuándo pasó y qué documento o prueba existe.'
+    'Te daré una orientación provisional con los hechos disponibles y precisaré únicamente el dato que realmente pueda cambiarla.'
   ];
 }
 
@@ -2885,6 +2934,8 @@ function buildSingleLegalQuestion(intent, reasoningProfile, query = '') {
   if (topicId === 'alimentos') return '¿Ya existe una sentencia o acta de conciliación sobre alimentos?';
   if (topicId === 'servicios_educativos') return '¿Ese cobro aparece en el contrato, tarifario o comunicado oficial de la universidad?';
   if (topicId === 'propiedad_inmueble' || topicId === 'posesion') return '¿Tienes título, contrato o partida registral del inmueble?';
+  if (topicId === 'contrato') return '¿Tienes el contrato y algún requerimiento escrito dirigido a la otra parte?';
+  if (topicId === 'herencia') return '¿Ya existe testamento o se inició una sucesión intestada?';
   if (topicId === 'extorsion') return '¿La amenaza sigue activa ahora o solo tienes los mensajes guardados?';
   if (topicId === 'violencia_pareja') return '¿La persona está a salvo ahora mismo o hay riesgo de una nueva agresión?';
   if (topicId === 'homicidio') return '¿Estás consultando como familiar de la víctima, investigado o abogado de una parte?';
@@ -2941,16 +2992,36 @@ function buildUnaskedLegalQuestion(intent, reasoningProfile, query = '', memoryM
 
 function buildCaseUpdateAnalysis(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
   const normalizedQuery = normalizeText(query);
+  const knownFacts = normalizeText([
+    ...normalizeMemoryMessages(memoryMessages)
+      .filter(message => message.role === 'user')
+      .map(message => message.content),
+    query
+  ].join(' '));
   const guidance = buildProgressiveGuidance(intent, reasoningProfile, null).filter(Boolean);
   const rules = collectIntelligenceItems(results, 'reglas_practicas', 1);
-  const risks = collectIntelligenceItems(results, 'riesgos', 1);
+  const risks = collectIntelligenceItems(results, 'riesgos', 4).filter(risk => {
+    const normalizedRisk = normalizeText(risk);
+    if (/\b(no tener|falta de|carecer de)\b.*\bcontrato\b/.test(normalizedRisk) && /\bcontrato\b/.test(knownFacts)) return false;
+    if (/\b(no tener|falta de|carecer de)\b.*\b(prueba|documento)\b/.test(normalizedRisk) && /\b(contrato|carta|correo|mensaje|denuncia|resolucion|boleta|audio|video|captura|testigo)\b/.test(knownFacts)) return false;
+    if (/\bno probar\b.*\bvinculo laboral\b/.test(normalizedRisk) && /\b(contrato|boleta|planilla|asistencia)\b/.test(knownFacts)) return false;
+    return true;
+  });
   const steps = collectIntelligenceItems(results, 'pasos', 2);
-  const evidenceMentioned = /\b(cuenta bancaria|cuenta|transferencia|deposito|depósito|voucher|comprobante|recibo|captura|mensaje|chat|audio|video|correo|testigo|telefono|teléfono|numero|número|documento|prueba)\b/.test(normalizedQuery);
+  const evidenceMentioned = /\b(cuenta bancaria|cuenta|transferencia|deposito|depósito|voucher|comprobante|recibo|captura|mensaje|chat|audio|video|correo|testigo|telefono|teléfono|numero|número|documento|prueba|contrato|carta|partida|resolucion|resolución)\b/.test(normalizedQuery);
   const proceduralUpdate = /\b(denuncia|denunciaron|notificaron|notificacion|notificación|citacion|citación|resolucion|resolución|audiencia)\b/.test(normalizedQuery);
   const lines = [];
 
   if (evidenceMentioned) {
-    lines.push('Ese dato **sí aporta al análisis**: puede servir para corroborar la secuencia de hechos, rastrear una operación o identificar a personas vinculadas. Por sí solo no prueba autoría ni responsabilidad, pero puede convertirse en un elemento relevante junto con los demás indicios. Conserva el archivo o comprobante original, fecha, monto, titular, número de operación y la forma en que llegó a tus manos; **no lo edites ni borres el contexto**, porque su trazabilidad puede ser tan importante como el contenido.');
+    if (intent?.area?.id === 'derecho_civil') {
+      lines.push('El documento que mencionas **sí cambia el análisis**: permite comprobar qué obligación existía, cuándo debía cumplirse y si la otra parte fue requerida formalmente. Una carta notarial también puede dejar constancia del pedido y de su fecha, aunque sus efectos concretos dependen del contrato y de lo que se exigió en ella. Conserva los cargos de entrega y el texto completo.');
+    } else if (intent?.area?.id === 'derecho_laboral') {
+      lines.push('Ese documento **sí aporta al caso laboral** porque puede acreditar el vínculo, una decisión del empleador o la fecha en que fue comunicada. Conserva el original y el contexto completo; una captura aislada suele ser menos útil que la conversación, carta o archivo íntegro.');
+    } else if (intent?.area?.id === 'derecho_familia') {
+      lines.push('Ese documento **ayuda a precisar derechos, obligaciones y fechas** dentro del asunto familiar. Conserva el original y verifica que los nombres, fechas y acuerdos coincidan con lo ocurrido.');
+    } else {
+      lines.push('Ese dato **sí aporta al análisis**: puede corroborar la secuencia de hechos, una comunicación, una operación o la intervención de una persona. Por sí solo no define el resultado, pero gana valor al contrastarlo con los demás indicios. Conserva el archivo o comprobante original, su fecha y su contexto completo; no lo edites.');
+    }
   } else if (proceduralUpdate) {
     lines.push('Este dato cambia la etapa del análisis: ya no debe tratarse sólo como una consulta preventiva. Hay que revisar **qué acto fue notificado, en qué fecha, qué autoridad lo emitió y qué plazo empezó a correr**, sin asumir todavía el resultado del proceso.');
   } else if (guidance.length) {
@@ -4051,10 +4122,7 @@ function buildStatusAnswer(query, intent, results = [], reasoningProfile = null,
 
 function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
   const dialogue = intent?.interpretation?.dialogue || {};
-  const focus = String(dialogue.currentFocus || query || '').replace(/\s+/g, ' ').trim();
   const lines = [
-    `Incorporo este dato al caso: **${focus}**.`,
-    '',
     ...buildCaseUpdateAnalysis(query, intent, results, reasoningProfile, memoryMessages)
   ];
   const mayAsk = (dialogue.responsePlan?.maxQuestions ?? 1) > 0;
@@ -4068,11 +4136,10 @@ function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null
 function buildAnsweredQuestionResponse(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
   const dialogue = intent?.interpretation?.dialogue || {};
   const goal = dialogue.userGoal?.label;
-  const answer = String(query || '').replace(/\s+/g, ' ').trim();
   const lines = [
     goal
-      ? `Entendido: tu objetivo es **${goal}**.`
-      : `Entendido: **${answer}**.`,
+      ? `Bien, entonces el objetivo es **${goal}**. Con eso cambia la forma de enfocar el caso.`
+      : 'Ese dato ayuda a precisar el caso. Lo importante ahora es qué cambia jurídicamente y qué conviene hacer.',
     '',
     ...buildCaseUpdateAnalysis(query, intent, results, reasoningProfile, memoryMessages)
   ];
@@ -4259,15 +4326,6 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
   const legalBadges = collectLegalCitationBadges(results);
   const includeSources = intent?.interpretation?.dialogue?.responsePlan?.includeSources === true
     || intent?.type?.id === 'consulta_normativa';
-
-  if (intent?.needsMoreFacts || intent?.area?.id === 'area_no_determinada') {
-    const focus = String(intent?.interpretation?.dialogue?.currentFocus || query || '').replace(/\s+/g, ' ').trim();
-    return [
-      `Entiendo que necesitas ayuda con **${focus || 'una situación jurídica'}**.`,
-      '',
-      'Para no asumir algo distinto de lo que quieres decir, ¿qué ocurrió concretamente y qué necesitas lograr?'
-    ].join('\n');
-  }
 
   if (shortInput && !memoryMessages.length) {
     return [
@@ -5097,6 +5155,7 @@ PERSONALIDAD Y ESTILO:
 - Nunca cierres con dos o más preguntas. Si necesitas continuar, elige la pregunta jurídica más importante y haz solo esa.
 - No conviertas la conversación en un interrogatorio. Después de dos aportes sustantivos del usuario, entrega un análisis provisional antes de pedir más datos.
 - Si el usuario aporta un hecho o una prueba, explica qué cambia jurídicamente, qué valor preliminar tiene y qué acción práctica corresponde. Está prohibido limitarse a "incorporo el dato" seguido de otra pregunta.
+- No uses frases de sistema o clasificación como "incorporo este dato", "área no determinada", "tema detectado", "según mi memoria" o "estoy procesando". Habla directamente del caso como una persona.
 - No repitas una pregunta ni vuelvas a preguntar por la misma categoría de información con otras palabras (fecha, objetivo, rol, estado procesal, prueba o riesgo).
 - Si no entiendes algo, pregunta al usuario en vez de inventar hechos.
 - Empieza reconociendo brevemente la preocupación solo cuando ayude: "Con esos datos...", "En tu caso...", "Lo relevante aquí es...".
@@ -6761,6 +6820,7 @@ app.post('/api/chat', async (req, res) => {
       role: chatRole,
       sessionId: chatSessionId,
       caseFile: req.body?.caseFile,
+      voiceMode: req.body?.voiceMode === true,
       providerConfig: aiProviderConfig
     });
     // Metrics: provider and fallback tracking

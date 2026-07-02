@@ -2477,6 +2477,12 @@ details[open] > summary .finder-folder-icon {
     align-items: end;
 }
 
+.chat-composer-actions {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+}
+
 .chat-composer textarea {
     min-height: 58px;
     max-height: 180px;
@@ -2514,6 +2520,39 @@ details[open] > summary .finder-folder-icon {
 .chat-composer button:disabled {
     opacity: 0.6;
     cursor: wait;
+}
+
+.chat-composer .chat-voice-toggle {
+    min-width: 58px;
+    width: 58px;
+    padding: 0;
+    border: 1px solid #BFD2F5;
+    background: #FFFFFF;
+    color: #1D4ED8;
+    font-size: 18px;
+}
+
+.chat-composer .chat-voice-toggle:hover {
+    background: #EFF6FF;
+}
+
+.chat-composer .chat-voice-toggle.is-active {
+    border-color: #2563EB;
+    background: #DBEAFE;
+    color: #1D4ED8;
+}
+
+.chat-composer .chat-voice-toggle.is-listening {
+    background: #2563EB;
+    color: #FFFFFF;
+    box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.16);
+    animation: chat-voice-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-voice-pulse {
+    50% {
+        box-shadow: 0 0 0 9px rgba(37, 99, 235, 0.05);
+    }
 }
 
 @media (max-width: 1440px) {
@@ -2783,7 +2822,12 @@ details[open] > summary .finder-folder-icon {
         grid-template-columns: 1fr;
     }
 
-    .chat-composer button {
+    .chat-composer-actions {
+        display: grid;
+        grid-template-columns: 58px minmax(0, 1fr);
+    }
+
+    .chat-composer-actions #chatComposerSend {
         width: 100%;
     }
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260702-home-topbar">
+    <link rel="stylesheet" href="/css/style.css?v=20260702-voice-conversation">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -434,11 +434,17 @@
 
                     <div class="chat-composer">
                         <label class="sr-only" for="chatComposerInput">Escribe tu consulta jurídica</label>
-                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta, caso, norma, documento o tarea legal..." aria-describedby="chatViewSubtitle"></textarea>
-                        <button id="chatComposerSend" type="button" aria-label="Enviar consulta a LEXIA">
-                            Enviar
-                            <i class="fa-solid fa-arrow-up icon" aria-hidden="true"></i>
-                        </button>
+                        <textarea id="chatComposerInput" rows="1" placeholder="Escribe tu consulta, caso, norma, documento o tarea legal..." aria-describedby="chatViewSubtitle chatVoiceStatus"></textarea>
+                        <div class="chat-composer-actions">
+                            <button id="chatVoiceToggle" class="chat-voice-toggle" type="button" aria-label="Activar Hablar con LEXIA" aria-pressed="false" title="Hablar con LEXIA">
+                                <i class="fa-solid fa-microphone" aria-hidden="true"></i>
+                            </button>
+                            <button id="chatComposerSend" type="button" aria-label="Enviar consulta a LEXIA">
+                                Enviar
+                                <i class="fa-solid fa-arrow-up icon" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <span id="chatVoiceStatus" class="sr-only" aria-live="polite">Hablar con LEXIA está desactivado.</span>
                     </div>
                 </section>
             </section>
@@ -446,7 +452,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260702-home-topbar"></script>
+    <script src="/js/app.js?v=20260702-voice-conversation"></script>
 </body>
 </html>
 

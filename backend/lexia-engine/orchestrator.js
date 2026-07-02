@@ -439,6 +439,14 @@ function createLexiaEngine(deps) {
           'Responde de forma natural y breve. Evita subtítulos, listas y citas salvo que sean necesarios o solicitados.'
         ].join('\n')
       : '';
+    const voiceConversationInstruction = options.voiceMode
+      ? [
+          'MODO HABLAR CON LEXIA:',
+          'La respuesta será escuchada, no solo leída. Habla con ritmo natural, frases breves y vocabulario claro.',
+          'Responde como una interlocutora jurídica cercana: sin encabezados, sin fórmulas repetidas y sin narrar acciones internas.',
+          'Da primero el criterio útil, luego el paso práctico y termina con una sola pregunta únicamente si hace falta.'
+        ].join('\n')
+      : '';
     const lexiaSynthesisContext = [
       'SÍNTESIS JURÍDICA INTERNA DE LEXIA:',
       localSynthesis,
@@ -455,8 +463,8 @@ function createLexiaEngine(deps) {
       '- Mantén la respuesta escaneable, pero conversacional: respuesta directa, explicación breve, paso útil y una sola pregunta final.'
     ].join('\n');
     const context = dialogueMode
-      ? [dialogueControlContext, dialogueInstruction, conversationMemoryContext, caseFileContext, legalReasoningContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
-      : [dialogueControlContext, conversationMemoryContext, caseFileContext, legalReasoningContext, legalGraphContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
+      ? [dialogueControlContext, dialogueInstruction, voiceConversationInstruction, conversationMemoryContext, caseFileContext, legalReasoningContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n')
+      : [dialogueControlContext, voiceConversationInstruction, conversationMemoryContext, caseFileContext, legalReasoningContext, legalGraphContext, dualAnalysisContext, ragContext.context, lexiaSynthesisContext].filter(Boolean).join('\n\n');
     const intentContext = [
       'INTENCIÓN JURÍDICA DETECTADA:',
       `Tipo: ${intent.type.label}`,

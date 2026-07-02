@@ -68,6 +68,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatThread = document.getElementById("chatThread");
     const chatComposerInput = document.getElementById("chatComposerInput");
     const chatComposerSend = document.getElementById("chatComposerSend");
+    const chatVoiceToggle = document.getElementById("chatVoiceToggle");
+    const chatVoiceStatus = document.getElementById("chatVoiceStatus");
     const chatViewTitle = document.getElementById("chatViewTitle");
     const chatViewSubtitle = document.getElementById("chatViewSubtitle");
     const newChatSessionButton = document.getElementById("newChatSessionButton");
@@ -283,6 +285,12 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
     let activeSpeechUtterance = null;
+    let voiceConversationEnabled = false;
+    let voiceConversationListening = false;
+    let voiceRecognition = null;
+    let voiceRecognitionFinalText = "";
+    let voiceRecognitionBaseText = "";
+    let voiceRestartTimer = null;
     const voiceIntroMessage = "Si eres una persona con discapacidad visual, haz clic para activarme y brindarte asesoría por voz mediante el sistema TalkBack.";
 
     function loadList(key) {
@@ -614,9 +622,11 @@ document.addEventListener("DOMContentLoaded", () => {
         activeSpeechUtterance = utterance;
         utterance.addEventListener("end", () => {
             if (activeSpeechUtterance === utterance) activeSpeechUtterance = null;
+            options.onEnd?.();
         }, { once: true });
         utterance.addEventListener("error", () => {
             if (activeSpeechUtterance === utterance) activeSpeechUtterance = null;
+            options.onError?.();
         }, { once: true });
         speech.speak(utterance);
     }
@@ -625,6 +635,164 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!("speechSynthesis" in window)) return;
         window.speechSynthesis.cancel();
         activeSpeechUtterance = null;
+    }
+
+    function setVoiceConversationStatus(message, state = "idle") {
+        if (chatVoiceStatus) chatVoiceStatus.textContent = message;
+        if (!chatVoiceToggle) return;
+        chatVoiceToggle.classList.toggle("is-active", voiceConversationEnabled);
+        chatVoiceToggle.classList.toggle("is-listening", state === "listening");
+        chatVoiceToggle.setAttribute("aria-pressed", String(voiceConversationEnabled));
+        chatVoiceToggle.setAttribute(
+            "aria-label",
+            voiceConversationEnabled ? "Desactivar Hablar con LEXIA" : "Activar Hablar con LEXIA"
+        );
+        chatVoiceToggle.title = state === "listening"
+            ? "LEXIA te está escuchando"
+            : (voiceConversationEnabled ? "Desactivar Hablar con LEXIA" : "Hablar con LEXIA");
+    }
+
+    function cleanTextForSpeech(message) {
+        return String(message || "")
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+            .replace(/[*_`#>]/g, "")
+            .replace(/\[(R\d+)\]/gi, "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function stopVoiceRecognition() {
+        if (voiceRestartTimer) {
+            window.clearTimeout(voiceRestartTimer);
+            voiceRestartTimer = null;
+        }
+        if (!voiceRecognition) return;
+        try {
+            voiceRecognition.stop();
+        } catch {
+            // El reconocimiento ya estaba detenido.
+        }
+    }
+
+    function scheduleVoiceRecognition(delay = 350) {
+        if (!voiceConversationEnabled || isSending) return;
+        if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return;
+        if (voiceRestartTimer) window.clearTimeout(voiceRestartTimer);
+        voiceRestartTimer = window.setTimeout(() => {
+            voiceRestartTimer = null;
+            startVoiceRecognition();
+        }, delay);
+    }
+
+    function getVoiceRecognition() {
+        if (voiceRecognition) return voiceRecognition;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return null;
+
+        voiceRecognition = new SpeechRecognition();
+        voiceRecognition.lang = "es-PE";
+        voiceRecognition.continuous = false;
+        voiceRecognition.interimResults = true;
+        voiceRecognition.maxAlternatives = 1;
+
+        voiceRecognition.addEventListener("start", () => {
+            voiceConversationListening = true;
+            voiceRecognitionFinalText = "";
+            voiceRecognitionBaseText = chatComposerInput?.value.trim() || "";
+            setVoiceConversationStatus("Te escucho. Habla con LEXIA.", "listening");
+        });
+
+        voiceRecognition.addEventListener("result", event => {
+            let interimText = "";
+            for (let index = event.resultIndex; index < event.results.length; index += 1) {
+                const transcript = event.results[index][0]?.transcript?.trim() || "";
+                if (event.results[index].isFinal) {
+                    voiceRecognitionFinalText = `${voiceRecognitionFinalText} ${transcript}`.trim();
+                } else {
+                    interimText = `${interimText} ${transcript}`.trim();
+                }
+            }
+            const transcript = [voiceRecognitionBaseText, voiceRecognitionFinalText, interimText]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+            if (chatComposerInput) chatComposerInput.value = transcript;
+        });
+
+        voiceRecognition.addEventListener("error", event => {
+            voiceConversationListening = false;
+            if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+                voiceConversationEnabled = false;
+                setVoiceConversationStatus("No se concedió permiso para usar el micrófono.");
+                announce("No se concedió permiso para usar el micrófono.");
+                return;
+            }
+            if (event.error !== "aborted" && event.error !== "no-speech") {
+                setVoiceConversationStatus("No pude oírte con claridad. Puedes intentarlo de nuevo.");
+            }
+        });
+
+        voiceRecognition.addEventListener("end", () => {
+            voiceConversationListening = false;
+            const finalText = chatComposerInput?.value.trim() || "";
+            if (voiceConversationEnabled && voiceRecognitionFinalText && finalText && !isSending) {
+                setVoiceConversationStatus("Entendido. Estoy preparando la respuesta.");
+                void sendMessage(finalText);
+                return;
+            }
+            if (voiceConversationEnabled && !isSending) {
+                setVoiceConversationStatus("Hablar con LEXIA está activo.");
+                scheduleVoiceRecognition(500);
+            }
+        });
+
+        return voiceRecognition;
+    }
+
+    function startVoiceRecognition() {
+        if (!voiceConversationEnabled || voiceConversationListening || isSending) return;
+        const recognition = getVoiceRecognition();
+        if (!recognition) {
+            voiceConversationEnabled = false;
+            setVoiceConversationStatus("Este navegador no permite reconocimiento de voz.");
+            announce("Este navegador no permite reconocimiento de voz. Puedes escribir tu consulta.");
+            return;
+        }
+        stopSpeaking();
+        try {
+            recognition.start();
+        } catch {
+            scheduleVoiceRecognition(600);
+        }
+    }
+
+    function setVoiceConversationEnabled(enabled) {
+        voiceConversationEnabled = Boolean(enabled);
+        if (!voiceConversationEnabled) {
+            stopVoiceRecognition();
+            stopSpeaking();
+            setVoiceConversationStatus("Hablar con LEXIA está desactivado.");
+            announce("Hablar con LEXIA desactivado.");
+            return;
+        }
+        setVoiceConversationStatus("Hablar con LEXIA está activo. Te escucho.");
+        announce("Hablar con LEXIA activado. Puedes hablar ahora.");
+        startVoiceRecognition();
+    }
+
+    function speakConversationAnswer(answer) {
+        if (!voiceConversationEnabled) return;
+        stopVoiceRecognition();
+        setVoiceConversationStatus("LEXIA está respondiendo.");
+        speak(cleanTextForSpeech(answer), {
+            force: true,
+            onEnd: () => {
+                if (!voiceConversationEnabled) return;
+                setVoiceConversationStatus("Te escucho. Puedes continuar.");
+                scheduleVoiceRecognition();
+            },
+            onError: () => scheduleVoiceRecognition()
+        });
     }
 
     function normalizeSpeechText(value) {
@@ -690,6 +858,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function speakFocusedControl(element, force = false) {
+        if (voiceConversationEnabled) return;
         const control = element?.closest?.("[data-voice-intro], label[for], button, a, input, textarea, select, summary, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])");
         if (!control || control.closest("[hidden]")) return;
         const voiceIntro = control.closest("[data-voice-intro]")?.getAttribute("data-voice-intro");
@@ -2318,9 +2487,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!text || isSending) return;
 
         isSending = true;
+        if (voiceConversationEnabled) {
+            stopVoiceRecognition();
+            setVoiceConversationStatus("Un momento…");
+        }
         chatComposerSend.disabled = true;
         chatComposerSend.setAttribute("aria-busy", "true");
-        announce("Consulta enviada. LEXIA está procesando la respuesta.");
+        announce("Consulta enviada. LEXIA responderá en un momento.");
 
         const session = ensureActiveSession(text);
         const createdAt = new Date().toISOString();
@@ -2336,7 +2509,7 @@ document.addEventListener("DOMContentLoaded", () => {
         session.messages = [
             ...stableMessages,
             { id: userMessageId, role: "user", content: text, createdAt },
-            { id: `${session.id}:system:${createdAt}`, role: "system", content: "Procesando consulta jurídica...", createdAt }
+            { id: `${session.id}:system:${createdAt}`, role: "system", content: "Un momento…", createdAt }
         ];
         upsertChatSession(session);
         renderChatSessions();
@@ -2359,6 +2532,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     assistantMessageId,
                     userCreatedAt: createdAt,
                     assistantCreatedAt,
+                    voiceMode: voiceConversationEnabled,
                     conversationMessages: serializeConversationMemory(stableMessages)
                 })
             });
@@ -2385,19 +2559,22 @@ document.addEventListener("DOMContentLoaded", () => {
             upsertChatSession(session);
             addNotification("Nueva respuesta de LEXIA", text.slice(0, 96));
             announce("LEXIA respondió. La respuesta está disponible en la conversación.");
+            speakConversationAnswer(answer);
         } catch (error) {
+            const errorAnswer = `No pude completar la consulta en este momento. ${error.message || "Verifica la conexión con LEXIA."}`;
             session.messages = [
                 ...stableMessages,
                 { id: userMessageId, role: "user", content: text, createdAt },
                 {
                     id: assistantMessageId,
                     role: "assistant",
-                    content: `No pude completar la consulta en este momento. ${error.message || "Verifica la conexión con el motor local de LEXIA."}`,
+                    content: errorAnswer,
                     createdAt: assistantCreatedAt
                 }
             ];
             upsertChatSession(session);
             announce("No se pudo completar la consulta. Revisa la conversación para ver el detalle.");
+            speakConversationAnswer(errorAnswer);
         } finally {
             isSending = false;
             chatComposerSend.disabled = false;
@@ -2405,7 +2582,13 @@ document.addEventListener("DOMContentLoaded", () => {
             renderChatSessions();
             renderChatThread();
             renderAppState();
-            chatComposerInput.focus({ preventScroll: true });
+            if (voiceConversationEnabled) {
+                if (!window.speechSynthesis?.speaking && !window.speechSynthesis?.pending) {
+                    scheduleVoiceRecognition();
+                }
+            } else {
+                chatComposerInput.focus({ preventScroll: true });
+            }
         }
     }
 
@@ -2473,6 +2656,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chatComposerSend?.addEventListener("click", () => {
         void sendMessage();
+    });
+
+    chatVoiceToggle?.addEventListener("click", () => {
+        setVoiceConversationEnabled(!voiceConversationEnabled);
     });
 
     chatComposerInput?.addEventListener("keydown", event => {

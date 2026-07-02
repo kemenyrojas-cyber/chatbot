@@ -37,6 +37,8 @@ class BrainScenarioMatrixTest(unittest.TestCase):
         cases = (
             ("Tengo la posesión de un terreno sin título.", "derecho_civil"),
             ("Incumplieron mi contrato de arrendamiento.", "derecho_civil"),
+            ("Mi inquilino debe cuatro meses de alquiler y no quiere salir.", "derecho_civil"),
+            ("Mi padre falleció y un hermano se quedó con todos sus bienes.", "derecho_civil"),
             ("Me despidieron sin entregarme una carta.", "derecho_laboral"),
             ("Quiero reclamar ante Indecopi contra un proveedor.", "derecho_consumidor"),
             ("La municipalidad me impuso una multa administrativa.", "derecho_administrativo"),
