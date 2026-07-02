@@ -1,9 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  extractDerivedLegalKnowledge,
-  rankDerivedLegalKnowledge
+  extractDerivedLegalKnowledge
 } = require('./derived-knowledge');
+const { createKnowledgeEngine } = require('./knowledge');
+const path = require('node:path');
 
 test('extrae teoría y normas sin copiar datos particulares del expediente', () => {
   const text = [
@@ -20,13 +21,35 @@ test('extrae teoría y normas sin copiar datos particulares del expediente', () 
   assert.ok(cards.every(card => !/ANTICONA|02715-2026|Arequipa 998/i.test(card.content)));
 });
 
-test('solo recupera memoria privada relacionada con la consulta', () => {
-  const cards = [
-    { id: 'laboral', type: 'norma', title: 'Artículo 27', content: 'El artículo 27 regula la protección frente al despido arbitrario.', matter: 'Derecho Laboral' },
-    { id: 'civil', type: 'criterio', title: 'Prescripción', content: 'La prescripción civil debe computarse desde que la acción puede ejercerse.', matter: 'Derecho Civil' }
-  ];
-  const results = rankDerivedLegalKnowledge(cards, 'protección ante un despido', 10);
-  assert.equal(results.length, 1);
-  assert.match(results[0].contenido, /despido/i);
-  assert.equal(results[0].fuente, 'Memoria jurídica privada');
+test('el conocimiento derivado entra al buscador jurídico existente', () => {
+  const engine = createKnowledgeEngine({
+    aiEngineRoot: path.join(__dirname, '__missing_test_kb__'),
+    shouldSearchLegalEngine: () => true
+  });
+  const cards = extractDerivedLegalKnowledge([
+    'Conforme al artículo 27 de la Constitución Política del Perú, la ley otorga protección frente al despido arbitrario.',
+    'El principio de primacía de la realidad exige privilegiar los hechos comprobados sobre las formas documentales.'
+  ].join('\n'), { matter: 'Derecho Laboral' });
+  const text = cards
+    .map(card => `## ${card.title}\nTipo: ${card.type}\nMateria: ${card.matter}\n${card.content}`)
+    .join('\n\n');
+  const entries = engine.buildIngestedLegalEntries({
+    sourceId: 'source-derived-test',
+    fileName: 'conocimiento-juridico-derivado.txt',
+    title: 'Conocimiento jurídico derivado de expedientes',
+    text,
+    materia: 'Derecho Laboral',
+    fuente: 'LEXIA · conocimiento jurídico desidentificado',
+    modulo: 'normativa'
+  });
+
+  engine.mergeRuntimeLegalKnowledge(entries);
+  const results = engine.searchLegalKnowledgeBase(
+    '¿Qué protección establece el artículo 27 frente al despido arbitrario?'
+  );
+
+  assert.ok(results.some(result =>
+    result.fuente === 'LEXIA · conocimiento jurídico desidentificado'
+    && /artículo 27/i.test(result.contenido)
+  ));
 });

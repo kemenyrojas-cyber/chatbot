@@ -15,10 +15,7 @@ const { createRateLimiter } = require('./lexia-engine/flow-control');
 const { createKnowledgeEngine } = require('./lexia-engine/knowledge');
 const { createPythonBrain } = require('./lexia-engine/python-brain');
 const { ensureLocalOcrAvailable, ocrPdfLocally } = require('./lexia-engine/local-ocr');
-const {
-  extractDerivedLegalKnowledge,
-  rankDerivedLegalKnowledge
-} = require('./lexia-engine/derived-knowledge');
+const { extractDerivedLegalKnowledge } = require('./lexia-engine/derived-knowledge');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -5487,6 +5484,73 @@ function buildLocalCaseAnalysisReport({ fileName, text, classification, ocr = nu
   ].join('\n');
 }
 
+async function feedDerivedCaseKnowledge(cards = [], options = {}) {
+  if (!Array.isArray(cards) || !cards.length) {
+    return { entries: 0, storage: 'none' };
+  }
+  // Preserve the corpus already used by Consulta jurídica before appending new
+  // knowledge. Otherwise a first write could mark an incomplete runtime corpus
+  // as loaded and hide previously persisted legal entries until restart.
+  await ensureLegalKnowledgeAvailable();
+  const text = cards
+    .map(card => `## ${card.title}\nTipo: ${card.type}\nMateria: ${card.matter || options.matter || 'Derecho peruano'}\n${card.content}`)
+    .join('\n\n');
+  const contentHash = hashContent(text);
+  const source = {
+    id: `source-derived-case-${contentHash.slice(0, 16)}`,
+    email: normalizeEmail(options.email),
+    originalName: `conocimiento-juridico-derivado-${contentHash.slice(0, 10)}.txt`,
+    mimeType: 'text/plain',
+    sizeBytes: Buffer.byteLength(text, 'utf8'),
+    title: 'Conocimiento jurídico derivado de expedientes',
+    sourceLabel: 'LEXIA · conocimiento jurídico desidentificado',
+    url: '',
+    sourceType: 'derived_case_knowledge',
+    reviewStatus: 'approved',
+    legalScore: 100,
+    legalEvaluation: {
+      isLegal: true,
+      score: 100,
+      reason: 'referencias normativas y criterios desidentificados extraídos por LEXIA'
+    },
+    contentHash,
+    text
+  };
+  const entries = buildIngestedLegalEntries({
+    sourceId: source.id,
+    fileName: source.originalName,
+    title: source.title,
+    text,
+    materia: String(options.matter || 'Derecho peruano'),
+    fuente: source.sourceLabel,
+    modulo: 'criterios'
+  });
+  if (!entries.length) return { entries: 0, storage: 'none' };
+
+  let storage = 'runtime';
+  if (accountsPool) {
+    try {
+      const persisted = await persistIngestedLegalKnowledgeToDb({ source, entries });
+      if (persisted) {
+        storage = 'postgres';
+        setLegalIngestedCorpusLoaded(true);
+      }
+    } catch (error) {
+      console.warn('⚠️ No se pudo persistir conocimiento derivado en PostgreSQL:', error.message);
+    }
+  }
+  if (storage !== 'postgres' && process.env.LEGAL_INGEST_WRITE_LOCAL === 'true') {
+    try {
+      persistIngestedLegalKnowledgeLocally({ source, entries });
+      storage = 'local';
+    } catch (error) {
+      console.warn('⚠️ No se pudo guardar el respaldo local de conocimiento derivado:', error.message);
+    }
+  }
+  mergeRuntimeLegalKnowledge(entries);
+  return { entries: entries.length, storage, sourceId: source.id };
+}
+
 function getResponsesApiText(data = {}) {
   if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
   return (Array.isArray(data.output) ? data.output : [])
@@ -5879,6 +5943,10 @@ async function analyzeUploadedCaseFile(file, body = {}, onProgress = () => {}) {
   const classificationIntent = await interpretLegalQueryWithPython(analysisText.slice(0, 15000), []);
   const classification = classifyUploadedCaseFile(analysisText, classificationIntent);
   const knowledgeCards = extractDerivedLegalKnowledge(analysisText, { matter: classification.area });
+  const knowledgeLearned = await feedDerivedCaseKnowledge(knowledgeCards, {
+    email: body.email,
+    matter: classification.area
+  });
   onProgress({ phase: 'legal_analysis', progress: 90 });
   const answer = buildLocalCaseAnalysisReport({
     fileName: originalName,
@@ -5900,7 +5968,7 @@ async function analyzeUploadedCaseFile(file, body = {}, onProgress = () => {}) {
     ocr: Boolean(localOcr),
     ocrPages: localOcr?.pageCount || 0,
     ocrFailedPages: localOcr?.failedPages?.map(item => item.pageNumber) || [],
-    knowledgeCards
+    knowledgeLearned
   };
 }
 
@@ -6469,11 +6537,6 @@ app.post('/api/chat', async (req, res) => {
       chatSessionId,
       Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []
     );
-    const derivedKnowledgeResults = rankDerivedLegalKnowledge(
-      req.body?.derivedLegalKnowledge,
-      userQuery,
-      12
-    );
     const persistAnswer = async (answer, metadata = {}) => {
       if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
       return persistChatExchange(chatEmail, chatSession, userMessage, {
@@ -6492,7 +6555,6 @@ app.post('/api/chat', async (req, res) => {
       role: chatRole,
       sessionId: chatSessionId,
       caseFile: req.body?.caseFile,
-      derivedKnowledgeResults,
       providerConfig: aiProviderConfig
     });
     const persisted = await persistAnswer(intelligenceResult.answer, intelligenceResult.metadata);
@@ -6528,12 +6590,7 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('❌ Error interno:', error);
     const query = extractUserQuery(req.body?.prompt);
-    const derivedKnowledgeResults = query
-      ? rankDerivedLegalKnowledge(req.body?.derivedLegalKnowledge, query, 12)
-      : [];
-    const localResults = query
-      ? [...derivedKnowledgeResults, ...searchLegalKnowledgeBase(query)].slice(0, 12)
-      : [];
+    const localResults = query ? searchLegalKnowledgeBase(query) : [];
     const intent = query ? interpretLegalQuery(query, Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []) : null;
     const fallbackMemory = Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : [];
     const fallbackReasoningProfile = query && intent ? buildLegalReasoningProfile(query, intent, fallbackMemory, localResults) : null;

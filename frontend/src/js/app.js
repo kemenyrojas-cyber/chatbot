@@ -258,13 +258,13 @@ document.addEventListener("DOMContentLoaded", () => {
         : String(params.get("email") || authSession?.email || "").trim().toLowerCase();
     const storageOwner = currentEmail || "guest";
     const scopedStorageKey = key => `${key}:${storageOwner}`;
+    localStorage.removeItem(scopedStorageKey("lexiaCaseKnowledge"));
 
     const storageKeys = {
         role: scopedStorageKey("lexiaRole"),
         chats: scopedStorageKey("lexiaChats"),
         notifications: scopedStorageKey("lexiaNotifications"),
         documents: scopedStorageKey("lexiaDocuments"),
-        caseKnowledge: scopedStorageKey("lexiaCaseKnowledge"),
         deadlines: scopedStorageKey("lexiaDeadlines")
     };
 
@@ -296,69 +296,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function saveList(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
-    }
-
-    function mergeCaseKnowledge(documentId, cards = [], role = currentRole) {
-        if (!documentId || !Array.isArray(cards) || !cards.length) return 0;
-        const stored = loadList(storageKeys.caseKnowledge);
-        const byId = new Map(stored.map(card => [card.id, card]));
-        let added = 0;
-        cards.slice(0, 40).forEach(card => {
-            if (!card?.id || !["norma", "criterio"].includes(card.type) || !card.content) return;
-            const existing = byId.get(card.id);
-            const sourceDocumentIds = [...new Set([...(existing?.sourceDocumentIds || []), documentId])];
-            if (!existing) added += 1;
-            byId.set(card.id, {
-                id: String(card.id),
-                type: card.type,
-                title: String(card.title || "Referencia jurídica").slice(0, 140),
-                content: String(card.content).slice(0, 560),
-                matter: String(card.matter || "").slice(0, 100),
-                role,
-                sourceDocumentIds,
-                createdAt: existing?.createdAt || new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            });
-        });
-        const next = [...byId.values()]
-            .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
-            .slice(0, 300);
-        saveList(storageKeys.caseKnowledge, next);
-        return added;
-    }
-
-    function removeDocumentCaseKnowledge(documentId) {
-        const next = loadList(storageKeys.caseKnowledge)
-            .map(card => ({
-                ...card,
-                sourceDocumentIds: (card.sourceDocumentIds || []).filter(id => id !== documentId)
-            }))
-            .filter(card => card.sourceDocumentIds.length);
-        saveList(storageKeys.caseKnowledge, next);
-    }
-
-    function getRelevantCaseKnowledge(query) {
-        const normalizedQuery = normalizeSpeechText(query).toLowerCase();
-        const terms = [...new Set(normalizedQuery.split(/\s+/).filter(term => term.length >= 4))];
-        const explicitlyRequestsMemory = /\b(mis expedientes|mis casos|memoria jur[ií]dica|aprendido de los expedientes)\b/i.test(query);
-        return loadList(storageKeys.caseKnowledge)
-            .filter(card => card.role === currentRole)
-            .map(card => {
-                const searchable = normalizeSpeechText(`${card.title} ${card.content} ${card.matter}`).toLowerCase();
-                const score = terms.filter(term => searchable.includes(term)).length
-                    + (explicitlyRequestsMemory ? 1 : 0);
-                return { card, score };
-            })
-            .filter(entry => entry.score > 0)
-            .sort((left, right) => right.score - left.score || new Date(right.card.updatedAt) - new Date(left.card.updatedAt))
-            .slice(0, 40)
-            .map(({ card }) => ({
-                id: card.id,
-                type: card.type,
-                title: card.title,
-                content: card.content,
-                matter: card.matter
-            }));
     }
 
     function openDocumentDatabase() {
@@ -1166,7 +1103,9 @@ document.addEventListener("DOMContentLoaded", () => {
             caseUrgentCount.textContent = String(urgentCases.size);
         }
         if (caseKnowledgeCount) {
-            caseKnowledgeCount.textContent = String(loadList(storageKeys.caseKnowledge).filter(card => card.role === currentRole).length);
+            caseKnowledgeCount.textContent = String(
+                documents.reduce((total, item) => total + (Number(item.knowledgeLearnedCount) || 0), 0)
+            );
         }
 
         if (!visibleDocuments.length) {
@@ -1688,7 +1627,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function completeDocumentAnalysis(id, item, job) {
         const data = job.result || {};
         await storeDocumentAnalysis(id, data);
-        const learnedKnowledgeCount = mergeCaseKnowledge(id, data.knowledgeCards, item.role);
+        const learnedKnowledgeCount = Number(data.knowledgeLearned?.entries || data.knowledgeCards?.length || 0);
         updateStoredDocument(id, {
             classification: data.classification || null,
             caseFile: data.caseFile || null,
@@ -1697,7 +1636,8 @@ document.addEventListener("DOMContentLoaded", () => {
             analysisProgress: 100,
             analysisPhase: "completed",
             analysisError: null,
-            analysisJobId: job.id
+            analysisJobId: job.id,
+            knowledgeLearnedCount: learnedKnowledgeCount
         });
         renderDocuments();
         renderCases();
@@ -1714,8 +1654,8 @@ document.addEventListener("DOMContentLoaded", () => {
         addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
         if (learnedKnowledgeCount) {
             addNotification(
-                "Memoria jurídica actualizada",
-                `${learnedKnowledgeCount} ${learnedKnowledgeCount === 1 ? "referencia jurídica fue incorporada" : "referencias jurídicas fueron incorporadas"} sin copiar datos del expediente.`
+                "Base jurídica de LEXIA actualizada",
+                `${learnedKnowledgeCount} ${learnedKnowledgeCount === 1 ? "referencia jurídica fue incorporada" : "referencias jurídicas fueron incorporadas"} al conocimiento existente, sin copiar datos del expediente.`
             );
         }
         setDocumentsStatus(`${item.name}: análisis finalizado. El resultado quedó guardado.`);
@@ -1940,7 +1880,6 @@ document.addEventListener("DOMContentLoaded", () => {
             if (monitor) monitor.stopped = true;
             documentAnalysisPolls.delete(id);
             await removeDocumentFile(id);
-            removeDocumentCaseKnowledge(id);
             saveList(storageKeys.documents, loadList(storageKeys.documents).filter(document => document.id !== id));
             addNotification("Documento eliminado", `${item.name} fue eliminado del almacenamiento privado.`);
             setDocumentsStatus("Documento eliminado.");
@@ -2414,8 +2353,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     assistantMessageId,
                     userCreatedAt: createdAt,
                     assistantCreatedAt,
-                    conversationMessages: serializeConversationMemory(stableMessages),
-                    derivedLegalKnowledge: getRelevantCaseKnowledge(text)
+                    conversationMessages: serializeConversationMemory(stableMessages)
                 })
             });
 

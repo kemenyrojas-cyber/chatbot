@@ -72,48 +72,7 @@ function extractDerivedLegalKnowledge(text = '', options = {}) {
   return [...cards.values()];
 }
 
-function rankDerivedLegalKnowledge(rawCards = [], query = '', limit = 12) {
-  const queryText = normalize(query);
-  const queryTerms = [...new Set(queryText.split(' ').filter(term => term.length >= 4))];
-  const explicitlyRequestsMemory = /\b(mis\s+expedientes|mis\s+casos|memoria\s+jur[ií]dica|aprendido\s+de\s+los\s+expedientes)\b/i.test(query);
-
-  return (Array.isArray(rawCards) ? rawCards : [])
-    .slice(0, 300)
-    .map(card => {
-      const type = ['norma', 'criterio'].includes(card?.type) ? card.type : '';
-      const title = redactPrivateCaseData(card?.title || '').slice(0, 140);
-      const content = redactPrivateCaseData(card?.content || '').slice(0, 560);
-      const matter = redactPrivateCaseData(card?.matter || '').slice(0, 100);
-      if (
-        !type
-        || content.length < 30
-        || sensitiveLinePattern.test(content)
-        || (!legalReferencePattern.test(content) && !legalTheoryPattern.test(content))
-      ) return null;
-      const searchable = normalize(`${title} ${content} ${matter}`);
-      const overlap = queryTerms.filter(term => searchable.includes(term)).length;
-      const score = overlap * 25
-        + (matter && queryText.includes(normalize(matter).replace(/^derecho\s+/, '')) ? 20 : 0)
-        + (explicitlyRequestsMemory ? 10 : 0);
-      if (score <= 0) return null;
-      return {
-        id: `private-memory:${String(card.id || crypto.createHash('sha256').update(searchable).digest('hex').slice(0, 24))}`,
-        titulo: title || 'Criterio jurídico derivado',
-        materia: matter || 'Derecho peruano',
-        fuente: 'Memoria jurídica privada',
-        contenido: content,
-        resumen: content,
-        modulo: 'memoria_privada',
-        relevance: Math.min(100, score)
-      };
-    })
-    .filter(Boolean)
-    .sort((left, right) => right.relevance - left.relevance)
-    .slice(0, Math.max(1, Math.min(20, Number(limit) || 12)));
-}
-
 module.exports = {
   extractDerivedLegalKnowledge,
-  rankDerivedLegalKnowledge,
   redactPrivateCaseData
 };

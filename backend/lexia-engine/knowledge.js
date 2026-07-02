@@ -179,20 +179,34 @@ function splitTextForLegalKnowledge(text, maxChunks = 8) {
   const sections = clean
     .split(/\n{2,}|(?=^#{1,3}\s)|(?=\bArticulo\s+\d)|(?=\bArtículo\s+\d)/im)
     .map(section => section.replace(/\s+/g, ' ').trim())
-    .filter(section => section.length >= 180);
+    .filter(Boolean);
 
   const source = sections.length ? sections : [clean.replace(/\s+/g, ' ').trim()];
   const chunks = [];
+  let pending = '';
+  const flushPending = () => {
+    if (!pending || chunks.length >= maxChunks) return;
+    chunks.push(pending);
+    pending = '';
+  };
+
   for (const section of source) {
     if (chunks.length >= maxChunks) break;
     if (section.length <= 2400) {
-      chunks.push(section);
+      if (!pending || pending.length + section.length + 2 <= 2400) {
+        pending = pending ? `${pending}\n\n${section}` : section;
+      } else {
+        flushPending();
+        pending = section;
+      }
       continue;
     }
+    flushPending();
     for (let index = 0; index < section.length && chunks.length < maxChunks; index += 2200) {
       chunks.push(section.slice(index, index + 2400).trim());
     }
   }
+  flushPending();
   return chunks;
 }
 
