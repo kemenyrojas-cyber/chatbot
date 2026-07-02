@@ -40,6 +40,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const documentTotalCount = document.getElementById("documentTotalCount");
     const documentTotalSize = document.getElementById("documentTotalSize");
     const documentRecentCount = document.getElementById("documentRecentCount");
+    const casesView = document.getElementById("casesView");
+    const casesUploadButton = document.getElementById("casesUploadButton");
+    const caseSearchInput = document.getElementById("caseSearchInput");
+    const caseMatterFilter = document.getElementById("caseMatterFilter");
+    const caseFolderTree = document.getElementById("caseFolderTree");
+    const caseTotalCount = document.getElementById("caseTotalCount");
+    const caseMatterCount = document.getElementById("caseMatterCount");
+    const casePendingCount = document.getElementById("casePendingCount");
+    const caseUrgentCount = document.getElementById("caseUrgentCount");
+    const caseKnowledgeCount = document.getElementById("caseKnowledgeCount");
     const caseReviewer = document.getElementById("caseReviewer");
     const closeCaseReviewer = document.getElementById("closeCaseReviewer");
     const caseReviewerTitle = document.getElementById("caseReviewerTitle");
@@ -254,6 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chats: scopedStorageKey("lexiaChats"),
         notifications: scopedStorageKey("lexiaNotifications"),
         documents: scopedStorageKey("lexiaDocuments"),
+        caseKnowledge: scopedStorageKey("lexiaCaseKnowledge"),
         deadlines: scopedStorageKey("lexiaDeadlines")
     };
 
@@ -285,6 +296,69 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function saveList(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    function mergeCaseKnowledge(documentId, cards = [], role = currentRole) {
+        if (!documentId || !Array.isArray(cards) || !cards.length) return 0;
+        const stored = loadList(storageKeys.caseKnowledge);
+        const byId = new Map(stored.map(card => [card.id, card]));
+        let added = 0;
+        cards.slice(0, 40).forEach(card => {
+            if (!card?.id || !["norma", "criterio"].includes(card.type) || !card.content) return;
+            const existing = byId.get(card.id);
+            const sourceDocumentIds = [...new Set([...(existing?.sourceDocumentIds || []), documentId])];
+            if (!existing) added += 1;
+            byId.set(card.id, {
+                id: String(card.id),
+                type: card.type,
+                title: String(card.title || "Referencia jurídica").slice(0, 140),
+                content: String(card.content).slice(0, 560),
+                matter: String(card.matter || "").slice(0, 100),
+                role,
+                sourceDocumentIds,
+                createdAt: existing?.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
+        });
+        const next = [...byId.values()]
+            .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
+            .slice(0, 300);
+        saveList(storageKeys.caseKnowledge, next);
+        return added;
+    }
+
+    function removeDocumentCaseKnowledge(documentId) {
+        const next = loadList(storageKeys.caseKnowledge)
+            .map(card => ({
+                ...card,
+                sourceDocumentIds: (card.sourceDocumentIds || []).filter(id => id !== documentId)
+            }))
+            .filter(card => card.sourceDocumentIds.length);
+        saveList(storageKeys.caseKnowledge, next);
+    }
+
+    function getRelevantCaseKnowledge(query) {
+        const normalizedQuery = normalizeSpeechText(query).toLowerCase();
+        const terms = [...new Set(normalizedQuery.split(/\s+/).filter(term => term.length >= 4))];
+        const explicitlyRequestsMemory = /\b(mis expedientes|mis casos|memoria jur[ií]dica|aprendido de los expedientes)\b/i.test(query);
+        return loadList(storageKeys.caseKnowledge)
+            .filter(card => card.role === currentRole)
+            .map(card => {
+                const searchable = normalizeSpeechText(`${card.title} ${card.content} ${card.matter}`).toLowerCase();
+                const score = terms.filter(term => searchable.includes(term)).length
+                    + (explicitlyRequestsMemory ? 1 : 0);
+                return { card, score };
+            })
+            .filter(entry => entry.score > 0)
+            .sort((left, right) => right.score - left.score || new Date(right.card.updatedAt) - new Date(left.card.updatedAt))
+            .slice(0, 40)
+            .map(({ card }) => ({
+                id: card.id,
+                type: card.type,
+                title: card.title,
+                content: card.content,
+                matter: card.matter
+            }));
     }
 
     function openDocumentDatabase() {
@@ -1018,6 +1092,175 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
     }
 
+    function getCaseOrganization(item) {
+        const rawMatter = String(item.classification?.area || "").trim();
+        const matter = !rawMatter || /por determinar|pendiente/i.test(rawMatter)
+            ? "Sin clasificar"
+            : rawMatter;
+        const caseFile = item.caseFile || {};
+        const numberFromName = firstMatch(item.name, [
+            /\b([0-9]{3,7}-20[0-9]{2}-[0-9]{1,6}-[A-Z]{2,8}-[A-Z]{2,8}(?:-[0-9]{2})?)\b/i,
+            /(?:expediente|exp\.?)\s*(?:n[.°ºo]*)?\s*[:\-]?\s*([0-9]{1,7}(?:[-/][0-9A-Z]{1,12}){1,8})/i
+        ]);
+        const number = String(caseFile.number || numberFromName || "").trim();
+        const year = String(caseFile.year || firstMatch(number, [/\b(20[0-9]{2}|19[0-9]{2})\b/])
+            || new Date(item.analyzedAt || item.createdAt || Date.now()).getFullYear());
+        return {
+            matter,
+            year,
+            number,
+            caseKey: number ? `${matter}:${number}` : `${matter}:document:${item.id}`,
+            label: number || String(item.name || "Expediente").replace(/\.[^.]+$/, "")
+        };
+    }
+
+    function renderCases() {
+        if (!caseFolderTree) return;
+        const documents = getDocuments();
+        const query = String(caseSearchInput?.value || "").trim().toLowerCase();
+        let selectedMatter = caseMatterFilter?.value || "all";
+        const matters = [...new Set(documents.map(item => getCaseOrganization(item).matter))]
+            .sort((left, right) => left.localeCompare(right, "es"));
+
+        if (caseMatterFilter) {
+            const currentValue = caseMatterFilter.value || "all";
+            caseMatterFilter.innerHTML = [
+                '<option value="all">Todas las materias</option>',
+                ...matters.map(matter => `<option value="${escapeHtml(matter)}">${escapeHtml(matter)}</option>`)
+            ].join("");
+            caseMatterFilter.value = matters.includes(currentValue) ? currentValue : "all";
+            selectedMatter = caseMatterFilter.value;
+        }
+
+        const visibleDocuments = documents.filter(item => {
+            const organization = getCaseOrganization(item);
+            const searchable = [
+                item.name,
+                organization.matter,
+                organization.year,
+                organization.number,
+                item.classification?.type,
+                item.classification?.stage
+            ].filter(Boolean).join(" ").toLowerCase();
+            return (!query || searchable.includes(query))
+                && (selectedMatter === "all" || organization.matter === selectedMatter);
+        });
+
+        const groupedCases = new Map();
+        documents.forEach(item => {
+            const organization = getCaseOrganization(item);
+            if (!groupedCases.has(organization.caseKey)) {
+                groupedCases.set(organization.caseKey, { ...organization, documents: [] });
+            }
+            groupedCases.get(organization.caseKey).documents.push(item);
+        });
+        if (caseTotalCount) caseTotalCount.textContent = String(groupedCases.size);
+        if (caseMatterCount) caseMatterCount.textContent = String(matters.filter(matter => matter !== "Sin clasificar").length);
+        if (casePendingCount) casePendingCount.textContent = String(documents.filter(item => item.analysisStatus !== "completed").length);
+        if (caseUrgentCount) {
+            const urgentCases = new Set(
+                documents
+                    .filter(item => /alta|urgente/i.test(String(item.classification?.urgency || "")))
+                    .map(item => getCaseOrganization(item).caseKey)
+            );
+            caseUrgentCount.textContent = String(urgentCases.size);
+        }
+        if (caseKnowledgeCount) {
+            caseKnowledgeCount.textContent = String(loadList(storageKeys.caseKnowledge).filter(card => card.role === currentRole).length);
+        }
+
+        if (!visibleDocuments.length) {
+            caseFolderTree.innerHTML = `
+                <div class="cases-empty">
+                    <span><i class="fa-regular fa-folder-open icon" aria-hidden="true"></i></span>
+                    <strong>${documents.length ? "No hay casos que coincidan" : "Aún no hay expedientes organizados"}</strong>
+                    <small>${documents.length ? "Cambia la búsqueda o el filtro de materia." : "Sube un expediente; LEXIA lo clasificará y aparecerá aquí automáticamente."}</small>
+                </div>
+            `;
+            return;
+        }
+
+        const tree = new Map();
+        visibleDocuments.forEach(item => {
+            const organization = getCaseOrganization(item);
+            if (!tree.has(organization.matter)) tree.set(organization.matter, new Map());
+            const years = tree.get(organization.matter);
+            if (!years.has(organization.year)) years.set(organization.year, new Map());
+            const cases = years.get(organization.year);
+            if (!cases.has(organization.caseKey)) cases.set(organization.caseKey, { ...organization, documents: [] });
+            cases.get(organization.caseKey).documents.push(item);
+        });
+
+        caseFolderTree.innerHTML = [...tree.entries()]
+            .sort(([left], [right]) => {
+                if (left === "Sin clasificar") return 1;
+                if (right === "Sin clasificar") return -1;
+                return left.localeCompare(right, "es");
+            })
+            .map(([matter, years]) => {
+                const matterDocuments = [...years.values()].reduce(
+                    (total, cases) => total + [...cases.values()].reduce((sum, entry) => sum + entry.documents.length, 0),
+                    0
+                );
+                return `
+                    <details class="case-matter-folder" open role="treeitem">
+                        <summary>
+                            <span class="case-folder-icon"><i class="fa-solid fa-folder icon" aria-hidden="true"></i></span>
+                            <strong>${escapeHtml(matter)}</strong>
+                            <small>${matterDocuments} ${matterDocuments === 1 ? "documento" : "documentos"}</small>
+                        </summary>
+                        <div class="case-year-list" role="group">
+                            ${[...years.entries()].sort(([left], [right]) => right.localeCompare(left)).map(([year, cases]) => `
+                                <details class="case-year-folder" open role="treeitem">
+                                    <summary>
+                                        <i class="fa-regular fa-calendar icon" aria-hidden="true"></i>
+                                        <strong>${escapeHtml(year)}</strong>
+                                        <small>${cases.size} ${cases.size === 1 ? "expediente" : "expedientes"}</small>
+                                    </summary>
+                                    <div class="case-record-list" role="group">
+                                        ${[...cases.values()].map(entry => `
+                                            <article class="case-record" role="treeitem">
+                                                <div class="case-record-main">
+                                                    <span class="case-record-icon"><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i></span>
+                                                    <div>
+                                                        <strong>${escapeHtml(entry.label)}</strong>
+                                                        <small>${escapeHtml([
+                                                            entry.documents[0]?.classification?.type,
+                                                            entry.documents[0]?.classification?.stage,
+                                                            entry.documents[0]?.classification?.urgency ? `Urgencia ${entry.documents[0].classification.urgency}` : ""
+                                                        ].filter(Boolean).join(" · ") || "Clasificación pendiente")}</small>
+                                                    </div>
+                                                </div>
+                                                <div class="case-record-documents">
+                                                    ${entry.documents.map(document => `
+                                                        <button type="button" data-case-document-open="${escapeHtml(document.id)}">
+                                                            <i class="${getDocumentIcon(document.type)} icon" aria-hidden="true"></i>
+                                                            <span>${escapeHtml(document.name)}</span>
+                                                            <small>${document.analysisStatus === "completed" ? "Ver análisis" : (["queued", "processing"].includes(document.analysisStatus) ? "Procesando" : "Analizar")} · ${escapeHtml(formatDate(document.analyzedAt || document.createdAt))}</small>
+                                                        </button>
+                                                    `).join("")}
+                                                </div>
+                                            </article>
+                                        `).join("")}
+                                    </div>
+                                </details>
+                            `).join("")}
+                        </div>
+                    </details>
+                `;
+            }).join("");
+    }
+
+    async function hydrateCaseMetadata() {
+        const missingMetadata = getDocuments().filter(item => item.analysisStatus === "completed" && !item.caseFile);
+        if (!missingMetadata.length) return;
+        await Promise.all(missingMetadata.map(async item => {
+            const result = await getDocumentAnalysis(item.id).catch(() => null);
+            if (result?.caseFile) updateStoredDocument(item.id, { caseFile: result.caseFile });
+        }));
+        renderCases();
+    }
+
     async function importDocuments(fileList) {
         const files = Array.from(fileList || []);
         if (!files.length) return;
@@ -1066,6 +1309,7 @@ document.addEventListener("DOMContentLoaded", () => {
             addNotification("Documentos guardados", `${imported} ${imported === 1 ? "archivo fue guardado" : "archivos fueron guardados"} de forma privada.`);
             renderAppState();
             renderDocuments();
+            renderCases();
         }
         if (errors.length) {
             setDocumentsStatus(`${imported ? `${imported} guardado(s). ` : ""}${errors.join(" · ")}`, "error");
@@ -1444,8 +1688,10 @@ document.addEventListener("DOMContentLoaded", () => {
     async function completeDocumentAnalysis(id, item, job) {
         const data = job.result || {};
         await storeDocumentAnalysis(id, data);
+        const learnedKnowledgeCount = mergeCaseKnowledge(id, data.knowledgeCards, item.role);
         updateStoredDocument(id, {
             classification: data.classification || null,
+            caseFile: data.caseFile || null,
             analyzedAt: job.completedAt || new Date().toISOString(),
             analysisStatus: "completed",
             analysisProgress: 100,
@@ -1454,6 +1700,7 @@ document.addEventListener("DOMContentLoaded", () => {
             analysisJobId: job.id
         });
         renderDocuments();
+        renderCases();
 
         const classificationSummary = data.classification
             ? `${data.classification.area} · ${data.classification.stage} · urgencia ${String(data.classification.urgency).toLowerCase()}`
@@ -1465,6 +1712,12 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
         addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
+        if (learnedKnowledgeCount) {
+            addNotification(
+                "Memoria jurídica actualizada",
+                `${learnedKnowledgeCount} ${learnedKnowledgeCount === 1 ? "referencia jurídica fue incorporada" : "referencias jurídicas fueron incorporadas"} sin copiar datos del expediente.`
+            );
+        }
         setDocumentsStatus(`${item.name}: análisis finalizado. El resultado quedó guardado.`);
         announce(`Análisis del expediente ${item.name} completado.`);
     }
@@ -1562,6 +1815,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (activeCaseDocumentId === id) updatePartialCaseAnalysisPanel(job.partialResult);
                 }
                 renderDocuments();
+                if (currentView === "cases") renderCases();
                 showAnalysisState(id, job);
                 if (job.status === "completed") {
                     shouldContinue = false;
@@ -1637,7 +1891,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 analysisError: null,
                 analysisStartedAt: new Date().toISOString()
             });
-            renderDocuments();
+        renderDocuments();
+        if (currentView === "cases") renderCases();
             showAnalysisState(id, { status: "queued" });
             setDocumentsStatus(`El análisis de ${item.name} continuará en segundo plano.`);
             announce(`LEXIA está analizando el expediente ${item.name}.`);
@@ -1685,11 +1940,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if (monitor) monitor.stopped = true;
             documentAnalysisPolls.delete(id);
             await removeDocumentFile(id);
+            removeDocumentCaseKnowledge(id);
             saveList(storageKeys.documents, loadList(storageKeys.documents).filter(document => document.id !== id));
             addNotification("Documento eliminado", `${item.name} fue eliminado del almacenamiento privado.`);
             setDocumentsStatus("Documento eliminado.");
             renderAppState();
             renderDocuments();
+            renderCases();
             announce(`${item.name} eliminado.`);
         } catch (error) {
             setDocumentsStatus(error.message, "error");
@@ -1749,24 +2006,27 @@ document.addEventListener("DOMContentLoaded", () => {
         const showHistory = viewName === "history";
         const showBrain = viewName === "brain";
         const showDocuments = viewName === "documents";
+        const showCases = viewName === "cases";
         if (showBrain && !canSuggestBrainSources) {
             currentView = "dashboard";
             dashboardView.hidden = false;
             legalChatView.hidden = true;
             if (brainView) brainView.hidden = true;
             if (documentsView) documentsView.hidden = true;
+            if (casesView) casesView.hidden = true;
             mainPanel?.classList.toggle("chat-mode", false);
             mainPanel?.classList.toggle("history-mode", false);
             updateNav("home");
             return;
         }
-        dashboardView.hidden = showChat || showBrain || showDocuments;
+        dashboardView.hidden = showChat || showBrain || showDocuments || showCases;
         legalChatView.hidden = !showChat;
         if (brainView) brainView.hidden = !showBrain;
         if (documentsView) documentsView.hidden = !showDocuments;
+        if (casesView) casesView.hidden = !showCases;
         mainPanel?.classList.toggle("chat-mode", showChat);
         mainPanel?.classList.toggle("history-mode", showHistory);
-        updateNav(showHistory ? "history" : showChat ? "new-query" : showBrain ? "brain" : showDocuments ? "documents" : "home");
+        updateNav(showHistory ? "history" : showChat ? "new-query" : showBrain ? "brain" : showDocuments ? "documents" : showCases ? "cases" : "home");
         if (showChat) {
             chatViewTitle.textContent = showHistory ? "Historial de consultas" : "Consulta jurídica LEXIA";
             chatViewSubtitle.textContent = showHistory
@@ -1779,8 +2039,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (showDocuments) {
             renderDocuments();
         }
-        announce(showHistory ? "Historial de consultas abierto." : showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : showDocuments ? "Gestor de documentos abierto." : "Panel principal abierto.");
-        focusRegion(showHistory ? chatSessionList : showChat ? chatThread : showBrain ? brainView : showDocuments ? documentsView : mainPanel);
+        if (showCases) {
+            renderCases();
+            void hydrateCaseMetadata();
+        }
+        announce(showHistory ? "Historial de consultas abierto." : showChat ? "Consulta jurídica abierta." : showBrain ? "Laboratorio de inteligencia legal abierto." : showDocuments ? "Gestor de documentos abierto." : showCases ? "Organizador de casos abierto." : "Panel principal abierto.");
+        focusRegion(showHistory ? chatSessionList : showChat ? chatThread : showBrain ? brainView : showDocuments ? documentsView : showCases ? casesView : mainPanel);
     }
 
     function setBrainStatus(message, type = "info") {
@@ -2084,6 +2348,10 @@ document.addEventListener("DOMContentLoaded", () => {
             showView("documents");
             return;
         }
+        if (window.location.hash === "#casos") {
+            showView("cases");
+            return;
+        }
         showView("dashboard");
     }
 
@@ -2146,7 +2414,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     assistantMessageId,
                     userCreatedAt: createdAt,
                     assistantCreatedAt,
-                    conversationMessages: serializeConversationMemory(stableMessages)
+                    conversationMessages: serializeConversationMemory(stableMessages),
+                    derivedLegalKnowledge: getRelevantCaseKnowledge(text)
                 })
             });
 
@@ -2179,7 +2448,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 {
                     id: assistantMessageId,
                     role: "assistant",
-                    content: `No pude completar la consulta en este momento. ${error.message || "Verifica la conexión del backend y la clave de OpenAI."}`,
+                    content: `No pude completar la consulta en este momento. ${error.message || "Verifica la conexión con el motor local de LEXIA."}`,
                     createdAt: assistantCreatedAt
                 }
             ];
@@ -2371,6 +2640,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     uploadDocumentButton?.addEventListener("click", () => documentFileInput?.click());
+    casesUploadButton?.addEventListener("click", () => {
+        history.replaceState(null, "", `${window.location.pathname}${window.location.search}#documentos`);
+        showView("documents");
+        documentFileInput?.click();
+    });
     closeCaseReviewer?.addEventListener("click", closeCaseReview);
     documentDropZone?.addEventListener("click", () => documentFileInput?.click());
     documentDropZone?.addEventListener("keydown", event => {
@@ -2383,6 +2657,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     documentSearchInput?.addEventListener("input", renderDocuments);
     documentTypeFilter?.addEventListener("change", renderDocuments);
+    caseSearchInput?.addEventListener("input", renderCases);
+    caseMatterFilter?.addEventListener("change", renderCases);
+    caseFolderTree?.addEventListener("click", event => {
+        const button = event.target.closest("[data-case-document-open]");
+        if (!button) return;
+        const documentId = button.dataset.caseDocumentOpen;
+        history.replaceState(null, "", `${window.location.pathname}${window.location.search}#documentos`);
+        showView("documents");
+        void analyzeDocument(documentId);
+    });
 
     ["dragenter", "dragover"].forEach(eventName => {
         documentDropZone?.addEventListener(eventName, event => {
@@ -2442,13 +2726,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 history.replaceState(null, "", `${window.location.pathname}${window.location.search}#historial`);
                 openHistoryView();
             }
+            if (action === "cases") {
+                event.preventDefault();
+                history.replaceState(null, "", `${window.location.pathname}${window.location.search}#casos`);
+                showView("cases");
+            }
             if (action === "notifications") {
                 event.preventDefault();
                 notificationPanel.hidden = false;
                 notificationButton.setAttribute("aria-expanded", "true");
                 focusRegion(notificationPanel);
             }
-            if (["clients", "cases", "agenda", "favorites", "deadlines", "profile", "settings"].includes(action)) {
+            if (["clients", "agenda", "favorites", "deadlines", "profile", "settings"].includes(action)) {
                 event.preventDefault();
                 addNotification("Módulo listo para configurar", "Todavía no hay información registrada en esta sección.");
                 renderAppState();

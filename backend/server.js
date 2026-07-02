@@ -15,6 +15,10 @@ const { createRateLimiter } = require('./lexia-engine/flow-control');
 const { createKnowledgeEngine } = require('./lexia-engine/knowledge');
 const { createPythonBrain } = require('./lexia-engine/python-brain');
 const { ensureLocalOcrAvailable, ocrPdfLocally } = require('./lexia-engine/local-ocr');
+const {
+  extractDerivedLegalKnowledge,
+  rankDerivedLegalKnowledge
+} = require('./lexia-engine/derived-knowledge');
 
 const projectRoot = path.join(__dirname, '..');
 const frontendRoot = path.join(projectRoot, 'frontend');
@@ -5874,6 +5878,7 @@ async function analyzeUploadedCaseFile(file, body = {}, onProgress = () => {}) {
   onProgress({ phase: 'classifying', progress: 88 });
   const classificationIntent = await interpretLegalQueryWithPython(analysisText.slice(0, 15000), []);
   const classification = classifyUploadedCaseFile(analysisText, classificationIntent);
+  const knowledgeCards = extractDerivedLegalKnowledge(analysisText, { matter: classification.area });
   onProgress({ phase: 'legal_analysis', progress: 90 });
   const answer = buildLocalCaseAnalysisReport({
     fileName: originalName,
@@ -5894,7 +5899,8 @@ async function analyzeUploadedCaseFile(file, body = {}, onProgress = () => {}) {
     truncated: wasTruncated,
     ocr: Boolean(localOcr),
     ocrPages: localOcr?.pageCount || 0,
-    ocrFailedPages: localOcr?.failedPages?.map(item => item.pageNumber) || []
+    ocrFailedPages: localOcr?.failedPages?.map(item => item.pageNumber) || [],
+    knowledgeCards
   };
 }
 
@@ -6463,6 +6469,11 @@ app.post('/api/chat', async (req, res) => {
       chatSessionId,
       Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []
     );
+    const derivedKnowledgeResults = rankDerivedLegalKnowledge(
+      req.body?.derivedLegalKnowledge,
+      userQuery,
+      12
+    );
     const persistAnswer = async (answer, metadata = {}) => {
       if (!chatEmail || !chatSessionId || !chatSession || !userMessage) return false;
       return persistChatExchange(chatEmail, chatSession, userMessage, {
@@ -6481,6 +6492,7 @@ app.post('/api/chat', async (req, res) => {
       role: chatRole,
       sessionId: chatSessionId,
       caseFile: req.body?.caseFile,
+      derivedKnowledgeResults,
       providerConfig: aiProviderConfig
     });
     const persisted = await persistAnswer(intelligenceResult.answer, intelligenceResult.metadata);
@@ -6516,7 +6528,12 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('❌ Error interno:', error);
     const query = extractUserQuery(req.body?.prompt);
-    const localResults = query ? searchLegalKnowledgeBase(query) : [];
+    const derivedKnowledgeResults = query
+      ? rankDerivedLegalKnowledge(req.body?.derivedLegalKnowledge, query, 12)
+      : [];
+    const localResults = query
+      ? [...derivedKnowledgeResults, ...searchLegalKnowledgeBase(query)].slice(0, 12)
+      : [];
     const intent = query ? interpretLegalQuery(query, Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : []) : null;
     const fallbackMemory = Array.isArray(req.body?.conversationMessages) ? req.body.conversationMessages : [];
     const fallbackReasoningProfile = query && intent ? buildLegalReasoningProfile(query, intent, fallbackMemory, localResults) : null;

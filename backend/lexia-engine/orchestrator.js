@@ -289,7 +289,16 @@ function createLexiaEngine(deps) {
 
     const searchMemoryBase = intent?.interpretation?.topicShift ? userQuery : memorySearchQuery;
     const interpretationSearchQuery = brain.buildInterpretationSearchQuery(userQuery, intent, searchMemoryBase);
-    const localResults = knowledge.search(interpretationSearchQuery);
+    const derivedKnowledgeResults = Array.isArray(options.derivedKnowledgeResults)
+      ? options.derivedKnowledgeResults
+      : [];
+    const localResults = [
+      ...derivedKnowledgeResults,
+      ...knowledge.search(interpretationSearchQuery)
+    ]
+      .filter((item, index, collection) => collection.findIndex(candidate => candidate.id === item.id) === index)
+      .sort((left, right) => Number(right.relevance || 0) - Number(left.relevance || 0))
+      .slice(0, 12);
 
     const conversationModeId = intent?.conversationMode?.id || 'case_start';
     const dialogueMode = !['source_request', 'norm_request'].includes(conversationModeId)

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LEXIA - Panel Legal</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <link rel="stylesheet" href="/css/style.css?v=20260701-semantic-case-highlights">
+    <link rel="stylesheet" href="/css/style.css?v=20260701-private-case-memory">
     <script>
         window.LEXIA_CONFIG = {
             apiBaseUrl: window.BACKEND_URL || window.location.origin
@@ -369,6 +369,42 @@
                 </section>
             </section>
 
+            <section class="cases-view" id="casesView" tabindex="-1" aria-labelledby="casesTitle" hidden>
+                <header class="cases-header">
+                    <div>
+                        <span class="module-eyebrow">Organización automática</span>
+                        <h2 id="casesTitle">Casos y expedientes clasificados</h2>
+                        <p>LEXIA organiza los documentos por materia, año y número de expediente sin duplicar archivos.</p>
+                    </div>
+                    <button class="documents-primary-button" id="casesUploadButton" type="button">
+                        <i class="fa-solid fa-arrow-up-from-bracket icon" aria-hidden="true"></i>
+                        Subir expediente
+                    </button>
+                </header>
+
+                <div class="case-library-summary" aria-label="Resumen de casos">
+                    <article><span><i class="fa-solid fa-briefcase icon" aria-hidden="true"></i></span><div><strong id="caseTotalCount">0</strong><small>Casos</small></div></article>
+                    <article><span><i class="fa-solid fa-folder-tree icon" aria-hidden="true"></i></span><div><strong id="caseMatterCount">0</strong><small>Materias</small></div></article>
+                    <article><span><i class="fa-regular fa-clock icon" aria-hidden="true"></i></span><div><strong id="casePendingCount">0</strong><small>Por clasificar</small></div></article>
+                    <article><span><i class="fa-solid fa-triangle-exclamation icon" aria-hidden="true"></i></span><div><strong id="caseUrgentCount">0</strong><small>Urgentes</small></div></article>
+                    <article><span><i class="fa-solid fa-brain icon" aria-hidden="true"></i></span><div><strong id="caseKnowledgeCount">0</strong><small>Referencias aprendidas</small></div></article>
+                </div>
+
+                <section class="case-library-panel">
+                    <div class="cases-toolbar">
+                        <label class="documents-search" for="caseSearchInput">
+                            <i class="fa-solid fa-magnifying-glass icon" aria-hidden="true"></i>
+                            <input id="caseSearchInput" type="search" placeholder="Buscar número, nombre o materia..." autocomplete="off">
+                        </label>
+                        <label class="documents-filter">
+                            <span class="sr-only">Filtrar casos por materia</span>
+                            <select id="caseMatterFilter"><option value="all">Todas las materias</option></select>
+                        </label>
+                    </div>
+                    <div class="case-folder-tree" id="caseFolderTree" role="tree" aria-label="Casos organizados por materia, año y expediente"></div>
+                </section>
+            </section>
+
             <section class="chat-view" id="legalChatView" hidden>
                 <aside class="chat-history-panel">
                     <div class="chat-history-head">
@@ -408,7 +444,7 @@
     </div>
 
     <script src="/js/auth.js"></script>
-    <script src="/js/app.js?v=20260701-semantic-case-highlights"></script>
+    <script src="/js/app.js?v=20260701-private-case-memory"></script>
 </body>
 </html>
 

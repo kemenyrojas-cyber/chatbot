@@ -704,6 +704,7 @@ summary:focus-visible,
 #dashboardView[hidden],
 .chat-view[hidden],
 .brain-view[hidden],
+.cases-view[hidden],
 .documents-view[hidden]:not(:target) {
     display: none !important;
 }
@@ -743,7 +744,8 @@ summary:focus-visible,
     color: #0F172A;
 }
 
-.documents-header {
+.documents-header,
+.cases-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -761,13 +763,15 @@ summary:focus-visible,
     text-transform: uppercase;
 }
 
-.documents-header h2 {
+.documents-header h2,
+.cases-header h2 {
     color: #071B4A;
     font-size: 26px;
     line-height: 1.2;
 }
 
-.documents-header p {
+.documents-header p,
+.cases-header p {
     margin-top: 7px;
     color: #64748B;
     font-size: 13px;
@@ -1052,6 +1056,266 @@ summary:focus-visible,
 .document-action:hover {
     border-color: #9CB9E6;
     background: #F3F7FD;
+}
+
+.cases-view {
+    min-height: calc(100vh - 190px);
+    padding: 30px;
+    border: 1px solid #DCE7F7;
+    border-radius: 16px 16px 0 0;
+    background: #F7F9FC;
+    color: #0F172A;
+}
+
+.case-library-summary {
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+}
+
+.case-library-summary article {
+    min-height: 82px;
+    padding: 16px 18px;
+    border: 1px solid #DCE7F7;
+    border-radius: 11px;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.case-library-summary article > span {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border-radius: 10px;
+    background: #EAF2FF;
+    color: #2563EB;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+}
+
+.case-library-summary strong,
+.case-library-summary small {
+    display: block;
+}
+
+.case-library-summary strong {
+    color: #071B4A;
+    font-size: 18px;
+}
+
+.case-library-summary small {
+    margin-top: 3px;
+    color: #64748B;
+    font-size: 11px;
+}
+
+.case-library-panel {
+    padding: 20px;
+    border: 1px solid #DCE7F7;
+    border-radius: 12px;
+    background: #FFFFFF;
+}
+
+.cases-toolbar {
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.case-folder-tree,
+.case-year-list,
+.case-record-list {
+    display: grid;
+    gap: 10px;
+}
+
+.case-matter-folder,
+.case-year-folder {
+    border: 1px solid #DCE6F4;
+    border-radius: 11px;
+    background: #F8FAFD;
+    overflow: hidden;
+}
+
+.case-matter-folder > summary,
+.case-year-folder > summary {
+    min-height: 54px;
+    padding: 11px 14px;
+    color: #17325F;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.case-matter-folder > summary::-webkit-details-marker,
+.case-year-folder > summary::-webkit-details-marker {
+    display: none;
+}
+
+.case-matter-folder > summary::after,
+.case-year-folder > summary::after {
+    margin-left: auto;
+    color: #6E7F9B;
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    content: "\f078";
+    transition: transform 0.15s ease;
+}
+
+.case-matter-folder:not([open]) > summary::after,
+.case-year-folder:not([open]) > summary::after {
+    transform: rotate(-90deg);
+}
+
+.case-matter-folder > summary small,
+.case-year-folder > summary small {
+    color: #71819A;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.case-folder-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #E4EEFF;
+    color: #2563EB;
+    display: grid;
+    place-items: center;
+}
+
+.case-year-list {
+    padding: 0 12px 12px 48px;
+}
+
+.case-year-folder {
+    background: #FFFFFF;
+}
+
+.case-year-folder > summary {
+    min-height: 44px;
+}
+
+.case-record-list {
+    padding: 0 12px 12px 36px;
+}
+
+.case-record {
+    padding: 14px;
+    border: 1px solid #E1E9F4;
+    border-radius: 9px;
+    background: #FFFFFF;
+}
+
+.case-record-main {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.case-record-icon {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    border-radius: 9px;
+    background: #EEF3FC;
+    color: #385B91;
+    display: grid;
+    place-items: center;
+}
+
+.case-record-main strong,
+.case-record-main small {
+    display: block;
+}
+
+.case-record-main strong {
+    color: #102A56;
+    font-size: 13px;
+}
+
+.case-record-main small {
+    margin-top: 4px;
+    color: #687B98;
+    font-size: 10px;
+}
+
+.case-record-documents {
+    margin-top: 11px;
+    padding-top: 10px;
+    border-top: 1px solid #E8EEF6;
+    display: grid;
+    gap: 6px;
+}
+
+.case-record-documents button {
+    min-height: 38px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 7px;
+    background: #F6F9FD;
+    color: #274568;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+}
+
+.case-record-documents button:hover {
+    background: #EAF2FF;
+    color: #17468F;
+}
+
+.case-record-documents button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.case-record-documents button small {
+    color: #2563EB;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.cases-empty {
+    min-height: 260px;
+    color: #71819A;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.cases-empty > span {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: #EAF2FF;
+    color: #2563EB;
+    display: grid;
+    place-items: center;
+    font-size: 21px;
+}
+
+.cases-empty strong {
+    color: #17325F;
+    font-size: 14px;
+}
+
+.cases-empty small {
+    max-width: 430px;
+    font-size: 11px;
 }
 
 .document-action.analyze {
@@ -2305,7 +2569,8 @@ summary:focus-visible,
         background: linear-gradient(180deg, #071B4A 0 300px, var(--bg) 300px);
     }
 
-    .documents-view {
+    .documents-view,
+    .cases-view {
         min-height: 0;
         padding: 20px;
         border-radius: 12px;
@@ -2313,6 +2578,8 @@ summary:focus-visible,
 
     .documents-header,
     .documents-toolbar,
+    .cases-header,
+    .cases-toolbar,
     .case-reviewer-header {
         align-items: stretch;
         flex-direction: column;
@@ -2324,8 +2591,22 @@ summary:focus-visible,
         width: 100%;
     }
 
-    .document-summary {
+    .document-summary,
+    .case-library-summary {
         grid-template-columns: 1fr;
+    }
+
+    .case-year-list,
+    .case-record-list {
+        padding-left: 12px;
+    }
+
+    .case-record-documents button {
+        grid-template-columns: 20px minmax(0, 1fr);
+    }
+
+    .case-record-documents button small {
+        grid-column: 2;
     }
 
     .document-list-head {
