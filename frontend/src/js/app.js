@@ -1144,24 +1144,28 @@ document.addEventListener("DOMContentLoaded", () => {
                 return `
                     <details class="case-matter-folder" open role="treeitem">
                         <summary>
-                            <span class="case-folder-icon"><i class="fa-solid fa-folder icon" aria-hidden="true"></i></span>
-                            <strong>${escapeHtml(matter)}</strong>
-                            <small>${matterDocuments} ${matterDocuments === 1 ? "documento" : "documentos"}</small>
+                            <span class="finder-folder-icon finder-folder-matter" aria-hidden="true"></span>
+                            <span class="case-folder-label">
+                                <strong>${escapeHtml(matter)}</strong>
+                                <small>${matterDocuments} ${matterDocuments === 1 ? "documento" : "documentos"}</small>
+                            </span>
                         </summary>
                         <div class="case-year-list" role="group">
                             ${[...years.entries()].sort(([left], [right]) => right.localeCompare(left)).map(([year, cases]) => `
                                 <details class="case-year-folder" open role="treeitem">
                                     <summary>
-                                        <i class="fa-regular fa-calendar icon" aria-hidden="true"></i>
-                                        <strong>${escapeHtml(year)}</strong>
-                                        <small>${cases.size} ${cases.size === 1 ? "expediente" : "expedientes"}</small>
+                                        <span class="finder-folder-icon finder-folder-year" aria-hidden="true"></span>
+                                        <span class="case-folder-label">
+                                            <strong>${escapeHtml(year)}</strong>
+                                            <small>${cases.size} ${cases.size === 1 ? "expediente" : "expedientes"}</small>
+                                        </span>
                                     </summary>
                                     <div class="case-record-list" role="group">
                                         ${[...cases.values()].map(entry => `
-                                            <article class="case-record" role="treeitem">
-                                                <div class="case-record-main">
-                                                    <span class="case-record-icon"><i class="fa-solid fa-scale-balanced icon" aria-hidden="true"></i></span>
-                                                    <div>
+                                            <details class="case-record case-record-folder" open role="treeitem">
+                                                <summary class="case-record-main">
+                                                    <span class="finder-folder-icon finder-folder-case" aria-hidden="true"></span>
+                                                    <div class="case-folder-label">
                                                         <strong>${escapeHtml(entry.label)}</strong>
                                                         <small>${escapeHtml([
                                                             entry.documents[0]?.classification?.type,
@@ -1169,7 +1173,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                                             entry.documents[0]?.classification?.urgency ? `Urgencia ${entry.documents[0].classification.urgency}` : ""
                                                         ].filter(Boolean).join(" · ") || "Clasificación pendiente")}</small>
                                                     </div>
-                                                </div>
+                                                </summary>
                                                 <div class="case-record-documents">
                                                     ${entry.documents.map(document => `
                                                         <button type="button" data-case-document-open="${escapeHtml(document.id)}">
@@ -1179,7 +1183,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                                         </button>
                                                     `).join("")}
                                                 </div>
-                                            </article>
+                                            </details>
                                         `).join("")}
                                     </div>
                                 </details>
