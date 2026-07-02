@@ -178,6 +178,19 @@ app.get('/api/metrics', (req, res) => {
   }
 });
 
+// Servir el dashboard estático desde frontend/src/views para entornos donde
+// el servidor no expone esa ruta por defecto (p.ej. Render). Esto evita el 404
+// en /src/views/metrics.html y también expone /metrics.
+app.get(['/src/views/metrics.html', '/metrics', '/dashboard/metrics.html'], (req, res) => {
+  try {
+    const filePath = path.join(viewsRoot, 'metrics.html');
+    if (!fs.existsSync(filePath)) return res.status(404).send('No encontrado');
+    return res.sendFile(filePath);
+  } catch (e) {
+    return res.status(500).send(String(e?.message || e));
+  }
+});
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
