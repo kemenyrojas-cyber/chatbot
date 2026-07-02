@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const fetch = global.fetch || require('node-fetch');
 const cors = require('cors');
 const multer = require('multer');
@@ -5405,17 +5406,23 @@ async function splitScannedPdf(file, pagesPerChunk = 20) {
   return chunks;
 }
 
-async function analyzeScannedPdfInChunks(file) {
+async function analyzeScannedPdfInChunks(file, options = {}) {
   const pagesPerChunk = Math.max(5, Number(process.env.OPENAI_OCR_PAGES_PER_CHUNK || 30));
   const concurrency = Math.max(1, Math.min(5, Number(process.env.OPENAI_OCR_CONCURRENCY || 4)));
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  onProgress({ phase: 'preparing_ocr', progress: 5 });
   const chunks = await splitScannedPdf(file, pagesPerChunk);
   if (chunks.length === 1) {
+    onProgress({ phase: 'ocr', progress: 15, completedChunks: 0, totalChunks: 1 });
     const result = await analyzeScannedCaseFileWithOpenAI(file);
+    onProgress({ phase: 'ocr', progress: 85, completedChunks: 1, totalChunks: 1 });
     return { ...result, chunks: 1 };
   }
 
   const results = new Array(chunks.length);
   let nextIndex = 0;
+  let completedChunks = 0;
+  onProgress({ phase: 'ocr', progress: 10, completedChunks, totalChunks: chunks.length });
   const workers = Array.from({ length: Math.min(concurrency, chunks.length) }, async () => {
     while (nextIndex < chunks.length) {
       const index = nextIndex;
@@ -5431,6 +5438,14 @@ async function analyzeScannedPdfInChunks(file) {
           answer: `Páginas ${chunk.startPage}-${chunk.endPage}: no pudieron analizarse (${error.message}).`,
           error: true
         };
+      } finally {
+        completedChunks += 1;
+        onProgress({
+          phase: 'ocr',
+          progress: 10 + Math.round((completedChunks / chunks.length) * 75),
+          completedChunks,
+          totalChunks: chunks.length
+        });
       }
     }
   });
@@ -5451,80 +5466,193 @@ async function analyzeScannedPdfInChunks(file) {
   };
 }
 
-app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async (req, res) => {
-  try {
-    const file = req.file || null;
-    if (!file) return res.status(400).json({ error: 'Debes seleccionar un expediente.' });
+async function analyzeUploadedCaseFile(file, body = {}, onProgress = () => {}) {
+  if (!file) throw new Error('Debes seleccionar un expediente.');
 
-    const originalName = String(file.originalname || 'expediente.pdf').trim();
-    const extractedText = (await extractTextFromLegalUpload(file, {})).replace(/\u0000/g, '').trim();
-    let scannedAnalysis = null;
-    if (extractedText.length < 120) {
-      const isPdf = path.extname(originalName).toLowerCase() === '.pdf'
-        || String(file.mimetype || '').toLowerCase().includes('pdf');
-      if (!isPdf) {
-        return res.status(400).json({ error: 'El expediente no contiene suficiente texto legible para analizarlo.' });
-      }
-      scannedAnalysis = await analyzeScannedPdfInChunks(file);
+  const originalName = String(file.originalname || 'expediente.pdf').trim();
+  onProgress({ phase: 'extracting_text', progress: 2 });
+  const extractedText = (await extractTextFromLegalUpload(file, {})).replace(/\u0000/g, '').trim();
+  let scannedAnalysis = null;
+  if (extractedText.length < 120) {
+    const isPdf = path.extname(originalName).toLowerCase() === '.pdf'
+      || String(file.mimetype || '').toLowerCase().includes('pdf');
+    if (!isPdf) {
+      throw new Error('El expediente no contiene suficiente texto legible para analizarlo.');
     }
+    scannedAnalysis = await analyzeScannedPdfInChunks(file, { onProgress });
+  }
 
-    const maxCharacters = Number(process.env.CASE_FILE_MAX_TEXT_CHARS || 70000);
-    const wasTruncated = extractedText.length > maxCharacters;
-    const documentText = scannedAnalysis?.answer || extractedText.slice(0, maxCharacters);
-    const classificationIntent = await interpretLegalQueryWithPython(documentText.slice(0, 15000), []);
-    const classification = classifyUploadedCaseFile(documentText, classificationIntent);
-    if (scannedAnalysis) {
-      return res.json({
-        ok: true,
-        fileName: originalName,
-        answer: scannedAnalysis.answer,
-        classification,
-        caseFile: null,
-        quality: null,
-        provider: 'openai-vision-ocr',
-        model: scannedAnalysis.model,
-        truncated: false,
-        ocr: true,
-        ocrChunks: scannedAnalysis.chunks
-      });
-    }
-    const userQuery = `Analiza jurídicamente el expediente "${originalName}".`;
-    const prompt = [
-      'Actúa como analista jurídico peruano y revisa únicamente el contenido del expediente proporcionado.',
-      'No inventes hechos, fechas, normas, partes ni actuaciones. Distingue claramente entre hechos alegados, hechos acreditados y datos faltantes.',
-      'Inicia el informe con una sección titulada "Clasificación del expediente" y muestra materia, tipo, etapa, urgencia y etiquetas.',
-      `Clasificación preliminar: materia ${classification.area}; tipo ${classification.type}; etapa ${classification.stage}; urgencia ${classification.urgency}; etiquetas ${classification.tags.join(', ') || 'sin etiquetas concluyentes'}.`,
-      'Después entrega: partes y roles; resumen ejecutivo; cronología; pretensiones y posiciones; medios probatorios; resoluciones o actuaciones relevantes; inconsistencias y vacíos; plazos o riesgos detectados; y próximos pasos sugeridos.',
-      'Si un dato no aparece o no es legible, indícalo expresamente. Este análisis es de apoyo y debe verificarse con el expediente completo.',
-      wasTruncated
-        ? `Advertencia técnica: por tamaño, se analizaron los primeros ${maxCharacters.toLocaleString('es-PE')} caracteres del archivo.`
-        : '',
-      `Nombre del expediente: ${originalName}`,
-      '',
-      'CONTENIDO DEL EXPEDIENTE:',
-      documentText
-    ].filter(Boolean).join('\n');
-
-    const result = await runLegalIntelligence({
-      userQuery,
-      prompt,
-      conversationMemory: [],
-      role: String(req.body?.role || 'abogado-independiente'),
-      sessionId: String(req.body?.sessionId || '').trim(),
-      providerConfig: aiProviderConfig
-    });
-
-    return res.json({
+  const maxCharacters = Number(process.env.CASE_FILE_MAX_TEXT_CHARS || 70000);
+  const wasTruncated = extractedText.length > maxCharacters;
+  const documentText = scannedAnalysis?.answer || extractedText.slice(0, maxCharacters);
+  onProgress({ phase: 'classifying', progress: 88 });
+  const classificationIntent = await interpretLegalQueryWithPython(documentText.slice(0, 15000), []);
+  const classification = classifyUploadedCaseFile(documentText, classificationIntent);
+  if (scannedAnalysis) {
+    return {
       ok: true,
       fileName: originalName,
-      answer: result.answer,
+      answer: scannedAnalysis.answer,
       classification,
-      caseFile: result.metadata?.caseFile || null,
-      quality: result.metadata?.lexiaScore || null,
-      provider: result.provider,
-      model: result.model,
-      truncated: wasTruncated
-    });
+      caseFile: null,
+      quality: null,
+      provider: 'openai-vision-ocr',
+      model: scannedAnalysis.model,
+      truncated: false,
+      ocr: true,
+      ocrChunks: scannedAnalysis.chunks
+    };
+  }
+  const userQuery = `Analiza jurídicamente el expediente "${originalName}".`;
+  const prompt = [
+    'Actúa como analista jurídico peruano y revisa únicamente el contenido del expediente proporcionado.',
+    'No inventes hechos, fechas, normas, partes ni actuaciones. Distingue claramente entre hechos alegados, hechos acreditados y datos faltantes.',
+    'Inicia el informe con una sección titulada "Clasificación del expediente" y muestra materia, tipo, etapa, urgencia y etiquetas.',
+    `Clasificación preliminar: materia ${classification.area}; tipo ${classification.type}; etapa ${classification.stage}; urgencia ${classification.urgency}; etiquetas ${classification.tags.join(', ') || 'sin etiquetas concluyentes'}.`,
+    'Después entrega: partes y roles; resumen ejecutivo; cronología; pretensiones y posiciones; medios probatorios; resoluciones o actuaciones relevantes; inconsistencias y vacíos; plazos o riesgos detectados; y próximos pasos sugeridos.',
+    'Si un dato no aparece o no es legible, indícalo expresamente. Este análisis es de apoyo y debe verificarse con el expediente completo.',
+    wasTruncated
+      ? `Advertencia técnica: por tamaño, se analizaron los primeros ${maxCharacters.toLocaleString('es-PE')} caracteres del archivo.`
+      : '',
+    `Nombre del expediente: ${originalName}`,
+    '',
+    'CONTENIDO DEL EXPEDIENTE:',
+    documentText
+  ].filter(Boolean).join('\n');
+
+  onProgress({ phase: 'legal_analysis', progress: 90 });
+  const result = await runLegalIntelligence({
+    userQuery,
+    prompt,
+    conversationMemory: [],
+    role: String(body.role || 'abogado-independiente'),
+    sessionId: String(body.sessionId || '').trim(),
+    providerConfig: aiProviderConfig
+  });
+
+  return {
+    ok: true,
+    fileName: originalName,
+    answer: result.answer,
+    classification,
+    caseFile: result.metadata?.caseFile || null,
+    quality: result.metadata?.lexiaScore || null,
+    provider: result.provider,
+    model: result.model,
+    truncated: wasTruncated
+  };
+}
+
+const caseAnalysisJobs = new Map();
+const caseAnalysisJobByDocument = new Map();
+const CASE_ANALYSIS_JOB_TTL_MS = Number(process.env.CASE_ANALYSIS_JOB_TTL_MS || 24 * 60 * 60 * 1000);
+
+function publicCaseAnalysisJob(job) {
+  return {
+    id: job.id,
+    documentId: job.documentId,
+    status: job.status,
+    phase: job.phase,
+    progress: job.progress,
+    completedChunks: job.completedChunks,
+    totalChunks: job.totalChunks,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    error: job.error,
+    result: job.status === 'completed' ? job.result : undefined
+  };
+}
+
+function caseAnalysisJobKey(ownerEmail, documentId) {
+  return `${normalizeEmail(ownerEmail) || 'guest'}:${String(documentId || '').trim()}`;
+}
+
+function pruneCaseAnalysisJobs() {
+  const cutoff = Date.now() - CASE_ANALYSIS_JOB_TTL_MS;
+  for (const [id, job] of caseAnalysisJobs) {
+    const referenceTime = new Date(job.completedAt || job.createdAt).getTime();
+    if (job.status !== 'processing' && referenceTime < cutoff) {
+      caseAnalysisJobs.delete(id);
+      const key = caseAnalysisJobKey(job.ownerEmail, job.documentId);
+      if (caseAnalysisJobByDocument.get(key) === id) caseAnalysisJobByDocument.delete(key);
+    }
+  }
+}
+
+app.post('/api/case-files/analysis-jobs', caseFileAnalysisUpload.single('file'), (req, res) => {
+  const file = req.file || null;
+  if (!file) return res.status(400).json({ error: 'Debes seleccionar un expediente.' });
+
+  pruneCaseAnalysisJobs();
+  const ownerEmail = normalizeEmail(req.body?.email);
+  const documentId = String(req.body?.documentId || '').trim();
+  const key = caseAnalysisJobKey(ownerEmail, documentId);
+  const existing = caseAnalysisJobs.get(caseAnalysisJobByDocument.get(key));
+  if (documentId && existing && ['queued', 'processing', 'completed'].includes(existing.status)) {
+    return res.status(existing.status === 'completed' ? 200 : 202).json(publicCaseAnalysisJob(existing));
+  }
+
+  const now = new Date().toISOString();
+  const job = {
+    id: crypto.randomUUID(),
+    documentId,
+    ownerEmail,
+    status: 'queued',
+    phase: 'queued',
+    progress: 0,
+    completedChunks: 0,
+    totalChunks: 0,
+    createdAt: now,
+    startedAt: null,
+    completedAt: null,
+    error: null,
+    result: null
+  };
+  caseAnalysisJobs.set(job.id, job);
+  if (documentId) caseAnalysisJobByDocument.set(key, job.id);
+  res.status(202).json(publicCaseAnalysisJob(job));
+
+  setImmediate(async () => {
+    job.status = 'processing';
+    job.phase = 'extracting_text';
+    job.startedAt = new Date().toISOString();
+    try {
+      job.result = await analyzeUploadedCaseFile(file, req.body || {}, update => {
+        job.phase = update.phase || job.phase;
+        job.progress = Math.max(job.progress, Number(update.progress) || 0);
+        if (Number.isFinite(update.completedChunks)) job.completedChunks = update.completedChunks;
+        if (Number.isFinite(update.totalChunks)) job.totalChunks = update.totalChunks;
+      });
+      job.status = 'completed';
+      job.phase = 'completed';
+      job.progress = 100;
+    } catch (error) {
+      console.error('Error analizando expediente en segundo plano:', error.message);
+      job.status = 'failed';
+      job.phase = 'failed';
+      job.error = error.message || 'No se pudo analizar el expediente.';
+    } finally {
+      job.completedAt = new Date().toISOString();
+    }
+  });
+});
+
+app.get('/api/case-files/analysis-jobs/:jobId', (req, res) => {
+  pruneCaseAnalysisJobs();
+  const job = caseAnalysisJobs.get(String(req.params.jobId || ''));
+  if (!job) return res.status(404).json({ error: 'El trabajo de análisis no existe o expiró.' });
+  const requesterEmail = normalizeEmail(req.query.email);
+  if (job.ownerEmail && requesterEmail !== job.ownerEmail) {
+    return res.status(403).json({ error: 'No tienes acceso a este análisis.' });
+  }
+  return res.json(publicCaseAnalysisJob(job));
+});
+
+app.post('/api/case-files/analyze', caseFileAnalysisUpload.single('file'), async (req, res) => {
+  try {
+    const result = await analyzeUploadedCaseFile(req.file || null, req.body || {});
+    return res.json(result);
   } catch (error) {
     console.error('Error analizando expediente:', error.message);
     if (error.code === 'LIMIT_FILE_SIZE') {

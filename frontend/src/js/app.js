@@ -266,6 +266,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let documentDatabasePromise = null;
     let pdfJsPromise = null;
     let caseRenderingToken = 0;
+    let activeCaseDocumentId = null;
+    const documentAnalysisPolls = new Map();
     let voiceAssistEnabled = localStorage.getItem("lexiaVoiceAssist") === "true";
     let lastSpokenLabel = "";
     let lastSpokenAt = 0;
@@ -288,11 +290,14 @@ document.addEventListener("DOMContentLoaded", () => {
     function openDocumentDatabase() {
         if (documentDatabasePromise) return documentDatabasePromise;
         documentDatabasePromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open("lexia-private-documents", 1);
+            const request = indexedDB.open("lexia-private-documents", 2);
             request.onupgradeneeded = () => {
                 const database = request.result;
                 if (!database.objectStoreNames.contains("files")) {
                     database.createObjectStore("files", { keyPath: "id" });
+                }
+                if (!database.objectStoreNames.contains("analyses")) {
+                    database.createObjectStore("analyses", { keyPath: "id" });
                 }
             };
             request.onsuccess = () => resolve(request.result);
@@ -320,11 +325,31 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    async function storeDocumentAnalysis(id, result) {
+        const database = await openDocumentDatabase();
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction("analyses", "readwrite");
+            transaction.objectStore("analyses").put({ id, result, savedAt: new Date().toISOString() });
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error || new Error("No se pudo guardar el resultado del análisis."));
+        });
+    }
+
+    async function getDocumentAnalysis(id) {
+        const database = await openDocumentDatabase();
+        return new Promise((resolve, reject) => {
+            const request = database.transaction("analyses", "readonly").objectStore("analyses").get(id);
+            request.onsuccess = () => resolve(request.result?.result || null);
+            request.onerror = () => reject(request.error || new Error("No se pudo recuperar el resultado del análisis."));
+        });
+    }
+
     async function removeDocumentFile(id) {
         const database = await openDocumentDatabase();
         return new Promise((resolve, reject) => {
-            const transaction = database.transaction("files", "readwrite");
+            const transaction = database.transaction(["files", "analyses"], "readwrite");
             transaction.objectStore("files").delete(id);
+            transaction.objectStore("analyses").delete(id);
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error || new Error("No se pudo eliminar el archivo."));
         });
@@ -875,6 +900,27 @@ document.addEventListener("DOMContentLoaded", () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
 
+    function updateStoredDocument(id, patch) {
+        let updated = null;
+        const documents = loadList(storageKeys.documents).map(document => {
+            if (document.id !== id) return document;
+            updated = { ...document, ...patch };
+            return updated;
+        });
+        saveList(storageKeys.documents, documents);
+        return updated;
+    }
+
+    function getAnalysisStatusLabel(item) {
+        if (item.analysisStatus === "completed") return "Análisis listo";
+        if (item.analysisStatus === "failed") return "Análisis interrumpido · reintentar";
+        if (["queued", "processing"].includes(item.analysisStatus)) {
+            const progress = Math.max(0, Math.min(99, Number(item.analysisProgress) || 0));
+            return progress ? `Analizando · ${progress}%` : "Análisis en segundo plano";
+        }
+        return "";
+    }
+
     function getDocumentType(fileName = "", mimeType = "") {
         const extension = fileName.split(".").pop()?.toLowerCase() || "";
         if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
@@ -948,7 +994,8 @@ document.addEventListener("DOMContentLoaded", () => {
                             <small>${escapeHtml([
                                 String(item.extension || item.type).toUpperCase(),
                                 item.classification?.area,
-                                item.classification?.stage
+                                item.classification?.stage,
+                                getAnalysisStatusLabel(item)
                             ].filter(Boolean).join(" · "))}</small>
                         </div>
                     </div>
@@ -957,7 +1004,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="document-actions">
                         <button class="document-action analyze" type="button" data-document-analyze title="Analizar expediente ${escapeHtml(item.name)}" aria-label="Analizar expediente ${escapeHtml(item.name)}">
                             <i class="fa-solid fa-magnifying-glass-chart icon" aria-hidden="true"></i>
-                            <span>Analizar</span>
+                            <span>${item.analysisStatus === "completed" ? "Ver análisis" : (["queued", "processing"].includes(item.analysisStatus) ? "Ver progreso" : "Analizar")}</span>
                         </button>
                         <button class="document-action" type="button" data-document-download title="Descargar ${escapeHtml(item.name)}" aria-label="Descargar ${escapeHtml(item.name)}">
                             <i class="fa-solid fa-download icon" aria-hidden="true"></i>
@@ -1085,6 +1132,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function closeCaseReview() {
         caseRenderingToken += 1;
+        activeCaseDocumentId = null;
         documentsView?.classList.remove("reviewing");
         if (caseReviewer) caseReviewer.hidden = true;
         renderDocuments();
@@ -1171,13 +1219,16 @@ document.addEventListener("DOMContentLoaded", () => {
         const pdfjs = await loadPdfJs();
         if (token !== caseRenderingToken) return;
         const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (token !== caseRenderingToken) return;
         const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        if (token !== caseRenderingToken) return;
         let accumulatedText = "";
         let textItemsFound = 0;
 
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
             if (token !== caseRenderingToken) return;
             const page = await pdf.getPage(pageNumber);
+            if (token !== caseRenderingToken) return;
             const baseViewport = page.getViewport({ scale: 1 });
             const availableWidth = Math.max(320, Math.min(900, (casePdfPages?.clientWidth || 900) - 40));
             const scale = Math.min(1.6, availableWidth / baseViewport.width);
@@ -1209,30 +1260,27 @@ document.addEventListener("DOMContentLoaded", () => {
                 transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
                 viewport
             }).promise;
+            if (token !== caseRenderingToken) return;
             const textContent = await page.getTextContent();
+            if (token !== caseRenderingToken) return;
             const items = textContent.items.filter(item => item.str?.trim());
             textItemsFound += items.length;
             accumulatedText += `\n${items.map(item => item.str).join(" ")}`;
             drawCaseHighlights(pdfjs, items, viewport, highlights, outputScale);
-            updateExtractedCaseFields(accumulatedText);
-            updateImportantPoints(items);
+            const activeDocument = loadList(storageKeys.documents).find(item => item.id === activeCaseDocumentId);
+            if (activeDocument?.analysisStatus !== "completed") {
+                updateExtractedCaseFields(accumulatedText);
+                updateImportantPoints(items);
+            }
             if (!items.length) {
                 const ocrNote = document.createElement("span");
                 ocrNote.className = "case-page-ocr-note";
                 ocrNote.textContent = "Página escaneada · OCR en proceso";
                 pageElement.appendChild(ocrNote);
             }
-            if (caseReviewerStatus) {
-                caseReviewerStatus.textContent = `Página ${pageNumber} de ${pdf.numPages} revisada y marcada.`;
-            }
             await new Promise(resolve => requestAnimationFrame(resolve));
         }
-        if (caseReviewerStatus && textItemsFound) {
-            caseReviewerStatus.textContent = `${pdf.numPages} páginas abiertas. LEXIA continúa con el análisis jurídico.`;
-        } else if (caseReviewerStatus) {
-            const estimatedBlocks = Math.ceil(pdf.numPages / 30);
-            caseReviewerStatus.textContent = `${pdf.numPages} páginas escaneadas abiertas. OCR jurídico procesando aproximadamente ${estimatedBlocks} bloques en paralelo; el informe aparecerá al terminar.`;
-        }
+        return { pageCount: pdf.numPages, textItemsFound };
     }
 
     function updateCaseAnalysisPanel(data = {}) {
@@ -1260,10 +1308,13 @@ document.addEventListener("DOMContentLoaded", () => {
     function openCaseReview(item, blob) {
         caseRenderingToken += 1;
         const token = caseRenderingToken;
+        activeCaseDocumentId = item.id;
         resetCaseReviewer(item);
         if (item.extension === "pdf") {
             void renderPdfCaseFile(blob, token).catch(error => {
-                if (caseReviewerStatus) caseReviewerStatus.textContent = `No se pudo mostrar el PDF: ${error.message}`;
+                if (activeCaseDocumentId === item.id && casePdfPages && !casePdfPages.children.length) {
+                    casePdfPages.textContent = `No se pudo mostrar el PDF: ${error.message}`;
+                }
             });
             return;
         }
@@ -1274,8 +1325,149 @@ document.addEventListener("DOMContentLoaded", () => {
             pre.textContent = text;
             casePdfPages.appendChild(pre);
             updateExtractedCaseFields(text);
-            if (caseReviewerStatus) caseReviewerStatus.textContent = "Expediente de texto abierto. LEXIA continúa con el análisis.";
         });
+    }
+
+    function describeAnalysisProgress(state = {}) {
+        if (state.status === "queued") return "Análisis aceptado. Continuará en segundo plano aunque cambies de pestaña.";
+        if (state.status === "failed") return state.error || "No se pudo completar el análisis.";
+        if (state.status === "completed") return "Análisis jurídico finalizado.";
+        const progress = Math.max(0, Math.min(99, Number(state.progress) || 0));
+        const phases = {
+            extracting_text: "Extrayendo el contenido",
+            preparing_ocr: "Preparando el OCR",
+            ocr: "Leyendo páginas escaneadas",
+            classifying: "Clasificando el expediente",
+            legal_analysis: "Elaborando el informe jurídico",
+            connection_retry: "Reconectando con el estado; el servidor continúa trabajando"
+        };
+        const phase = phases[state.phase] || "Analizando el expediente";
+        const chunks = state.totalChunks
+            ? ` · ${Number(state.completedChunks) || 0} de ${state.totalChunks} bloques`
+            : "";
+        return `${phase}${progress ? ` · ${progress}%` : ""}${chunks}. Puedes cambiar de pestaña o expediente sin detenerlo.`;
+    }
+
+    function showAnalysisState(id, state) {
+        if (activeCaseDocumentId !== id || !caseReviewerStatus) return;
+        caseReviewerStatus.textContent = describeAnalysisProgress(state);
+    }
+
+    async function completeDocumentAnalysis(id, item, job) {
+        const data = job.result || {};
+        await storeDocumentAnalysis(id, data);
+        updateStoredDocument(id, {
+            classification: data.classification || null,
+            analyzedAt: job.completedAt || new Date().toISOString(),
+            analysisStatus: "completed",
+            analysisProgress: 100,
+            analysisPhase: "completed",
+            analysisError: null,
+            analysisJobId: job.id
+        });
+        renderDocuments();
+
+        const classificationSummary = data.classification
+            ? `${data.classification.area} · ${data.classification.stage} · urgencia ${String(data.classification.urgency).toLowerCase()}`
+            : "clasificación pendiente de revisión";
+        if (activeCaseDocumentId === id) {
+            updateCaseAnalysisPanel(data);
+            if (caseReviewerStatus) {
+                caseReviewerStatus.textContent = `${data.ocr ? `OCR completado${data.ocrChunks ? ` en ${data.ocrChunks} bloques` : ""}. ` : ""}Análisis jurídico finalizado: ${classificationSummary}.`;
+            }
+        }
+        addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
+        setDocumentsStatus(`${item.name}: análisis finalizado. El resultado quedó guardado.`);
+        announce(`Análisis del expediente ${item.name} completado.`);
+    }
+
+    function failDocumentAnalysis(id, message) {
+        const errorMessage = message || "No se pudo analizar el expediente.";
+        updateStoredDocument(id, {
+            analysisStatus: "failed",
+            analysisPhase: "failed",
+            analysisError: errorMessage
+        });
+        renderDocuments();
+        if (activeCaseDocumentId === id && caseReviewerStatus) caseReviewerStatus.textContent = errorMessage;
+        setDocumentsStatus(errorMessage, "error");
+        announce(`No se pudo analizar el expediente. ${errorMessage}`);
+    }
+
+    function monitorDocumentAnalysis(id, jobId) {
+        const existing = documentAnalysisPolls.get(id);
+        if (existing?.jobId === jobId) {
+            void existing.check();
+            return;
+        }
+        if (existing?.timer) window.clearTimeout(existing.timer);
+
+        const monitor = { jobId, timer: null, checking: false, stopped: false, failures: 0, nextDelay: 2500, check: null };
+        monitor.check = async () => {
+            if (monitor.checking || monitor.stopped) return;
+            if (monitor.timer) window.clearTimeout(monitor.timer);
+            monitor.timer = null;
+            monitor.checking = true;
+            let shouldContinue = true;
+            try {
+                const query = currentEmail ? `?email=${encodeURIComponent(currentEmail)}` : "";
+                const response = await fetch(`${getApiBase()}/api/case-files/analysis-jobs/${encodeURIComponent(jobId)}${query}`, {
+                    cache: "no-store"
+                });
+                const job = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const statusError = new Error(job.error || "No se pudo consultar el estado del análisis.");
+                    statusError.permanent = [403, 404].includes(response.status);
+                    throw statusError;
+                }
+                monitor.failures = 0;
+                monitor.nextDelay = document.hidden ? 10000 : 2500;
+
+                const item = loadList(storageKeys.documents).find(document => document.id === id);
+                if (!item) {
+                    shouldContinue = false;
+                    return;
+                }
+                updateStoredDocument(id, {
+                    analysisStatus: job.status,
+                    analysisProgress: Math.max(Number(item.analysisProgress) || 0, Number(job.progress) || 0),
+                    analysisPhase: job.phase || item.analysisPhase,
+                    analysisJobId: job.id
+                });
+                renderDocuments();
+                showAnalysisState(id, job);
+                if (job.status === "completed") {
+                    shouldContinue = false;
+                    await completeDocumentAnalysis(id, item, job);
+                } else if (job.status === "failed") {
+                    shouldContinue = false;
+                    failDocumentAnalysis(id, job.error);
+                }
+            } catch (error) {
+                if (error.permanent) {
+                    shouldContinue = false;
+                    failDocumentAnalysis(id, `${error.message} Puedes reintentar sin volver a cargar el archivo.`);
+                } else {
+                    monitor.failures += 1;
+                    monitor.nextDelay = Math.min(30000, 2500 * (2 ** Math.min(monitor.failures, 4)));
+                    showAnalysisState(id, {
+                        status: "processing",
+                        phase: "connection_retry",
+                        progress: loadList(storageKeys.documents).find(document => document.id === id)?.analysisProgress
+                    });
+                }
+            } finally {
+                monitor.checking = false;
+                if (shouldContinue && !monitor.stopped) {
+                    monitor.timer = window.setTimeout(monitor.check, document.hidden ? Math.max(10000, monitor.nextDelay) : monitor.nextDelay);
+                } else {
+                    monitor.stopped = true;
+                    documentAnalysisPolls.delete(id);
+                }
+            }
+        };
+        documentAnalysisPolls.set(id, monitor);
+        void monitor.check();
     }
 
     async function analyzeDocument(id) {
@@ -1286,70 +1478,83 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const itemElement = documentsList?.querySelector(`[data-document-id="${CSS.escape(id)}"]`);
-        const analyzeButton = itemElement?.querySelector("[data-document-analyze]");
-        let analysisProgressTimer = null;
         try {
-            if (analyzeButton) {
-                analyzeButton.disabled = true;
-                analyzeButton.setAttribute("aria-busy", "true");
-            }
-            setDocumentsStatus(`Analizando ${item.name}. Esto puede tardar unos momentos...`);
-            announce(`LEXIA está analizando el expediente ${item.name}.`);
             const blob = await getDocumentFile(id);
             if (!blob) throw new Error("El contenido del expediente ya no está disponible en este navegador.");
             openCaseReview(item, blob);
-            const analysisStartedAt = Date.now();
-            analysisProgressTimer = window.setInterval(() => {
-                if (!caseReviewerStatus || caseReviewer?.hidden) return;
-                const elapsedSeconds = Math.max(1, Math.round((Date.now() - analysisStartedAt) / 1000));
-                caseReviewerStatus.textContent = `Análisis jurídico en curso · ${elapsedSeconds} segundos. Los expedientes escaneados grandes se procesan por bloques.`;
-            }, 15000);
+
+            if (item.analysisStatus === "completed") {
+                const storedResult = await getDocumentAnalysis(id);
+                if (storedResult) {
+                    updateCaseAnalysisPanel(storedResult);
+                    showAnalysisState(id, { status: "completed" });
+                    return;
+                }
+            }
+            if (["queued", "processing"].includes(item.analysisStatus) && item.analysisJobId) {
+                showAnalysisState(id, {
+                    status: item.analysisStatus,
+                    phase: item.analysisPhase,
+                    progress: item.analysisProgress
+                });
+                monitorDocumentAnalysis(id, item.analysisJobId);
+                return;
+            }
+
+            updateStoredDocument(id, {
+                analysisStatus: "queued",
+                analysisProgress: 0,
+                analysisPhase: "uploading",
+                analysisError: null,
+                analysisStartedAt: new Date().toISOString()
+            });
+            renderDocuments();
+            showAnalysisState(id, { status: "queued" });
+            setDocumentsStatus(`El análisis de ${item.name} continuará en segundo plano.`);
+            announce(`LEXIA está analizando el expediente ${item.name}.`);
 
             const formData = new FormData();
             formData.append("file", new File([blob], item.name, { type: item.mimeType }));
             formData.append("email", currentEmail);
             formData.append("role", currentRole);
-            const response = await fetch(`${getApiBase()}/api/case-files/analyze`, {
+            formData.append("documentId", id);
+            const response = await fetch(`${getApiBase()}/api/case-files/analysis-jobs`, {
                 method: "POST",
                 body: formData
             });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || "No se pudo analizar el expediente.");
-
-            const storedDocuments = loadList(storageKeys.documents).map(document => (
-                document.id === id
-                    ? { ...document, classification: data.classification || null, analyzedAt: new Date().toISOString() }
-                    : document
-            ));
-            saveList(storageKeys.documents, storedDocuments);
-            updateCaseAnalysisPanel(data);
-            const classificationSummary = data.classification
-                ? `${data.classification.area} · ${data.classification.stage} · urgencia ${String(data.classification.urgency).toLowerCase()}`
-                : "clasificación pendiente de revisión";
-            addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
-            setDocumentsStatus(`${data.ocr ? "Expediente escaneado procesado con OCR. " : ""}Expediente clasificado: ${classificationSummary}.`);
-            if (caseReviewerStatus) {
-                caseReviewerStatus.textContent = `${data.ocr ? `OCR completado${data.ocrChunks ? ` en ${data.ocrChunks} bloques` : ""}. ` : ""}Análisis jurídico finalizado: ${classificationSummary}.`;
+            const job = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(job.error || "No se pudo iniciar el análisis del expediente.");
+            updateStoredDocument(id, {
+                analysisStatus: job.status,
+                analysisJobId: job.id,
+                analysisPhase: job.phase,
+                analysisProgress: Number(job.progress) || 0
+            });
+            renderDocuments();
+            if (job.status === "completed") {
+                await completeDocumentAnalysis(id, item, job);
+            } else {
+                monitorDocumentAnalysis(id, job.id);
             }
-            announce(`Análisis del expediente ${item.name} completado.`);
         } catch (error) {
-            setDocumentsStatus(error.message || "No se pudo analizar el expediente.", "error");
-            if (caseReviewerStatus) caseReviewerStatus.textContent = error.message || "No se pudo analizar el expediente.";
-            announce(`No se pudo analizar el expediente. ${error.message || ""}`);
-        } finally {
-            if (analysisProgressTimer) window.clearInterval(analysisProgressTimer);
-            if (analyzeButton) {
-                analyzeButton.disabled = false;
-                analyzeButton.removeAttribute("aria-busy");
-            }
+            failDocumentAnalysis(id, error.message);
         }
+    }
+
+    function resumePendingDocumentAnalyses() {
+        loadList(storageKeys.documents)
+            .filter(item => ["queued", "processing"].includes(item.analysisStatus) && item.analysisJobId)
+            .forEach(item => monitorDocumentAnalysis(item.id, item.analysisJobId));
     }
 
     async function deleteDocument(id) {
         const item = getDocuments().find(document => document.id === id);
         if (!item || !window.confirm(`¿Eliminar "${item.name}"? Esta acción no se puede deshacer.`)) return;
         try {
+            const monitor = documentAnalysisPolls.get(id);
+            if (monitor?.timer) window.clearTimeout(monitor.timer);
+            if (monitor) monitor.stopped = true;
+            documentAnalysisPolls.delete(id);
             await removeDocumentFile(id);
             saveList(storageKeys.documents, loadList(storageKeys.documents).filter(document => document.id !== id));
             addNotification("Documento eliminado", `${item.name} fue eliminado del almacenamiento privado.`);
@@ -2161,7 +2366,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     window.addEventListener("hashchange", syncViewWithHash);
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) resumePendingDocumentAnalyses();
+    });
     syncViewWithHash();
+    resumePendingDocumentAnalyses();
 });
 
 
