@@ -139,9 +139,9 @@ SCENARIOS = (
         "laboral", "derecho_laboral", "Derecho Laboral",
         "Relación laboral y derechos del trabajador",
         ("despido arbitrario", "me despidieron", "me despidio", "beneficios sociales",
-         "contrato de trabajo"),
+         "contrato de trabajo", "relacion laboral", "trabajo en una empresa"),
         ("despido", "trabajador", "empleador", "sueldo", "cts", "gratificacion",
-         "vacaciones", "liquidacion"),
+         "vacaciones", "liquidacion", "planilla"),
         ("empresa", "trabajo", "carta", "boleta"),
     ),
     Scenario(
@@ -188,7 +188,7 @@ STRONG_SIGNALS = {
     "asalto", "extorsion", "homicidio", "difamacion", "calumnia", "injuria",
     "delito", "fiscalia", "imputado",
     "detenido", "custodia", "patria potestad", "alimentos", "divorcio",
-    "posesion", "propiedad", "despido", "indecopi", "municipalidad",
+    "posesion", "propiedad", "despido", "planilla", "indecopi", "municipalidad",
     "entidad publica", "sunat", "habeas corpus", "habeas data", "amparo",
 }
 

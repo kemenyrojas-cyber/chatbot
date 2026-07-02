@@ -16,7 +16,8 @@ const { buildDualAnalysis } = require('./dual-reasoning');
 const {
   createLexiaEngine,
   filterRagContextForIntent,
-  resultMatchesNormativeSource
+  resultMatchesNormativeSource,
+  validateAnswerAgainstSources
 } = require('./orchestrator');
 const { createKnowledgeEngine } = require('./knowledge');
 
@@ -132,6 +133,52 @@ test('la recuperación normativa no mezcla Constitución, Código Penal y Códig
   }
 });
 
+test('una consulta laboral excluye doctrina civil aunque la confianza del área sea media', () => {
+  const rag = {
+    context: 'contexto mixto',
+    results: [
+      {
+        id: 'civil',
+        title: 'Principios de Derecho Procesal Civil',
+        source: 'José Chiovenda',
+        module: 'doctrina',
+        matter: 'Derecho Procesal Civil',
+        excerpt: 'Acción y jurisdicción civil.',
+        relevance: 95
+      },
+      {
+        id: 'laboral',
+        title: 'Orientación sobre despido',
+        source: 'SUNAFIL',
+        module: 'normativa',
+        matter: 'Derecho Laboral',
+        excerpt: 'Trabajador, empleador y despido.',
+        relevance: 80
+      }
+    ],
+    sources: []
+  };
+  const filtered = filterRagContextForIntent(rag, '¿Qué debo hacer ahora para preservar la prueba y reclamar?', {
+    area: { id: 'derecho_laboral', label: 'Derecho Laboral', confidence: 'media' },
+    topic: { id: 'despido', label: 'Despido', confidence: 'media' },
+    interpretation: {}
+  });
+
+  assert.deepEqual(filtered.results.map(item => item.id), ['laboral']);
+});
+
+test('rechaza plazos y autoridades que no aparecen en fuentes ni síntesis local', () => {
+  const validation = validateAnswerAgainstSources(
+    'Presenta una demanda ante el Juzgado de Trabajo dentro de 30 días.',
+    [{ title: 'Orientación laboral', content: 'Conserva mensajes y solicita asesoría laboral.' }],
+    'Conviene preservar la carta y los mensajes.'
+  );
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.unsupportedClaims.some(claim => claim.type === 'deadline'));
+  assert.ok(validation.unsupportedClaims.some(claim => claim.type === 'authority'));
+});
+
 test('LEXIA-SCORE aplica penalizaciones multiplicativas', () => {
   const baseline = calculateLexiaScore({
     profile: 'lawyer',
@@ -173,6 +220,19 @@ test('rechaza por hard gate una cita jurídica no respaldada', () => {
 
   assert.equal(evaluation.hardGate.passed, false);
   assert.ok(evaluation.hardGate.reasons.includes('unsupported_legal_citation'));
+});
+
+test('rechaza por hard gate una respuesta que revela procesos internos', () => {
+  const evaluation = evaluateCandidate({
+    id: 'leak',
+    answer: 'El proveedor Groq revisó el RAG y mi memoria interna antes de responder.'
+  }, {
+    caseFile: buildCaseFile({ userQuery: 'Consulta laboral', intent, role: 'usuario' }),
+    results: []
+  });
+
+  assert.equal(evaluation.hardGate.passed, false);
+  assert.ok(evaluation.hardGate.reasons.includes('severe_legal_error'));
 });
 
 test('selecciona una respuesta segura aunque la candidata insegura sea más extensa', () => {

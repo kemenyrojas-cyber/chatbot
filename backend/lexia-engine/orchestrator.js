@@ -7,12 +7,27 @@ function extractArticleNumbers(text) {
   return [...new Set([...matches].map(match => String(match[1] || '').toLowerCase()))];
 }
 
+function extractVerifiableClaims(text) {
+  const value = String(text || '');
+  const claims = [];
+  const deadlineMatches = value.match(/\b(?:\d{1,3}|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|quince|treinta|sesenta|noventa)\s+(?:d[ií]as?|horas?|meses?|a[nñ]os?)\b/gi) || [];
+  deadlineMatches.forEach(item => claims.push({ type: 'deadline', value: normalizeScopeText(item) }));
+  const authorityRules = [
+    ['ministerio_de_trabajo', /\bministerio de trabajo(?: y promocion del empleo)?\b/i],
+    ['sunafil', /\bsunafil\b|superintendencia nacional de fiscalizacion laboral/i],
+    ['juzgado_de_trabajo', /\bjuzgado(?: especializado)? de trabajo\b/i],
+    ['ministerio_publico', /\bministerio publico\b|\bfiscalia\b/i],
+    ['policia_nacional', /\bpolicia nacional\b|\bpnp\b/i],
+    ['poder_judicial', /\bpoder judicial\b/i]
+  ];
+  authorityRules.forEach(([id, pattern]) => {
+    if (pattern.test(normalizeScopeText(value))) claims.push({ type: 'authority', value: id });
+  });
+  return claims;
+}
+
 function validateAnswerAgainstSources(answer, results = [], localSynthesis = '') {
   const citedArticles = extractArticleNumbers(answer);
-  if (!citedArticles.length) {
-    return { ok: true, unsupportedArticles: [] };
-  }
-
   const sourceText = [
     localSynthesis,
     ...results.map(item => [
@@ -26,10 +41,18 @@ function validateAnswerAgainstSources(answer, results = [], localSynthesis = '')
   ].join(' ');
   const supportedArticles = new Set(extractArticleNumbers(sourceText));
   const unsupportedArticles = citedArticles.filter(article => !supportedArticles.has(article));
+  const normalizedSourceText = normalizeScopeText(sourceText);
+  const sourceClaims = extractVerifiableClaims(sourceText);
+  const supportedClaimKeys = new Set(sourceClaims.map(claim => `${claim.type}:${claim.value}`));
+  const unsupportedClaims = extractVerifiableClaims(answer).filter(claim => {
+    if (claim.type === 'deadline') return !normalizedSourceText.includes(claim.value);
+    return !supportedClaimKeys.has(`${claim.type}:${claim.value}`);
+  });
 
   return {
-    ok: unsupportedArticles.length === 0,
-    unsupportedArticles
+    ok: unsupportedArticles.length === 0 && unsupportedClaims.length === 0,
+    unsupportedArticles,
+    unsupportedClaims
   };
 }
 
@@ -110,10 +133,10 @@ function resultLooksLikeArea(item = {}, areaId = '') {
     item.matter,
     item.excerpt
   ].filter(Boolean).join(' '));
-  if (areaId === 'derecho_penal') return /\b(derecho penal|codigo penal|delito|denuncia penal|fiscalia|ministerio publico|pena|prision)\b/.test(text);
+  if (areaId === 'derecho_penal') return /\b(derecho penal|derecho procesal penal|procesal penal|codigo penal|delito|denuncia penal|fiscalia|ministerio publico|pena|prision)\b/.test(text);
   if (areaId === 'derecho_laboral') return /\b(derecho laboral|trabajador|empleador|despido|beneficios sociales|cts|gratificacion|vacaciones|remuneracion)\b/.test(text);
   if (areaId === 'derecho_consumidor') return /\b(consumidor|indecopi|proveedor|servicio educativo|universidad|matricula|pension|libro de reclamaciones)\b/.test(text);
-  if (areaId === 'derecho_civil') return /\b(derecho civil|contrato|compraventa|propiedad|posesion|inmueble|obligacion|arrendamiento)\b/.test(text);
+  if (areaId === 'derecho_civil') return /\b(derecho civil|derecho procesal civil|procesal civil|contrato|compraventa|propiedad|posesion|inmueble|obligacion|arrendamiento)\b/.test(text);
   if (areaId === 'derecho_familia') return /\b(derecho de familia|alimentos|divorcio|tenencia|custodia|visitas|patria potestad)\b/.test(text);
   if (areaId === 'derecho_constitucional') return /\b(constitucion|constitucional|amparo|habeas corpus|habeas data|derecho fundamental|debido proceso)\b/.test(text);
   return false;
@@ -125,12 +148,32 @@ function resultLooksLikeDifferentKnownArea(item = {}, areaId = '') {
     .some(candidate => resultLooksLikeArea(item, candidate));
 }
 
+function explicitResultArea(item = {}) {
+  const metadata = normalizeScopeText([
+    item.matter,
+    item.title,
+    item.source
+  ].filter(Boolean).join(' '));
+  const rules = [
+    ['derecho_laboral', /\b(derecho laboral|materia laboral|sunafil)\b/],
+    ['derecho_penal', /\b(derecho procesal penal|derecho penal|codigo penal)\b/],
+    ['derecho_civil', /\b(derecho procesal civil|derecho civil|codigo civil)\b/],
+    ['derecho_familia', /\b(derecho de familia)\b/],
+    ['derecho_constitucional', /\b(derecho constitucional|constitucion politica)\b/],
+    ['derecho_consumidor', /\b(derecho del consumidor|indecopi)\b/]
+  ];
+  return rules.find(([, pattern]) => pattern.test(metadata))?.[0] || '';
+}
+
 function rebuildRagContext(results = []) {
   if (!results.length) return { context: '', results: [], sources: [] };
   const lines = [
     'CONTEXTO RAG RECUPERADO DE LA BASE LOCAL DE LEXIA:',
     'Usa estas referencias solo como apoyo. Primero responde al caso y al último mensaje del usuario; no conviertas la respuesta en un resumen de fuentes.'
   ];
+  if (results.some(item => item.module === 'doctrina')) {
+    lines.push('La doctrina explica conceptos y argumentos, pero no es normativa vinculante. Si es extranjera o histórica, no la presentes como derecho peruano vigente.');
+  }
   results.forEach((item, index) => {
     const sourceId = `R${index + 1}`;
     const matter = item.matter ? ` | Materia: ${item.matter}` : '';
@@ -169,15 +212,22 @@ function filterRagContextForIntent(ragContext, query, intent) {
     intent?.topic?.label,
     intent?.area?.label
   ].filter(Boolean).join(' '));
-  if (!currentScopes.length) return ragContext;
-  let results = (ragContext?.results || []).filter(item => {
-    const resultScopes = detectRagResultScopes(item);
-    return areLegalCaseScopesCompatible(currentScopes, resultScopes);
-  });
-  const areaId = intent?.area?.confidence === 'alta' ? intent.area.id : '';
+  let results = (ragContext?.results || []);
+  if (currentScopes.length) {
+    results = results.filter(item => {
+      const resultScopes = detectRagResultScopes(item);
+      return areLegalCaseScopesCompatible(currentScopes, resultScopes);
+    });
+  }
+  const areaId = intent?.area?.id && intent.area.id !== 'area_no_determinada'
+    ? intent.area.id
+    : '';
   if (areaId) {
-    const areaFiltered = results.filter(item => resultLooksLikeArea(item, areaId) || !resultLooksLikeDifferentKnownArea(item, areaId));
-    if (areaFiltered.length) results = areaFiltered;
+    results = results.filter(item => {
+      const declaredArea = explicitResultArea(item);
+      if (declaredArea && declaredArea !== areaId) return false;
+      return resultLooksLikeArea(item, areaId) || !resultLooksLikeDifferentKnownArea(item, areaId);
+    });
   }
   return results.length === (ragContext?.results || []).length ? ragContext : rebuildRagContext(results);
 }
@@ -399,6 +449,8 @@ function createLexiaEngine(deps) {
       '- Si una fuente RAG concreta contradice tu conocimiento general, prioriza la fuente RAG.',
       '- Cuando fundamentes una afirmación jurídica importante, muestra la norma entre corchetes, por ejemplo [Código Penal, art. 200]. Solo usa corchetes si esa norma aparece en el RAG, en esta síntesis o en el mensaje del usuario.',
       '- Mejora la redacción, pero conserva el sentido jurídico y las fuentes verificadas.',
+      '- Integra el contexto de forma silenciosa. No menciones memoria, RAG, proveedores, modelos, consultores, puntajes, herramientas, archivos, fragmentos ni procesos internos.',
+      '- No copies bloques de las fuentes o del historial: sintetiza y aplica únicamente lo pertinente a la consulta actual.',
       '- Mantén la respuesta escaneable, pero conversacional: respuesta directa, explicación breve, paso útil y una sola pregunta final.'
     ].join('\n');
     const context = dialogueMode
@@ -535,7 +587,8 @@ function createLexiaEngine(deps) {
         {
           id: 'provider',
           answer: providerResult.answer,
-          unsupportedArticles: sourceValidation.unsupportedArticles
+          unsupportedArticles: sourceValidation.unsupportedArticles,
+          severeError: sourceValidation.unsupportedClaims.length ? 1 : 0
         },
         {
           id: 'local-synthesis',
@@ -555,7 +608,7 @@ function createLexiaEngine(deps) {
         fallback: true,
         model: 'local-rag-engine',
         provider: 'local',
-        providerError: `Respuesta del proveedor descartada por citar artículos no verificados: ${sourceValidation.unsupportedArticles.join(', ')}`,
+        providerError: `Respuesta del proveedor descartada por afirmaciones verificables sin respaldo suficiente.`,
         providerCode: 'unsupported_source_citation',
         retrieval: {
           mode: 'rag',
@@ -574,7 +627,8 @@ function createLexiaEngine(deps) {
           rejectedProvider: {
             provider: providerResult.provider,
             model: providerResult.model,
-            unsupportedArticles: sourceValidation.unsupportedArticles
+            unsupportedArticles: sourceValidation.unsupportedArticles,
+            unsupportedClaims: sourceValidation.unsupportedClaims
           },
           localSynthesis,
           memoryMessages: effectiveConversationMemory.length,
@@ -667,5 +721,6 @@ function createLexiaEngine(deps) {
 module.exports = {
   createLexiaEngine,
   filterRagContextForIntent,
-  resultMatchesNormativeSource
+  resultMatchesNormativeSource,
+  validateAnswerAgainstSources
 };

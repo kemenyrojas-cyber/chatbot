@@ -93,6 +93,20 @@ class BrainScenarioMatrixTest(unittest.TestCase):
         self.assertTrue(result["memory"]["used"])
         self.assertEqual(result["intent"]["conversationMode"]["id"], "follow_up")
 
+    def test_generic_action_question_inherits_labor_context_from_memory(self):
+        result = analyze({
+            "query": "¿Qué debo hacer ahora para reclamar?",
+            "memoryMessages": [
+                {"role": "user", "content": "Trabajo en una empresa privada desde hace tres años y estoy en planilla."},
+                {"role": "assistant", "content": "¿El despido fue escrito o verbal?"},
+                {"role": "user", "content": "Fue verbal y tengo mensajes del supervisor."},
+            ],
+            "baseline": {},
+        })
+        self.assertEqual(result["intent"]["area"]["id"], "derecho_laboral")
+        self.assertEqual(result["intent"]["topic"]["id"], "laboral")
+        self.assertFalse(result["intent"]["needsMoreFacts"])
+
     def test_case_fact_is_not_misread_as_source_request(self):
         result = analyze({
             "query": "Me investigan por posesión ilícita de drogas.",

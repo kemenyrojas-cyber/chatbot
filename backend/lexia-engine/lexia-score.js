@@ -151,6 +151,7 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
     && actionSignals === 0
     && answer.length < 280
   );
+  const revealsInternalProcess = /\b(rag|embedding|prompt(?:s)?|memoria interna|contexto recuperado|proveedor(?:es)?|modelo(?:s)? de ia|consultor(?:es)? interno|puntaje interno|lexia-score)\b/i.test(answer);
   const unwantedSourceBlock = responsePlan.includeSources === false
     && /\b(fuentes y verificacion|fuente usada|base legal|referencia normativa)\b/i.test(normalizeText(answer));
   const missesCorrection = Boolean(
@@ -190,6 +191,7 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
       - (paragraphCount > Number(responsePlan.maxParagraphs || 8) ? 0.25 : 0)
       - (repeatsAnsweredQuestion || repeatsCoveredQuestion ? 0.35 : 0)
       - (questionWithoutAnalysis ? 0.3 : 0)
+      - (revealsInternalProcess ? 0.45 : 0)
       - (unwantedSourceBlock ? 0.2 : 0)
     ),
     hallucinationRate: unsupportedArticles.length ? 1 : 0,
@@ -200,7 +202,7 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
       questionWithoutAnalysis ? 0.7 : 0,
       missesCorrection ? 0.7 : 0
     )),
-    severeError: unsupportedArticles.length ? 1 : clamp(Number(candidate.severeError || 0))
+    severeError: unsupportedArticles.length || revealsInternalProcess ? 1 : clamp(Number(candidate.severeError || 0))
   };
 }
 
