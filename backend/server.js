@@ -2845,6 +2845,74 @@ function buildSingleLegalQuestion(intent, reasoningProfile, query = '') {
   return '¿Qué resultado buscas concretamente con esta consulta?';
 }
 
+function getRecentAssistantQuestions(memoryMessages = []) {
+  return normalizeMemoryMessages(memoryMessages)
+    .filter(message => message.role === 'assistant')
+    .flatMap(message => String(message.content || '').match(/[^¿?]*\?/g) || [])
+    .map(question => question.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-6);
+}
+
+function getLegalQuestionSlot(question = '') {
+  const normalized = normalizeText(question);
+  const slots = [
+    ['time', /\b(cuando|fecha|que dia|momento)\b/],
+    ['goal', /\b(buscas denunciar|defender|entender|resultado buscas|que necesitas lograr|objetivo)\b/],
+    ['procedural_status', /\b(denuncia|citacion|notificacion|estado del proceso|etapa se encuentra)\b/],
+    ['evidence', /\b(prueba|documento|mensaje|audio|video|captura|testigo|dato concreto)\b/],
+    ['safety', /\b(amenaza sigue|a salvo|riesgo|peligro|agresion)\b/],
+    ['role', /\b(victima|investigad|condenad|defensa|parte|demandante|demandado)\b/],
+    ['contract_status', /\b(sigues trabajando|termino la relacion|carta de despido|verbalmente)\b/],
+    ['case_progress', /\b(que ocurrio despues|que paso despues)\b/]
+  ];
+  return slots.find(([, pattern]) => pattern.test(normalized))?.[0] || '';
+}
+
+function buildUnaskedLegalQuestion(intent, reasoningProfile, query = '', memoryMessages = []) {
+  const candidate = buildSingleLegalQuestion(intent, reasoningProfile, query);
+  if (!candidate) return '';
+  const normalizedCandidate = normalizeText(candidate);
+  const candidateSlot = getLegalQuestionSlot(candidate);
+  const previousQuestions = getRecentAssistantQuestions(memoryMessages);
+  const wasAlreadyAsked = previousQuestions.some(previous => {
+    if (normalizeText(previous) === normalizedCandidate) return true;
+    const previousSlot = getLegalQuestionSlot(previous);
+    return Boolean(candidateSlot && previousSlot && candidateSlot === previousSlot);
+  });
+  return wasAlreadyAsked ? '' : candidate;
+}
+
+function buildCaseUpdateAnalysis(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
+  const normalizedQuery = normalizeText(query);
+  const guidance = buildProgressiveGuidance(intent, reasoningProfile, null).filter(Boolean);
+  const rules = collectIntelligenceItems(results, 'reglas_practicas', 1);
+  const risks = collectIntelligenceItems(results, 'riesgos', 1);
+  const steps = collectIntelligenceItems(results, 'pasos', 2);
+  const evidenceMentioned = /\b(cuenta bancaria|cuenta|transferencia|deposito|depósito|voucher|comprobante|recibo|captura|mensaje|chat|audio|video|correo|testigo|telefono|teléfono|numero|número|documento|prueba)\b/.test(normalizedQuery);
+  const proceduralUpdate = /\b(denuncia|denunciaron|notificaron|notificacion|notificación|citacion|citación|resolucion|resolución|audiencia)\b/.test(normalizedQuery);
+  const lines = [];
+
+  if (evidenceMentioned) {
+    lines.push('Ese dato **sí aporta al análisis**: puede servir para corroborar la secuencia de hechos, rastrear una operación o identificar a personas vinculadas. Por sí solo no prueba autoría ni responsabilidad, pero puede convertirse en un elemento relevante junto con los demás indicios. Conserva el archivo o comprobante original, fecha, monto, titular, número de operación y la forma en que llegó a tus manos; **no lo edites ni borres el contexto**, porque su trazabilidad puede ser tan importante como el contenido.');
+  } else if (proceduralUpdate) {
+    lines.push('Este dato cambia la etapa del análisis: ya no debe tratarse sólo como una consulta preventiva. Hay que revisar **qué acto fue notificado, en qué fecha, qué autoridad lo emitió y qué plazo empezó a correr**, sin asumir todavía el resultado del proceso.');
+  } else if (guidance.length) {
+    lines.push(guidance.slice(0, 2).join(' '));
+  } else {
+    lines.push(`Este dato debe integrarse al problema jurídico sobre **${intent?.topic?.label || intent?.area?.label || 'el caso'}** y contrastarse con la cronología y la prueba disponible; no corresponde tratarlo como una respuesta aislada.`);
+  }
+
+  const practicalStep = steps[0] || reasoningProfile?.nextSteps?.[0];
+  const principalRisk = risks[0] || reasoningProfile?.risks?.[0];
+  const actionSummary = [];
+  if (rules[0] && !evidenceMentioned) actionSummary.push(`Como criterio inicial, **${rules[0]}**.`);
+  if (practicalStep) actionSummary.push(`El siguiente paso útil es **${practicalStep}**.`);
+  if (principalRisk) actionSummary.push(`El riesgo que debe controlarse es **${principalRisk}**.`);
+  if (actionSummary.length) lines.push('', actionSummary.join(' '));
+  return lines;
+}
+
 function isConversationContinuation(query, memoryMessages = []) {
   const normalized = normalizeText(query);
   const hasMemory = normalizeMemoryMessages(memoryMessages).length > 0;
@@ -3925,39 +3993,37 @@ function buildStatusAnswer(query, intent, results = [], reasoningProfile = null,
   return lines.join('\n');
 }
 
-function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null) {
+function buildNewFactAnswer(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
   const dialogue = intent?.interpretation?.dialogue || {};
   const focus = String(dialogue.currentFocus || query || '').replace(/\s+/g, ' ').trim();
-  const lastQuestion = normalizeText(dialogue.lastAssistantQuestion || '');
-  let nextQuestion = /\b(publicaron|difundieron|compartieron|enviaron)\b/.test(normalizeText(query))
-    ? '¿En qué medio se difundió y en qué fecha aproximada?'
-    : buildSingleLegalQuestion(intent, reasoningProfile, query);
-  if (lastQuestion && normalizeText(nextQuestion) === lastQuestion) {
-    nextQuestion = '¿Qué dato puedes precisar ahora para avanzar: la fecha, la persona involucrada o lo que ocurrió después?';
-  }
   const lines = [
-    `Entiendo. Incorporo este dato al caso: **${focus}**.`
+    `Incorporo este dato al caso: **${focus}**.`,
+    '',
+    ...buildCaseUpdateAnalysis(query, intent, results, reasoningProfile, memoryMessages)
   ];
+  const mayAsk = (dialogue.responsePlan?.maxQuestions ?? 1) > 0;
+  const nextQuestion = mayAsk
+    ? buildUnaskedLegalQuestion(intent, reasoningProfile, query, memoryMessages)
+    : '';
   if (nextQuestion) lines.push('', nextQuestion);
   return lines.join('\n');
 }
 
-function buildAnsweredQuestionResponse(query, intent, reasoningProfile = null) {
+function buildAnsweredQuestionResponse(query, intent, results = [], reasoningProfile = null, memoryMessages = []) {
   const dialogue = intent?.interpretation?.dialogue || {};
   const goal = dialogue.userGoal?.label;
   const answer = String(query || '').replace(/\s+/g, ' ').trim();
-  const avoidedQuestion = normalizeText(dialogue.responsePlan?.avoidQuestion || '');
-  let nextQuestion = goal === 'defender a una persona'
-    ? '¿Esa persona ya recibió una denuncia, citación o notificación, o todavía es una consulta preventiva?'
-    : buildSingleLegalQuestion(intent, reasoningProfile, query);
-  if (avoidedQuestion && normalizeText(nextQuestion) === avoidedQuestion) {
-    nextQuestion = '¿Qué ocurrió después y en qué etapa se encuentra ahora?';
-  }
   const lines = [
     goal
       ? `Entendido: tu objetivo es **${goal}**.`
-      : `Entendido: **${answer}**.`
+      : `Entendido: **${answer}**.`,
+    '',
+    ...buildCaseUpdateAnalysis(query, intent, results, reasoningProfile, memoryMessages)
   ];
+  const mayAsk = (dialogue.responsePlan?.maxQuestions ?? 1) > 0;
+  const nextQuestion = mayAsk
+    ? buildUnaskedLegalQuestion(intent, reasoningProfile, query, memoryMessages)
+    : '';
   if (nextQuestion) lines.push('', nextQuestion);
   return lines.join('\n');
 }
@@ -4006,13 +4072,13 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
     return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
   }
   if (dialogue.answeredPreviousQuestion) {
-    return buildAnsweredQuestionResponse(query, intent, reasoningProfile);
+    return buildAnsweredQuestionResponse(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (dialogue.speechAct === 'correction' || dialogue.speechAct === 'topic_shift') {
     return buildCorrectionAnswer(query, intent, scopedResults, memoryMessages);
   }
   if (dialogue.speechAct === 'new_fact') {
-    return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile);
+    return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (modeId === 'confusion') {
     const clauseAnswer = buildClauseExplanationAnswer(query, intent, scopedResults, memoryMessages);
@@ -4035,7 +4101,7 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
     return buildStatusAnswer(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (modeId === 'new_fact') {
-    return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile);
+    return buildNewFactAnswer(query, intent, scopedResults, reasoningProfile, memoryMessages);
   }
   if (modeId === 'action_request') {
     return buildActionAnswer(query, intent, scopedResults, reasoningProfile);
@@ -4897,6 +4963,9 @@ PERSONALIDAD Y ESTILO:
 - No concluyas que no existe investigación, proceso, deuda, despido o responsabilidad solo porque el usuario no fue notificado o no conoce una denuncia. Formula la conclusión con cuidado: "si no has sido notificado", "hasta donde sabes", "habría que verificar".
 - Si el usuario escribe poco o ambiguo, haz una sola pregunta concreta y jurídica. No hagas listas de preguntas salvo que el usuario pida preparar el caso.
 - Nunca cierres con dos o más preguntas. Si necesitas continuar, elige la pregunta jurídica más importante y haz solo esa.
+- No conviertas la conversación en un interrogatorio. Después de dos aportes sustantivos del usuario, entrega un análisis provisional antes de pedir más datos.
+- Si el usuario aporta un hecho o una prueba, explica qué cambia jurídicamente, qué valor preliminar tiene y qué acción práctica corresponde. Está prohibido limitarse a "incorporo el dato" seguido de otra pregunta.
+- No repitas una pregunta ni vuelvas a preguntar por la misma categoría de información con otras palabras (fecha, objetivo, rol, estado procesal, prueba o riesgo).
 - Si no entiendes algo, pregunta al usuario en vez de inventar hechos.
 - Empieza reconociendo brevemente la preocupación solo cuando ayude: "Con esos datos...", "En tu caso...", "Lo relevante aquí es...".
 - Usa lenguaje sencillo antes de introducir términos técnicos. Cuando uses un término jurídico, explícalo en una frase corta.

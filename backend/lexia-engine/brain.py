@@ -464,6 +464,30 @@ def analyze_dialogue(query: str, messages: list[dict[str, Any]], ambiguous: bool
     focus = extract_current_focus(query) if correction or explicit_topic_shift else str(query or "").strip()
     replace_prior = correction or explicit_topic_shift
     needs_confirmation = ambiguous and speech_act not in ("answer", "correction")
+    prior_user_facts = [
+        normalize(str(item.get("content") or ""))
+        for item in messages[-12:]
+        if item.get("role") == "user"
+        and len(normalize(str(item.get("content") or "")).split()) >= 3
+        and not re.fullmatch(r"(si|sí|no|ok|vale|gracias|entiendo|entendido)", normalize(str(item.get("content") or "")))
+    ]
+    current_is_fact = (
+        speech_act in ("answer", "new_fact")
+        and len(text.split()) >= 3
+    )
+    recent_assistant_questions = [
+        str(item.get("content") or "").strip()
+        for item in messages[-8:]
+        if item.get("role") == "assistant" and "?" in str(item.get("content") or "")
+    ]
+    analysis_ready = (
+        speech_act in ("answer", "new_fact")
+        and (len(prior_user_facts) + (1 if current_is_fact else 0) >= 2)
+    )
+    question_fatigue = (
+        speech_act in ("answer", "new_fact")
+        and len(recent_assistant_questions) >= 2
+    )
     return {
         "speechAct": speech_act,
         "currentFocus": focus,
@@ -476,11 +500,15 @@ def analyze_dialogue(query: str, messages: list[dict[str, Any]], ambiguous: bool
             "acknowledgeLatestTurn": has_memory or speech_act in ("correction", "answer", "new_fact"),
             "acknowledgeCorrection": correction,
             "answerLatestTurnFirst": True,
+            "analysisBeforeQuestion": speech_act in ("answer", "new_fact"),
+            "analysisReady": analysis_ready,
+            "questionFatigue": question_fatigue,
             "confirmUnderstanding": needs_confirmation,
             "includeSources": False,
-            "maxQuestions": 1,
+            "maxQuestions": 0 if analysis_ready or question_fatigue else 1,
             "maxParagraphs": 3,
             "avoidQuestion": assistant_question if short_answer else "",
+            "avoidQuestions": recent_assistant_questions[-4:],
         },
     }
 

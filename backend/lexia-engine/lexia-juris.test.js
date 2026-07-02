@@ -206,6 +206,47 @@ test('LEXIA-SCORE favorece una respuesta que incorpora la corrección y no repit
   assert.equal(selection.selected.id, 'conversational');
 });
 
+test('LEXIA-SCORE descarta el sobreinterrogatorio cuando ya corresponde analizar', () => {
+  const dialogue = {
+    currentFocus: 'cuenta bancaria donde llegó el dinero',
+    responsePlan: {
+      maxQuestions: 0,
+      maxParagraphs: 4,
+      analysisBeforeQuestion: true,
+      analysisReady: true,
+      avoidQuestions: [
+        '¿Cuándo ocurrió el hecho principal?',
+        '¿Buscas denunciar, defender o entender el proceso?'
+      ]
+    }
+  };
+  const selection = selectBestCandidate([
+    {
+      id: 'analysis',
+      answer: 'La cuenta bancaria puede servir para rastrear la operación e identificar vínculos, aunque no prueba por sí sola la autoría. Conviene conservar el comprobante original, titular, monto, fecha y número de operación.'
+    },
+    {
+      id: 'interrogation',
+      answer: 'Entiendo, incorporo ese dato. ¿En qué fecha exacta ocurrió?'
+    }
+  ], {
+    caseFile: buildCaseFile({
+      userQuery: 'Tengo la cuenta donde llegó el dinero de la extorsión.',
+      intent: {
+        ...intent,
+        area: { id: 'derecho_penal', label: 'Derecho Penal', confidence: 'alta' },
+        topic: { id: 'extorsion', label: 'Extorsión', confidence: 'alta' }
+      },
+      role: 'abogado'
+    }),
+    results: [],
+    dialogue
+  });
+
+  assert.equal(selection.selected.id, 'analysis');
+  assert.ok(selection.candidates.find(item => item.id === 'interrogation').score < selection.candidates.find(item => item.id === 'analysis').score);
+});
+
 test('el análisis dual conserva apoyo, riesgos y vacíos probatorios', () => {
   const caseFile = buildCaseFile({
     userQuery: 'Me despidieron y tengo una carta.',
@@ -239,7 +280,17 @@ test('el orquestador expone expediente, análisis dual y selección de calidad',
         ...intent,
         originalQuery: query,
         conversationMode: { id: 'case_start', label: 'Nuevo caso', deterministic: false },
-        interpretation: {},
+        interpretation: {
+          dialogue: {
+            speechAct: 'new_fact',
+            responsePlan: {
+              maxQuestions: 0,
+              analysisBeforeQuestion: true,
+              analysisReady: true,
+              avoidQuestions: ['¿Cuándo ocurrió?', '¿Qué prueba tienes?']
+            }
+          }
+        },
         concepts: ['despido'],
         complexity: 'media'
       }),
@@ -309,6 +360,9 @@ test('el orquestador expone expediente, análisis dual y selección de calidad',
   assert.ok(['provider', 'local-synthesis'].includes(result.metadata.candidateSelection.selected));
   assert.match(capturedProviderMessages[0].content, /CONTROL CONVERSACIONAL OBLIGATORIO/);
   assert.match(capturedProviderMessages[0].content, /Responde primero al último turno/);
+  assert.match(capturedProviderMessages[0].content, /Está prohibido responder solo con acuse de recibo y otra pregunta/);
+  assert.match(capturedProviderMessages[0].content, /no cierres con otra pregunta/);
+  assert.match(capturedProviderMessages[0].content, /No los reformules con otras palabras/);
 });
 
 test('el orquestador sintetiza todas las consultas de apoyo antes de responder', async () => {

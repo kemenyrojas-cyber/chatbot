@@ -202,6 +202,15 @@ function buildDialogueControlContext(intent = {}, userQuery = '') {
   if (plan.avoidQuestion) {
     lines.push(`No repitas esta pregunta ya contestada: "${plan.avoidQuestion}".`);
   }
+  if (Array.isArray(plan.avoidQuestions) && plan.avoidQuestions.length) {
+    lines.push(`Preguntas o temas de pregunta ya cubiertos: ${plan.avoidQuestions.map(question => `"${question}"`).join('; ')}. No los reformules con otras palabras.`);
+  }
+  if (plan.analysisBeforeQuestion) {
+    lines.push('El usuario aportó un dato: explica primero su implicación jurídica y un paso útil. Está prohibido responder solo con acuse de recibo y otra pregunta.');
+  }
+  if (plan.analysisReady || plan.questionFatigue) {
+    lines.push('Ya existe información suficiente para un análisis provisional. Entrega ese análisis ahora y no cierres con otra pregunta.');
+  }
   lines.push(
     `Extensión máxima sugerida: ${plan.maxParagraphs || 3} párrafos breves.`,
     `Número máximo de preguntas: ${plan.maxQuestions ?? 1}.`,

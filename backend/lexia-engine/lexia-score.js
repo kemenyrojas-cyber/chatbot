@@ -104,6 +104,19 @@ function termCoverage(answer, values = []) {
   return uniqueTerms.filter(term => text.includes(term)).length / uniqueTerms.length;
 }
 
+function questionSlot(value = '') {
+  const text = normalizeText(value);
+  const slots = [
+    ['time', /\b(cuando|fecha|que dia|momento)\b/],
+    ['goal', /\b(denunciar|defender|entender|resultado|objetivo|que necesitas)\b/],
+    ['procedural_status', /\b(denuncia|citacion|notificacion|estado del proceso|etapa)\b/],
+    ['evidence', /\b(prueba|documento|mensaje|audio|video|captura|testigo|dato)\b/],
+    ['safety', /\b(amenaza|a salvo|riesgo|peligro|agresion)\b/],
+    ['role', /\b(victima|investigad|condenad|defensa|demandante|demandado)\b/]
+  ];
+  return slots.find(([, pattern]) => pattern.test(text))?.[0] || '';
+}
+
 function estimateCandidateMetrics(candidate = {}, context = {}) {
   const answer = String(candidate.answer || '').trim();
   const results = Array.isArray(context.results) ? context.results : [];
@@ -119,6 +132,25 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
   const focusCoverage = dialogue.currentFocus ? termCoverage(answer, [dialogue.currentFocus]) : 0.65;
   const avoidedQuestion = normalizeText(responsePlan.avoidQuestion || '');
   const repeatsAnsweredQuestion = Boolean(avoidedQuestion && normalizeText(answer).includes(avoidedQuestion));
+  const answerQuestions = answer.match(/[^¿?]*\?/g) || [];
+  const avoidedQuestions = [
+    responsePlan.avoidQuestion,
+    ...(Array.isArray(responsePlan.avoidQuestions) ? responsePlan.avoidQuestions : [])
+  ].filter(Boolean);
+  const avoidedSlots = new Set(avoidedQuestions.map(questionSlot).filter(Boolean));
+  const repeatsCoveredQuestion = answerQuestions.some(question => {
+    const normalizedQuestion = normalizeText(question);
+    if (avoidedQuestions.some(avoided => normalizedQuestion === normalizeText(avoided))) return true;
+    const slot = questionSlot(question);
+    return Boolean(slot && avoidedSlots.has(slot));
+  });
+  const exceedsQuestionBudget = questionCount > Number(responsePlan.maxQuestions ?? 1);
+  const questionWithoutAnalysis = Boolean(
+    responsePlan.analysisBeforeQuestion
+    && questionCount > 0
+    && actionSignals === 0
+    && answer.length < 280
+  );
   const unwantedSourceBlock = responsePlan.includeSources === false
     && /\b(fuentes y verificacion|fuente usada|base legal|referencia normativa)\b/i.test(normalizeText(answer));
   const missesCorrection = Boolean(
@@ -154,15 +186,18 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
       + (answer.length >= 80 && answer.length <= 2200 ? 0.15 : 0)
       + (paragraphCount >= 1 && paragraphCount <= 8 ? 0.12 : 0)
       + (uncertaintySignals ? 0.08 : 0)
-      - (questionCount > Number(responsePlan.maxQuestions ?? 1) ? 0.3 : 0)
+      - (exceedsQuestionBudget ? 0.3 : 0)
       - (paragraphCount > Number(responsePlan.maxParagraphs || 8) ? 0.25 : 0)
-      - (repeatsAnsweredQuestion ? 0.35 : 0)
+      - (repeatsAnsweredQuestion || repeatsCoveredQuestion ? 0.35 : 0)
+      - (questionWithoutAnalysis ? 0.3 : 0)
       - (unwantedSourceBlock ? 0.2 : 0)
     ),
     hallucinationRate: unsupportedArticles.length ? 1 : 0,
     contradictionRate: clamp(Math.max(
       Number(candidate.contradictionRate || 0),
-      repeatsAnsweredQuestion ? 0.8 : 0,
+      repeatsAnsweredQuestion || repeatsCoveredQuestion ? 0.8 : 0,
+      exceedsQuestionBudget ? 0.7 : 0,
+      questionWithoutAnalysis ? 0.7 : 0,
       missesCorrection ? 0.7 : 0
     )),
     severeError: unsupportedArticles.length ? 1 : clamp(Number(candidate.severeError || 0))

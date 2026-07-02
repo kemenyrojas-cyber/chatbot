@@ -187,6 +187,37 @@ class BrainScenarioMatrixTest(unittest.TestCase):
         self.assertEqual(dialogue["speechAct"], "answer")
         self.assertTrue(dialogue["answeredPreviousQuestion"])
 
+    def test_two_substantive_facts_trigger_analysis_without_another_question(self):
+        result = analyze({
+            "query": "También tengo la cuenta bancaria donde llegó el dinero",
+            "memoryMessages": [
+                {"role": "user", "content": "Me amenazaron para que entregara dinero"},
+                {"role": "assistant", "content": "¿La amenaza sigue activa ahora?"},
+                {"role": "user", "content": "Ya presenté la denuncia y guardé los mensajes"},
+                {"role": "assistant", "content": "¿Cuándo ocurrió el hecho principal?"},
+            ],
+            "baseline": {},
+        })
+        plan = result["intent"]["interpretation"]["dialogue"]["responsePlan"]
+        self.assertTrue(plan["analysisBeforeQuestion"])
+        self.assertTrue(plan["analysisReady"])
+        self.assertEqual(plan["maxQuestions"], 0)
+        self.assertEqual(len(plan["avoidQuestions"]), 2)
+
+    def test_repeated_question_turns_activate_question_fatigue(self):
+        result = analyze({
+            "query": "La notificaron ayer",
+            "memoryMessages": [
+                {"role": "assistant", "content": "¿Buscas denunciar, defender o entender el proceso?"},
+                {"role": "user", "content": "Quiero defender a mi patrocinada"},
+                {"role": "assistant", "content": "¿Ya recibió una denuncia, citación o notificación?"},
+            ],
+            "baseline": {},
+        })
+        plan = result["intent"]["interpretation"]["dialogue"]["responsePlan"]
+        self.assertTrue(plan["questionFatigue"])
+        self.assertEqual(plan["maxQuestions"], 0)
+
     def test_direct_question_can_finish_without_automatic_question(self):
         baseline = {
             "area": {"id": "derecho_civil", "label": "Derecho Civil", "confidence": "alta"},
