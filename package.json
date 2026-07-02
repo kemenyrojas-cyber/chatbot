@@ -8,7 +8,7 @@
     "frontend"
   ],
   "scripts": {
-    "start": "node server.js",
+    "start": "node backend/server.js",
     "dev": "npm --prefix backend run dev",
     "build": "npm install --prefix backend",
     "ingest": "npm --prefix backend run ingest",

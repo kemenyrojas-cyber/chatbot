@@ -10,7 +10,7 @@ services:
       - key: PGSSLMODE
         value: require
       - key: AI_PROVIDER
-        value: auto
+        value: local
       - key: LEXIA_PROVIDER_STRATEGY
         value: ensemble
       - key: AI_PROVIDER_TIMEOUT_MS
@@ -19,6 +19,16 @@ services:
         value: "true"
       - key: LEXIA_PYTHON_BRAIN_TIMEOUT_MS
         value: "2500"
+      - key: LEXIA_OCR_LANGUAGES
+        value: spa+eng
+      - key: LEXIA_OCR_DPI
+        value: "170"
+      - key: LEXIA_LOCAL_OCR_CONCURRENCY
+        value: "2"
+      - key: LEXIA_LOCAL_OCR_GLOBAL_CONCURRENCY
+        value: "2"
+      - key: LEXIA_LOCAL_OCR_BATCH_PAGES
+        value: "12"
       - key: LEGAL_ALLOWED_SOURCE_HOSTS
         value: elperuano.pe,www.elperuano.pe,tc.gob.pe,www.tc.gob.pe,pj.gob.pe,www.pj.gob.pe,gob.pe,www.gob.pe,sunarp.gob.pe,www.sunarp.gob.pe,sunafil.gob.pe,www.sunafil.gob.pe,lpderecho.pe,www.lpderecho.pe,estudioderechoylibertad.com,www.estudioderechoylibertad.com
       - key: LEGAL_DISCOVERY_SEED_URLS

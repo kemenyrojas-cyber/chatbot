@@ -11,13 +11,14 @@
 - **Casaciones**
 - **Sentencias TC**
 - Resultados ordenados por relevancia desde `/api/legal-search`
-- Fallback útil cuando OpenAI no tiene créditos o no está disponible
+- Análisis de expedientes sin servicios generativos externos
 
-### 🤖 Inteligencia con OpenAI
-- Respuestas precisas y fundamentadas
-- Análisis profundos de casos
-- Citas de artículos y jurisprudencia
-- Disponible en español profesional
+### 🔎 OCR y análisis documental local
+- Poppler convierte PDFs escaneados en imágenes por lotes
+- Tesseract (`spa+eng`) extrae el texto página por página
+- LEXIA identifica expediente, partes, materia, etapa y urgencia
+- La ficha y el informe se actualizan progresivamente
+- No requiere OpenAI, cuotas externas ni envío del expediente a terceros
 
 ### 📚 Especialidad en Derecho Peruano
 - Derecho Civil, Penal, Laboral
@@ -34,11 +35,18 @@
 npm install --prefix backend
 ```
 
-### 2. Configurar OpenAI
+### 2. Configurar el motor local
+
+El `Dockerfile` instala automáticamente Poppler, Tesseract y los idiomas español e inglés. Para ejecución sin Docker debes instalar `pdftoppm`, `pdfinfo` y `tesseract` en el sistema.
+
 Crea archivo `.env`:
 ```env
-OPENAI_API_KEY=sk-xxxxxxxxxxxx
-OPENAI_MODEL=gpt-3.5-turbo
+AI_PROVIDER=local
+LEXIA_OCR_LANGUAGES=spa+eng
+LEXIA_OCR_DPI=170
+LEXIA_LOCAL_OCR_CONCURRENCY=2
+LEXIA_LOCAL_OCR_GLOBAL_CONCURRENCY=2
+LEXIA_LOCAL_OCR_BATCH_PAGES=12
 PORT=3000
 ```
 
@@ -297,7 +305,6 @@ curl -X POST http://localhost:3000/api/legal-search \
 ## 🔗 Enlaces
 
 - [lpderecho.pe](https://lpderecho.pe) - Portal jurídico
-- [OpenAI](https://platform.openai.com) - Proveedor IA
 - [GitHub](https://github.com/kemenyrojas-cyber/chatbot) - Código fuente
 
 ---

@@ -1155,12 +1155,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const year = firstMatch(number || text, [/\b(20[0-9]{2}|19[0-9]{2})\b/]);
         const jurisdiction = firstMatch(text, [
             /(Corte Superior de Justicia de\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúÑñ ]{2,80})/i,
-            /((?:\d+[.°º]?\s*)?(?:Juzgado|Sala)\s+(?:Penal|Civil|Laboral|Constitucional|de Familia|Mixta)[^.\n]{0,80})/i
+            /((?:\d+[.°º]?\s*)?(?:Juzgado|Sala)\s+(?:Penal|Civil|Laboral|Constitucional|de Familia|Mixta)[^.\n]{0,80})/i,
+            /(?:juzgado|órgano jurisdiccional|organo jurisdiccional)\s*[:\-]\s*([^;\n]{4,120})/i
         ]);
         const accused = firstMatch(text, [
-            /(?:acusado|imputado|procesado|investigado)\s*[:\-]\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ,.'-]{4,100})/i,
-            /(?:contra|seguido contra)\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ,.'-]{4,100})\s+(?:por|como)/i,
-            /(?:demandado|demandada)\s*[:\-]\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ,.'-]{4,100})/i
+            /(?:acusado|imputado|procesado|investigado)\s*[:\-]\s*([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúÑñ ,.'-]{4,100})/i,
+            /(?:contra|seguido contra)\s+([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúÑñ ,.'-]{4,100})\s+(?:por|como)/i,
+            /(?:demandado|demandada|demandante|parte)\s*[:\-]\s*([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúÑñ ,.'-]{4,100})/i
         ]);
         return { number, year, jurisdiction, accused };
     }
@@ -1283,6 +1284,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return { pageCount: pdf.numPages, textItemsFound };
     }
 
+    function getCaseReportPoints(answer = "") {
+        return String(answer)
+            .split(/\r?\n/)
+            .map(line => line.replace(/^[-*#\d.\s]+/, "").trim())
+            .filter(line => line.length >= 24 && /\b(riesgo|prueba|plazo|resoluci[oó]n|sentencia|pretensi[oó]n|inconsistencia|urgencia|acusad|imputad|demandad|audiencia)\b/i.test(line))
+            .slice(0, 10);
+    }
+
+    function updatePartialCaseAnalysisPanel(data = {}) {
+        const classification = data.classification || {};
+        const isDetermined = value => value && !/por determinar|pendiente/i.test(String(value));
+        if (isDetermined(classification.area) && caseFindingArea) caseFindingArea.textContent = classification.area;
+        if (isDetermined(classification.stage) && caseFindingStage) caseFindingStage.textContent = classification.stage;
+        if (isDetermined(classification.urgency) && caseFindingUrgency) caseFindingUrgency.textContent = classification.urgency;
+        updateExtractedCaseFields(data.answer || "");
+
+        const reportPoints = getCaseReportPoints(data.answer);
+        if (reportPoints.length && caseImportantPoints) {
+            caseImportantPoints.innerHTML = reportPoints.map(point => `<li>${escapeHtml(point)}</li>`).join("");
+        }
+        if (data.answer && !data.preview && caseAnalysisReport) {
+            caseAnalysisReport.innerHTML = `<p><strong>Informe parcial · se actualiza por bloques</strong></p>${formatChatContent(data.answer)}`;
+        }
+    }
+
     function updateCaseAnalysisPanel(data = {}) {
         const classification = data.classification || {};
         if (caseFindingArea) caseFindingArea.textContent = classification.area || "Por determinar";
@@ -1295,11 +1321,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (caseFindingAccused?.textContent === "Analizando...") caseFindingAccused.textContent = "No identificado";
         if (caseAnalysisReport) caseAnalysisReport.innerHTML = formatChatContent(data.answer || "No se obtuvo un informe.");
 
-        const reportPoints = String(data.answer || "")
-            .split(/\r?\n/)
-            .map(line => line.replace(/^[-*#\d.\s]+/, "").trim())
-            .filter(line => line.length >= 24 && /\b(riesgo|prueba|plazo|resoluci[oó]n|sentencia|pretensi[oó]n|inconsistencia|urgencia|acusad|imputad)\b/i.test(line))
-            .slice(0, 10);
+        const reportPoints = getCaseReportPoints(data.answer);
         if (reportPoints.length && caseImportantPoints) {
             caseImportantPoints.innerHTML = reportPoints.map(point => `<li>${escapeHtml(point)}</li>`).join("");
         }
@@ -1335,15 +1357,20 @@ document.addEventListener("DOMContentLoaded", () => {
         const progress = Math.max(0, Math.min(99, Number(state.progress) || 0));
         const phases = {
             extracting_text: "Extrayendo el contenido",
+            rendering_pages: "Preparando páginas para OCR local",
+            local_ocr: "Leyendo páginas con OCR local en español",
             preparing_ocr: "Preparando el OCR",
             ocr: "Leyendo páginas escaneadas",
+            retrying_ocr: "Reintentando un bloque OCR temporalmente interrumpido",
+            recovering_ocr: "Recuperando el análisis con bloques más pequeños",
             classifying: "Clasificando el expediente",
             legal_analysis: "Elaborando el informe jurídico",
             connection_retry: "Reconectando con el estado; el servidor continúa trabajando"
         };
         const phase = phases[state.phase] || "Analizando el expediente";
+        const progressUnit = ["rendering_pages", "local_ocr"].includes(state.phase) ? "páginas" : "bloques";
         const chunks = state.totalChunks
-            ? ` · ${Number(state.completedChunks) || 0} de ${state.totalChunks} bloques`
+            ? ` · ${Number(state.completedChunks) || 0} de ${state.totalChunks} ${progressUnit}`
             : "";
         return `${phase}${progress ? ` · ${progress}%` : ""}${chunks}. Puedes cambiar de pestaña o expediente sin detenerlo.`;
     }
@@ -1373,7 +1400,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeCaseDocumentId === id) {
             updateCaseAnalysisPanel(data);
             if (caseReviewerStatus) {
-                caseReviewerStatus.textContent = `${data.ocr ? `OCR completado${data.ocrChunks ? ` en ${data.ocrChunks} bloques` : ""}. ` : ""}Análisis jurídico finalizado: ${classificationSummary}.`;
+                caseReviewerStatus.textContent = `${data.ocr ? `OCR local completado${data.ocrPages ? ` en ${data.ocrPages} páginas` : ""}. ` : ""}Análisis jurídico local finalizado: ${classificationSummary}.`;
             }
         }
         addNotification("Expediente clasificado y analizado", `${item.name}: ${classificationSummary}.`);
@@ -1389,7 +1416,26 @@ document.addEventListener("DOMContentLoaded", () => {
             analysisError: errorMessage
         });
         renderDocuments();
-        if (activeCaseDocumentId === id && caseReviewerStatus) caseReviewerStatus.textContent = errorMessage;
+        if (activeCaseDocumentId === id) {
+            if (caseReviewerStatus) caseReviewerStatus.textContent = errorMessage;
+            [
+                caseFindingNumber,
+                caseFindingYear,
+                caseFindingJurisdiction,
+                caseFindingAccused,
+                caseFindingArea,
+                caseFindingStage,
+                caseFindingUrgency
+            ].forEach(element => {
+                if (element?.textContent === "Analizando...") element.textContent = "No disponible";
+            });
+            if (caseImportantPoints) {
+                caseImportantPoints.innerHTML = `<li>${escapeHtml(errorMessage)}</li>`;
+            }
+            if (caseAnalysisReport) {
+                caseAnalysisReport.innerHTML = `<p>${escapeHtml(errorMessage)}</p><p>Usa <strong>Analizar</strong> para reintentar; no necesitas volver a cargar el expediente.</p>`;
+            }
+        }
         setDocumentsStatus(errorMessage, "error");
         announce(`No se pudo analizar el expediente. ${errorMessage}`);
     }
@@ -1402,7 +1448,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (existing?.timer) window.clearTimeout(existing.timer);
 
-        const monitor = { jobId, timer: null, checking: false, stopped: false, failures: 0, nextDelay: 2500, check: null };
+        const monitor = {
+            jobId,
+            timer: null,
+            checking: false,
+            stopped: false,
+            failures: 0,
+            nextDelay: 2500,
+            partialVersion: 0,
+            latestPartial: null,
+            check: null
+        };
         monitor.check = async () => {
             if (monitor.checking || monitor.stopped) return;
             if (monitor.timer) window.clearTimeout(monitor.timer);
@@ -1410,8 +1466,9 @@ document.addEventListener("DOMContentLoaded", () => {
             monitor.checking = true;
             let shouldContinue = true;
             try {
-                const query = currentEmail ? `?email=${encodeURIComponent(currentEmail)}` : "";
-                const response = await fetch(`${getApiBase()}/api/case-files/analysis-jobs/${encodeURIComponent(jobId)}${query}`, {
+                const query = new URLSearchParams({ partialVersion: String(monitor.partialVersion) });
+                if (currentEmail) query.set("email", currentEmail);
+                const response = await fetch(`${getApiBase()}/api/case-files/analysis-jobs/${encodeURIComponent(jobId)}?${query}`, {
                     cache: "no-store"
                 });
                 const job = await response.json().catch(() => ({}));
@@ -1434,6 +1491,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     analysisPhase: job.phase || item.analysisPhase,
                     analysisJobId: job.id
                 });
+                if (job.partialResult?.answer && Number(job.partialVersion) > monitor.partialVersion) {
+                    monitor.partialVersion = Number(job.partialVersion);
+                    monitor.latestPartial = job.partialResult;
+                    await storeDocumentAnalysis(id, job.partialResult);
+                    updateStoredDocument(id, {
+                        classification: job.partialResult.classification || item.classification || null
+                    });
+                    if (activeCaseDocumentId === id) updatePartialCaseAnalysisPanel(job.partialResult);
+                }
                 renderDocuments();
                 showAnalysisState(id, job);
                 if (job.status === "completed") {
@@ -1492,6 +1558,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
             if (["queued", "processing"].includes(item.analysisStatus) && item.analysisJobId) {
+                const storedPartial = await getDocumentAnalysis(id);
+                if (storedPartial?.partial) updatePartialCaseAnalysisPanel(storedPartial);
                 showAnalysisState(id, {
                     status: item.analysisStatus,
                     phase: item.analysisPhase,
