@@ -2389,6 +2389,8 @@ function buildMemorySearchQuery(userQuery, messages = []) {
 
 function buildGreetingAnswer() {
   return [
+    '¡Ehy! ¿Qué caso jurídico tenemos para hoy?',
+    '',
     'Hola, soy LEXIA. Estoy aquí para ayudarte a entender tu consulta legal paso a paso, con lenguaje claro y sin complicarte con tecnicismos innecesarios.',
     '',
     'Cuéntame qué pasó, qué documento tienes o qué duda quieres resolver. Si todavía no sabes cómo explicarlo, puedes empezar con algo simple como: "tengo un problema con mi contrato", "me despidieron", "quiero saber sobre alimentos" o "necesito preparar una demanda".',
