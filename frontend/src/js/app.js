@@ -1142,7 +1142,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     0
                 );
                 return `
-                    <details class="case-matter-folder" open role="treeitem">
+                    <details class="case-matter-folder" role="treeitem">
                         <summary>
                             <span class="finder-folder-icon finder-folder-matter" aria-hidden="true"></span>
                             <span class="case-folder-label">
@@ -1152,7 +1152,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         </summary>
                         <div class="case-year-list" role="group">
                             ${[...years.entries()].sort(([left], [right]) => right.localeCompare(left)).map(([year, cases]) => `
-                                <details class="case-year-folder" open role="treeitem">
+                                <details class="case-year-folder" role="treeitem">
                                     <summary>
                                         <span class="finder-folder-icon finder-folder-year" aria-hidden="true"></span>
                                         <span class="case-folder-label">
@@ -1162,7 +1162,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                     </summary>
                                     <div class="case-record-list" role="group">
                                         ${[...cases.values()].map(entry => `
-                                            <details class="case-record case-record-folder" open role="treeitem">
+                                            <details class="case-record case-record-folder" role="treeitem">
                                                 <summary class="case-record-main">
                                                     <span class="finder-folder-icon finder-folder-case" aria-hidden="true"></span>
                                                     <div class="case-folder-label">

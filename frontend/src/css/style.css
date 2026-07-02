@@ -1128,53 +1128,71 @@ summary:focus-visible,
     gap: 14px;
 }
 
-.case-folder-tree,
-.case-year-list,
-.case-record-list {
+.case-folder-tree {
     display: grid;
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    align-items: start;
+    gap: 26px 18px;
+    padding: 12px 8px 20px;
 }
 
 .case-matter-folder,
-.case-year-folder {
-    border: 1px solid #D9E4F3;
+.case-year-folder,
+.case-record-folder {
+    min-width: 0;
+}
+
+.case-matter-folder[open],
+.case-year-folder[open],
+.case-record-folder[open] {
+    grid-column: 1 / -1;
+    padding: 14px;
+    border: 1px solid #D7E4F4;
     border-radius: 14px;
-    background: #FFFFFF;
-    overflow: hidden;
-    box-shadow: 0 5px 16px rgba(36, 63, 105, 0.05);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    background: #F8FBFF;
+    box-shadow: inset 0 1px 0 #FFFFFF, 0 8px 22px rgba(34, 69, 116, 0.07);
+    animation: finder-folder-reveal 0.2s ease both;
 }
 
 .case-matter-folder[open] {
-    border-color: #BFD3F1;
-    box-shadow: 0 12px 30px rgba(41, 74, 122, 0.1);
+    background: #F4F8FD;
 }
 
-.case-matter-folder:not([open]):hover,
-.case-year-folder:not([open]):hover,
-.case-record-folder:not([open]):hover {
-    border-color: #AFC9EC;
-    transform: translateY(-1px);
+.case-matter-folder[open] > summary,
+.case-year-folder[open] > summary,
+.case-record-folder[open] > summary {
+    margin-left: 0;
 }
 
 .case-matter-folder > summary,
-.case-year-folder > summary {
-    min-height: 68px;
-    padding: 12px 18px;
+.case-year-folder > summary,
+.case-record-folder > summary {
+    width: 100%;
+    max-width: 156px;
+    min-height: 122px;
+    margin: 0 auto;
+    padding: 10px 8px;
     color: #17325F;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 14px;
+    justify-content: flex-start;
+    gap: 9px;
     cursor: pointer;
     list-style: none;
+    text-align: center;
     user-select: none;
-    transition: background 0.2s ease;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
 .case-matter-folder > summary:hover,
 .case-year-folder > summary:hover,
 .case-record-folder > summary:hover {
-    background: #F5F9FF;
+    border-color: #D8E6F7;
+    background: #EDF5FF;
+    transform: translateY(-2px);
 }
 
 .case-matter-folder > summary::-webkit-details-marker,
@@ -1183,35 +1201,12 @@ summary:focus-visible,
     display: none;
 }
 
-.case-matter-folder > summary::after,
-.case-year-folder > summary::after,
-.case-record-folder > summary::after {
-    width: 7px;
-    height: 7px;
-    margin-left: auto;
-    border-right: 2px solid #6E7F9B;
-    border-bottom: 2px solid #6E7F9B;
-    content: "";
-    transform: rotate(45deg);
-    transition: transform 0.22s ease, border-color 0.2s ease;
-}
-
-.case-matter-folder:not([open]) > summary::after,
-.case-year-folder:not([open]) > summary::after,
-.case-record-folder:not([open]) > summary::after {
-    transform: rotate(-45deg);
-}
-
-.case-matter-folder[open] > summary::after,
-.case-year-folder[open] > summary::after,
-.case-record-folder[open] > summary::after {
-    border-color: #2F6EDB;
-}
-
 .case-folder-label {
+    width: 100%;
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 3px;
+    justify-items: center;
 }
 
 .case-folder-label strong,
@@ -1220,30 +1215,35 @@ summary:focus-visible,
 }
 
 .case-folder-label strong {
+    width: 100%;
     overflow: hidden;
-    color: #102C59;
-    font-size: 14px;
+    color: #17233A;
+    font-size: 12px;
+    line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .case-matter-folder > summary .case-folder-label strong {
-    font-size: 16px;
+    font-size: 13px;
 }
 
 .case-folder-label small {
-    color: #71819A;
-    font-size: 10px;
-    font-weight: 600;
+    color: #718096;
+    font-size: 9px;
+    font-weight: 500;
 }
 
 .finder-folder-icon {
     position: relative;
-    width: 46px;
-    height: 36px;
-    flex: 0 0 46px;
-    filter: drop-shadow(0 5px 4px rgba(32, 91, 173, 0.18));
+    width: 72px;
+    height: 56px;
+    flex: 0 0 56px;
+    filter: drop-shadow(0 6px 5px rgba(27, 107, 174, 0.2));
     perspective: 80px;
+    background:
+        linear-gradient(135deg, #A8E6FF 0%, #76CCF5 100%) 4px 1px / 31px 16px no-repeat;
+    border-radius: 6px;
 }
 
 .finder-folder-icon::before,
@@ -1254,135 +1254,90 @@ summary:focus-visible,
 }
 
 .finder-folder-icon::before {
-    inset: 5px 1px 2px;
-    border-radius: 5px 6px 7px 7px;
-    background: linear-gradient(150deg, #8CC9FF 0%, #4DA3F2 56%, #2580DC 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    inset: 9px 1px 2px;
+    border-radius: 6px 7px 8px 8px;
+    background: linear-gradient(155deg, #92DEFF 0%, #48B9ED 57%, #20A0DE 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .finder-folder-icon::after {
     left: 0;
     right: 0;
     bottom: 0;
-    height: 25px;
-    border-radius: 5px 5px 7px 7px;
-    background: linear-gradient(165deg, #75BCFA 0%, #3290E7 65%, #2175CE 100%);
+    height: 39px;
+    border: 1px solid rgba(20, 143, 205, 0.16);
+    border-radius: 6px 6px 8px 8px;
+    background: linear-gradient(175deg, #83DBFF 0%, #3DB9ED 62%, #21A3E0 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
     transform-origin: bottom center;
     transition: transform 0.22s ease, background 0.22s ease;
 }
 
-.finder-folder-icon {
-    background:
-        linear-gradient(135deg, #9ED4FF 0%, #78BCF5 100%) 2px 1px / 21px 11px no-repeat;
-    border-radius: 5px;
-}
-
 details[open] > summary .finder-folder-icon::after {
-    background: linear-gradient(165deg, #9DD4FF 0%, #5BABF0 58%, #3185D6 100%);
-    transform: rotateX(-24deg) translateY(3px) scaleY(0.82);
+    background: linear-gradient(175deg, #A9E8FF 0%, #6ACCF2 62%, #3BADE0 100%);
+    transform: rotateX(-22deg) translateY(4px) scaleY(0.84);
 }
 
 details[open] > summary .finder-folder-icon {
-    filter: drop-shadow(0 7px 5px rgba(32, 91, 173, 0.2));
+    filter: drop-shadow(0 8px 6px rgba(27, 107, 174, 0.2));
 }
 
 .finder-folder-year {
-    width: 40px;
-    height: 31px;
-    flex-basis: 40px;
+    width: 66px;
+    height: 51px;
+    flex-basis: 51px;
 }
 
 .finder-folder-case {
-    width: 38px;
-    height: 30px;
-    flex-basis: 38px;
+    width: 62px;
+    height: 48px;
+    flex-basis: 48px;
 }
 
-.case-year-list {
-    position: relative;
-    padding: 2px 16px 16px 70px;
+.case-year-list,
+.case-record-list {
+    margin-top: 10px;
+    padding: 14px;
+    border-top: 1px solid #DCE7F4;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+    align-items: start;
+    gap: 22px 16px;
     animation: finder-folder-reveal 0.2s ease both;
-}
-
-.case-year-list::before,
-.case-record-list::before {
-    position: absolute;
-    top: 0;
-    bottom: 18px;
-    left: 38px;
-    width: 1px;
-    background: #D5E2F3;
-    content: "";
-}
-
-.case-year-folder {
-    border-radius: 12px;
-    background: #FBFDFF;
-    box-shadow: none;
-}
-
-.case-year-folder > summary {
-    min-height: 60px;
-    padding: 10px 14px;
 }
 
 .case-record-list {
-    position: relative;
-    padding: 2px 14px 14px 58px;
-    animation: finder-folder-reveal 0.2s ease both;
-}
-
-.case-record-list::before {
-    left: 28px;
-    bottom: 16px;
+    background: rgba(255, 255, 255, 0.58);
+    border-radius: 10px;
 }
 
 .case-record {
-    border: 1px solid #DDE7F4;
-    border-radius: 11px;
-    background: #FFFFFF;
-    overflow: hidden;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.case-record[open] {
-    border-color: #C6D9F2;
-    box-shadow: 0 7px 18px rgba(40, 73, 116, 0.08);
+    min-width: 0;
 }
 
 .case-record-main {
-    min-height: 58px;
-    padding: 10px 13px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
-}
-
-.case-record-main strong,
-.case-record-main small {
-    display: block;
+    min-height: 118px;
 }
 
 .case-record-main strong {
-    color: #102A56;
-    font-size: 13px;
+    font-size: 11px;
 }
 
 .case-record-main small {
-    margin-top: 4px;
-    color: #687B98;
-    font-size: 10px;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .case-record-documents {
-    margin: 0 13px 13px 63px;
-    padding-top: 11px;
+    margin-top: 10px;
+    padding: 14px;
     border-top: 1px solid #E8EEF6;
     display: grid;
-    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 8px;
     animation: finder-folder-reveal 0.18s ease both;
 }
 
@@ -1391,7 +1346,7 @@ details[open] > summary .finder-folder-icon {
     padding: 8px 10px;
     border: 1px solid transparent;
     border-radius: 8px;
-    background: #F5F8FC;
+    background: #FFFFFF;
     color: #274568;
     display: grid;
     grid-template-columns: 20px minmax(0, 1fr) auto;
@@ -1404,6 +1359,7 @@ details[open] > summary .finder-folder-icon {
     border-color: #CFE0F6;
     background: #EAF2FF;
     color: #17468F;
+    transform: translateY(-1px);
 }
 
 .case-record-documents button span {
@@ -2738,25 +2694,31 @@ details[open] > summary .finder-folder-icon {
         grid-template-columns: 1fr;
     }
 
+    .case-folder-tree,
     .case-year-list,
     .case-record-list {
-        padding: 0 10px 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px 10px;
+        padding: 10px 4px;
     }
 
-    .case-year-list::before,
-    .case-record-list::before {
-        display: none;
+    .case-matter-folder[open],
+    .case-year-folder[open],
+    .case-record-folder[open] {
+        padding: 10px;
     }
 
     .case-matter-folder > summary,
-    .case-year-folder > summary {
-        padding-right: 12px;
-        padding-left: 12px;
+    .case-year-folder > summary,
+    .case-record-folder > summary {
+        min-height: 112px;
+        padding: 8px 4px;
     }
 
     .case-record-documents {
-        margin-right: 10px;
-        margin-left: 10px;
+        grid-template-columns: 1fr;
+        margin: 8px 0 0;
+        padding: 10px 0 0;
     }
 
     .case-record-documents button {
