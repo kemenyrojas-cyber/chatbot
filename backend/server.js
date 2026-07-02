@@ -3684,12 +3684,12 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
   if (!primary || !legalBadges.length) {
     return [
       modeId === 'norm_request'
-        ? `Para darte artículos sobre **${topicLabel}**, necesito una fuente normativa exacta.`
-        : `Tienes razón en pedir la base. En este momento no tengo un artículo exacto verificado para **${topicLabel}**.`,
+        ? `Entiendo tu pedido de norma para **${topicLabel}**. No voy a inventar un artículo sin verificarlo.`
+        : `Entiendo tu pedido de base legal para **${topicLabel}**.`,
       '',
       'No voy a inventar el número de artículo. Conviene verificarlo en El Peruano, SPIJ o la fuente oficial correspondiente.',
       '',
-      '¿Quieres que lo tratemos como búsqueda de norma exacta y me indiques si tienes el código, ley o documento a revisar?'
+      'Dime qué ocurrió, en qué ámbito o qué tipo de situación buscas resolver, y yo buscaré la norma más aplicable.'
     ].join('\n');
   }
 
@@ -4331,7 +4331,7 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     return [
       `Entiendo: **${String(query || '').replace(/\s+/g, ' ').trim()}**.`,
       '',
-      buildSingleLegalQuestion(intent, reasoningProfile, query)
+      buildUnaskedLegalQuestion(intent, reasoningProfile, query, memoryMessages)
     ].filter(Boolean).join('\n');
   }
 
@@ -4341,7 +4341,14 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
     if (guidance.length) {
       lines.push(guidance.slice(0, shortInput ? 1 : 2).join(' '));
     } else {
-      lines.push(`Veo que esto cae en ${intent?.area?.label || 'un tema jurídico'}, pero necesito un dato más para aterrizarlo bien.`);
+      const fallbackStatement = intent?.area?.label && intent?.area?.label !== 'Área no determinada'
+        ? `Veo que esto entra en ${intent.area.label}.`
+        : 'Veo que esto es un asunto jurídico que requiere un análisis concreto.';
+      lines.push(fallbackStatement);
+      if (!shortInput) {
+        lines.push('');
+        lines.push('Para darte una orientación más útil, dime más sobre el hecho principal y el contexto específico.');
+      }
     }
 
     if (includeSources && legalBadges.length) {
@@ -4365,11 +4372,10 @@ function buildConversationalLegalAnswer(query, intent, results, reasoningProfile
       lines.push(`${practical.join('. ')}.`);
     }
 
-    if ((intent?.interpretation?.dialogue?.responsePlan?.maxQuestions ?? 1) > 0) {
+    const nextQuestion = buildUnaskedLegalQuestion(intent, reasoningProfile, query, memoryMessages);
+    if ((intent?.interpretation?.dialogue?.responsePlan?.maxQuestions ?? 1) > 0 && nextQuestion) {
       lines.push('');
-      lines.push(normalizedQuery.includes('beneficios sociales')
-        ? '¿Sigues trabajando ahí o ya terminó la relación laboral?'
-        : buildSingleLegalQuestion(intent, reasoningProfile, query));
+      lines.push(nextQuestion);
     }
   }
 
@@ -4461,10 +4467,13 @@ function buildMemoryAwareLocalAnswer(query, intent, results, reasoningProfile, g
   }
 
   if ((intent?.interpretation?.dialogue?.responsePlan?.maxQuestions ?? 1) > 0) {
-    lines.push('');
-    lines.push(isSentenceStage
+    const nextQuestion = isSentenceStage
       ? '¿La fecha del miércoles es para **lectura de sentencia** y ya tiene abogado asignado o particular?'
-      : buildSingleLegalQuestion(intent, reasoningProfile, query));
+      : buildUnaskedLegalQuestion(intent, reasoningProfile, query, normalizedMemory);
+    if (nextQuestion) {
+      lines.push('');
+      lines.push(nextQuestion);
+    }
   }
 
   const sourceSummary = buildSourceSummary(results, intent, 2);
