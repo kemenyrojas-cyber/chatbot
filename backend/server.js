@@ -1573,8 +1573,36 @@ async function searchTrustedLegalWebForChat(query = '', options = {}) {
   const queryTerms = getQueryTerms(query).filter(term => term.length >= 4).slice(0, 12);
   const retrievalTopic = String(options.intent?.topic?.label || '').trim();
   const normalizedRetrievalTopic = normalizeText(retrievalTopic);
+  const directOfficialCandidates = [];
+  if (
+    normalizedRetrievalTopic.includes('codigo civil')
+    || normalizeText(query).includes('codigo civil')
+  ) {
+    directOfficialCandidates.push(
+      {
+        url: 'https://diariooficial.elperuano.pe/Normas/obtenerDocumento?idNorma=60',
+        title: 'Código Civil actualizado',
+        host: 'diariooficial.elperuano.pe',
+        relevance: 20,
+        provider: 'official-catalog'
+      },
+      {
+        url: 'https://www.gob.pe/institucion/minjus/informes-publicaciones/5060551-codigo-civil-decreto-legislativo-n-295-decimo-cuarta-edicion-oficial-actualizado-al-1-de-agosto-de-2014',
+        title: 'Código Civil - Decreto Legislativo N.° 295',
+        host: 'gob.pe',
+        relevance: 15,
+        provider: 'official-catalog'
+      }
+    );
+  }
+  const fetchCandidates = [...directOfficialCandidates, ...discovery.candidates]
+    .reduce((items, candidate) => {
+      if (!items.some(existing => existing.url === candidate.url)) items.push(candidate);
+      return items;
+    }, [])
+    .slice(0, Math.max(limit * 2, 4));
   const settled = await Promise.allSettled(
-    discovery.candidates.slice(0, Math.max(limit * 2, 4)).map(async candidate => {
+    fetchCandidates.map(async candidate => {
       const source = await fetchLegalWebSource(candidate.url);
       const evaluation = evaluateLegalContent(source.text, source.title, candidate.url);
       if (!evaluation.isLegal) return null;
@@ -1626,7 +1654,12 @@ async function searchTrustedLegalWebForChat(query = '', options = {}) {
       .sort((a, b) => Number(b.relevance || 0) - Number(a.relevance || 0))
       .slice(0, limit),
     errors,
-    providers: discovery.providers
+    providers: [
+      ...(directOfficialCandidates.length
+        ? [{ provider: 'official-catalog', skipped: false, results: directOfficialCandidates.length }]
+        : []),
+      ...discovery.providers
+    ]
   };
 }
 
