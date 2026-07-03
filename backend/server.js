@@ -5093,8 +5093,8 @@ async function callOllamaChat(messages, options = {}) {
 }
 
 function configuredProviderOrder() {
-  if (preferGroq) return ['groq', 'cerebras', 'openai', 'grok', 'ollama'];
   if (preferCerebras) return ['cerebras', 'groq', 'openai', 'grok', 'ollama'];
+  if (preferGroq) return ['groq', 'cerebras', 'openai', 'grok', 'ollama'];
   if (preferGrok) return ['grok', 'groq', 'cerebras', 'openai', 'ollama'];
   if (preferOllama) return ['ollama', 'groq', 'cerebras', 'grok', 'openai'];
   return ['openai', 'groq', 'cerebras', 'grok', 'ollama'];
