@@ -3040,6 +3040,45 @@ function buildCaseUpdateAnalysis(query, intent, results = [], reasoningProfile =
   return lines;
 }
 
+function buildEvidenceImpactAnswer(query, intent, memoryMessages = []) {
+  const normalizedQuery = normalizeText(query);
+  const asksImpact = /\b(que cambia|en que cambia|para que sirve|de que sirve|que aporta|que demuestra|que valor tiene|sirve como prueba)\b/.test(normalizedQuery);
+  if (!asksImpact) return '';
+
+  const recentUserContext = normalizeMemoryMessages(memoryMessages)
+    .filter(message => message.role === 'user')
+    .slice(-2)
+    .map(message => message.content)
+    .join(' ');
+  const evidenceContext = normalizeText(`${recentUserContext} ${query}`);
+  const isLabor = intent?.area?.id === 'derecho_laboral'
+    || /\b(despido|empleador|supervisor|trabajo|laboral)\b/.test(evidenceContext);
+
+  if (/\baudio|grabacion|grabación\b/.test(evidenceContext)) {
+    return [
+      isLabor
+        ? 'El audio cambia el soporte del caso: **ya no dependes únicamente de contar que el despido fue verbal**. Puede ayudar a acreditar quién comunicó el cese, las palabras utilizadas, la fecha y si la decisión vino del empleador o de un supervisor con autoridad.'
+        : 'El audio aporta una evidencia directa de la conversación: puede ayudar a establecer **quién habló, qué dijo y en qué contexto**, aunque debe contrastarse con los demás hechos.',
+      '',
+      'No prueba automáticamente todo el caso. Su fuerza dependerá de que pueda identificarse a las voces, conservarse la conversación completa y relacionarse con mensajes, fechas y otros documentos. **Guarda el archivo original**, no lo recortes ni lo edites, conserva sus metadatos y prepara una copia para revisión sin alterar el original.',
+      '',
+      isLabor
+        ? 'En concreto, úsalo junto con los mensajes del supervisor, contrato, boletas y registros de asistencia para sostener que existió una decisión de cese y cómo fue comunicada.'
+        : 'En concreto, ordénalo junto con los mensajes y documentos que confirmen la misma secuencia de hechos.'
+    ].join('\n');
+  }
+
+  if (/\b(mensaje|chat|correo|captura|video|documento|carta|comprobante|voucher|testigo|prueba)\b/.test(evidenceContext)) {
+    return [
+      'Esa prueba cambia el análisis porque permite pasar de una afirmación aislada a un hecho que puede **corroborarse con contenido, fecha, autor y contexto**.',
+      '',
+      'No garantiza por sí sola un resultado favorable. Hay que conservar el original completo, verificar cómo se obtuvo y relacionarlo con la cronología y las demás pruebas. Lo útil es identificar exactamente qué hecho demuestra y qué parte del caso todavía no cubre.'
+    ].join('\n');
+  }
+
+  return '';
+}
+
 function isConversationContinuation(query, memoryMessages = []) {
   const normalized = normalizeText(query);
   const hasMemory = normalizeMemoryMessages(memoryMessages).length > 0;
@@ -4249,6 +4288,8 @@ function buildModeAwareAnswer(query, intent, results = [], reasoningProfile = nu
     if (exactArticleAnswer) return exactArticleAnswer;
     return buildSourceOrNormAnswer(query, intent, scopedResults, modeId);
   }
+  const evidenceImpactAnswer = buildEvidenceImpactAnswer(query, intent, memoryMessages);
+  if (evidenceImpactAnswer) return evidenceImpactAnswer;
   if (
     intent?.topic?.id === 'discriminacion'
     && ['case_start', 'follow_up', 'new_fact'].includes(modeId)

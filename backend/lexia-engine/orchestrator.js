@@ -306,6 +306,12 @@ function createLexiaEngine(deps) {
       existingCaseFile: options.caseFile
     });
     const caseFileContext = buildCaseFileContext(caseFile);
+    const candidateContext = {
+      caseFile,
+      conversationMemory,
+      userQuery,
+      dialogue: intent?.interpretation?.dialogue || {}
+    };
 
     if (brain.isGreetingOnly(userQuery)) {
       return {
@@ -384,9 +390,8 @@ function createLexiaEngine(deps) {
         id: 'local-synthesis',
         answer: localSynthesis
       }, {
-        caseFile,
+        ...candidateContext,
         results: ragContext.results,
-        dialogue: intent?.interpretation?.dialogue || {}
       });
       return {
         answer: localSynthesis,
@@ -539,9 +544,8 @@ function createLexiaEngine(deps) {
         id: 'local-synthesis',
         answer: localSynthesis
       }, {
-        caseFile,
+        ...candidateContext,
         results: ragContext.results,
-        dialogue: intent?.interpretation?.dialogue || {}
       });
       return {
         answer: localSynthesis,
@@ -604,9 +608,8 @@ function createLexiaEngine(deps) {
           answer: localSynthesis
         }
       ], {
-        caseFile,
+        ...candidateContext,
         results: ragContext.results,
-        dialogue: intent?.interpretation?.dialogue || {}
       });
       return {
         answer: localSynthesis,
@@ -668,9 +671,8 @@ function createLexiaEngine(deps) {
         answer: localSynthesis
       }
     ], {
-      caseFile,
+      ...candidateContext,
       results: ragContext.results,
-      dialogue: intent?.interpretation?.dialogue || {}
     });
     const selectedAnswer = selection.selected?.answer || providerResult.answer;
     const selectedProvider = selection.selected?.id === 'local-synthesis' ? 'local' : providerResult.provider;

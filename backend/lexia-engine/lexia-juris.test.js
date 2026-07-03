@@ -330,6 +330,42 @@ test('LEXIA-SCORE descarta el sobreinterrogatorio cuando ya corresponde analizar
   assert.ok(selection.candidates.find(item => item.id === 'interrogation').score < selection.candidates.find(item => item.id === 'analysis').score);
 });
 
+test('LEXIA-SCORE evita devolver nuevamente una respuesta anterior', () => {
+  const previousAnswer = 'Primero ordena los hechos, reúne los mensajes y verifica la fecha. Después define si buscas reclamar o denunciar.';
+  const selection = selectBestCandidate([
+    {
+      id: 'local-repetitive',
+      answer: previousAnswer
+    },
+    {
+      id: 'provider-current',
+      answer: 'El audio que acabas de mencionar puede ayudar a acreditar el contenido de la conversación. Conserva el archivo original y sus datos de fecha antes de decidir la vía legal.'
+    }
+  ], {
+    caseFile: buildCaseFile({
+      userQuery: 'También tengo el audio original.',
+      intent,
+      role: 'usuario'
+    }),
+    results: [],
+    dialogue: {
+      currentFocus: 'audio original',
+      responsePlan: { maxQuestions: 0, maxParagraphs: 3 }
+    },
+    conversationMemory: [
+      { role: 'user', content: '¿Qué hago con este problema?' },
+      { role: 'assistant', content: previousAnswer },
+      { role: 'user', content: 'También tengo el audio original.' }
+    ]
+  });
+
+  assert.equal(selection.selected.id, 'provider-current');
+  assert.ok(
+    selection.candidates.find(item => item.id === 'local-repetitive').score
+      < selection.candidates.find(item => item.id === 'provider-current').score
+  );
+});
+
 test('el análisis dual conserva apoyo, riesgos y vacíos probatorios', () => {
   const caseFile = buildCaseFile({
     userQuery: 'Me despidieron y tengo una carta.',

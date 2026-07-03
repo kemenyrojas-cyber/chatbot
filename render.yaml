@@ -10,9 +10,9 @@ services:
       - key: PGSSLMODE
         value: require
       - key: AI_PROVIDER
-        value: local
+        value: groq
       - key: LEXIA_PROVIDER_STRATEGY
-        value: ensemble
+        value: fallback
       - key: AI_PROVIDER_TIMEOUT_MS
         value: "45000"
       - key: LEXIA_PYTHON_BRAIN_ENABLED

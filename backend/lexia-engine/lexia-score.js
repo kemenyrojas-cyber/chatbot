@@ -104,6 +104,38 @@ function termCoverage(answer, values = []) {
   return uniqueTerms.filter(term => text.includes(term)).length / uniqueTerms.length;
 }
 
+const similarityStopWords = new Set([
+  'para', 'como', 'pero', 'porque', 'cuando', 'donde', 'desde', 'hasta',
+  'este', 'esta', 'esto', 'estos', 'estas', 'sobre', 'entre', 'tambien',
+  'tiene', 'tienen', 'puede', 'pueden', 'debe', 'deben', 'seria', 'hacer',
+  'ahora', 'caso', 'usuario', 'lexia', 'usted', 'tienes', 'tengo',
+  'con', 'del', 'las', 'los', 'una', 'uno', 'que', 'por', 'sin', 'sus',
+  'más', 'mas', 'muy', 'hay', 'sea', 'son', 'fue', 'han'
+]);
+
+function similarityTerms(value = '') {
+  return normalizeText(value)
+    .split(' ')
+    .filter(term => term.length >= 4 && !similarityStopWords.has(term));
+}
+
+function answerSimilarity(left = '', right = '') {
+  const leftTerms = new Set(similarityTerms(left));
+  const rightTerms = new Set(similarityTerms(right));
+  if (!leftTerms.size || !rightTerms.size) return 0;
+  const overlap = [...leftTerms].filter(term => rightTerms.has(term)).length;
+  return (2 * overlap) / (leftTerms.size + rightTerms.size);
+}
+
+function maximumPreviousAnswerSimilarity(answer = '', messages = []) {
+  return (Array.isArray(messages) ? messages : [])
+    .filter(message => message?.role === 'assistant')
+    .slice(-4)
+    .reduce((maximum, message) => (
+      Math.max(maximum, answerSimilarity(answer, message?.content || ''))
+    ), 0);
+}
+
 function questionSlot(value = '') {
   const text = normalizeText(value);
   const slots = [
@@ -130,6 +162,11 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
   const paragraphCount = answer.split(/\n\s*\n/).filter(Boolean).length;
   const questionCount = (answer.match(/[?]/g) || []).length;
   const focusCoverage = dialogue.currentFocus ? termCoverage(answer, [dialogue.currentFocus]) : 0.65;
+  const previousAnswerSimilarity = maximumPreviousAnswerSimilarity(
+    answer,
+    context.conversationMemory
+  );
+  const substantiallyRepeatsAnswer = previousAnswerSimilarity >= 0.68;
   const avoidedQuestion = normalizeText(responsePlan.avoidQuestion || '');
   const repeatsAnsweredQuestion = Boolean(avoidedQuestion && normalizeText(answer).includes(avoidedQuestion));
   const answerQuestions = answer.match(/[^¿?]*\?/g) || [];
@@ -193,6 +230,7 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
       - (questionWithoutAnalysis ? 0.3 : 0)
       - (revealsInternalProcess ? 0.45 : 0)
       - (unwantedSourceBlock ? 0.2 : 0)
+      - (substantiallyRepeatsAnswer ? 0.45 : previousAnswerSimilarity >= 0.55 ? 0.2 : 0)
     ),
     hallucinationRate: unsupportedArticles.length ? 1 : 0,
     contradictionRate: clamp(Math.max(
@@ -200,7 +238,8 @@ function estimateCandidateMetrics(candidate = {}, context = {}) {
       repeatsAnsweredQuestion || repeatsCoveredQuestion ? 0.8 : 0,
       exceedsQuestionBudget ? 0.7 : 0,
       questionWithoutAnalysis ? 0.7 : 0,
-      missesCorrection ? 0.7 : 0
+      missesCorrection ? 0.7 : 0,
+      substantiallyRepeatsAnswer ? 0.75 : 0
     )),
     severeError: unsupportedArticles.length || revealsInternalProcess ? 1 : clamp(Number(candidate.severeError || 0))
   };
@@ -249,6 +288,8 @@ module.exports = {
   DEFAULT_WEIGHTS,
   PROFILE_WEIGHTS,
   calculateLexiaScore,
+  answerSimilarity,
+  maximumPreviousAnswerSimilarity,
   estimateCandidateMetrics,
   evaluateCandidate,
   selectBestCandidate
