@@ -1174,7 +1174,8 @@ function buildRagContext(query, structuredResults = [], limit = 8) {
     content: [item.contenido || item.resumen || '', buildIntelligenceText(item)].filter(Boolean).join('\n'),
     intelligence: item.inteligencia || {},
     relevance: item.relevance || 0,
-    liveWeb: item.liveWeb === true
+    liveWeb: item.liveWeb === true,
+    retrievalTopic: item.retrievalTopic || ''
   }));
   const normalizedDocuments = documentResults
     .filter(isCompatibleWithCurrentScope)

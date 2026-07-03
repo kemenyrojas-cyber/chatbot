@@ -178,12 +178,14 @@ test('el RAG prioriza una fuente web oficial recuperada sobre doctrina históric
       url: 'https://www.gob.pe/institucion/minjus/informes-publicaciones/codigo-civil',
       contenido: 'Publicación oficial del Código Civil peruano.',
       relevance: 50,
-      liveWeb: true
+      liveWeb: true,
+      retrievalTopic: 'Código Civil'
     }
   ], 2);
 
   assert.equal(rag.results[0].title, 'Código Civil peruano');
   assert.equal(rag.results[0].liveWeb, true);
+  assert.equal(rag.results[0].retrievalTopic, 'Código Civil');
 });
 
 test('una consulta laboral excluye doctrina civil aunque la confianza del área sea media', () => {

@@ -122,6 +122,7 @@ function resultMatchesNormativeSource(item = {}, normativeSource = null) {
     item.module,
     item.matter,
     item.url,
+    item.liveWeb ? item.retrievalTopic : '',
     item.liveWeb ? item.excerpt : '',
     item.liveWeb ? String(item.content || '').slice(0, 4000) : ''
   ].filter(Boolean).join(' '));

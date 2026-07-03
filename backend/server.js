@@ -1571,6 +1571,8 @@ async function searchTrustedLegalWebForChat(query = '', options = {}) {
     limit: Math.max(limit * 2, 4)
   });
   const queryTerms = getQueryTerms(query).filter(term => term.length >= 4).slice(0, 12);
+  const retrievalTopic = String(options.intent?.topic?.label || '').trim();
+  const normalizedRetrievalTopic = normalizeText(retrievalTopic);
   const settled = await Promise.allSettled(
     discovery.candidates.slice(0, Math.max(limit * 2, 4)).map(async candidate => {
       const source = await fetchLegalWebSource(candidate.url);
@@ -1579,6 +1581,11 @@ async function searchTrustedLegalWebForChat(query = '', options = {}) {
       const normalizedContent = normalizeText(`${source.title} ${source.text.slice(0, 24000)}`);
       const matchingTerms = queryTerms.filter(term => normalizedContent.includes(term)).length;
       if (queryTerms.length >= 2 && matchingTerms === 0) return null;
+      if (
+        normalizedRetrievalTopic
+        && /\b(codigo|ley|decreto|constitucion|reglamento|resolucion)\b/.test(normalizedRetrievalTopic)
+        && !normalizedContent.includes(normalizedRetrievalTopic)
+      ) return null;
       const host = new URL(candidate.url).hostname.replace(/^www\./, '');
       const content = String(source.text || '').replace(/\s+/g, ' ').trim().slice(0, 14000);
       const module = /\b(ley|decreto|codigo|código|constitucion|constitución|reglamento|articulo|artículo)\b/i
@@ -1595,7 +1602,8 @@ async function searchTrustedLegalWebForChat(query = '', options = {}) {
         resumen: content.slice(0, 900),
         contenido: content,
         relevance: Math.min(100, 35 + matchingTerms * 10 + Number(candidate.relevance || 0) * 5),
-        liveWeb: true
+        liveWeb: true,
+        retrievalTopic
       };
     })
   );
