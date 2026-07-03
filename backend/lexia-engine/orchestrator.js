@@ -122,8 +122,8 @@ function resultMatchesNormativeSource(item = {}, normativeSource = null) {
     item.module,
     item.matter,
     item.url,
-    item.excerpt,
-    String(item.content || '').slice(0, 4000)
+    item.liveWeb ? item.excerpt : '',
+    item.liveWeb ? String(item.content || '').slice(0, 4000) : ''
   ].filter(Boolean).join(' '));
   return pattern.test(metadata);
 }

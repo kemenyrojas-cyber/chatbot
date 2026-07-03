@@ -140,10 +140,21 @@ test('una fuente web normativa puede identificarse por su contenido recuperado',
     source: 'gob.pe',
     module: 'normativa',
     url: 'https://www.gob.pe/institucion/minjus/informes-publicaciones/ejemplo',
-    content: 'Esta publicación contiene y explica disposiciones del Código Civil peruano.'
+    content: 'Esta publicación contiene y explica disposiciones del Código Civil peruano.',
+    liveWeb: true
   }, {
     id: 'codigo_civil'
   }), true);
+  assert.equal(resultMatchesNormativeSource({
+    id: 'old-doctrine',
+    title: 'Principios de Derecho Procesal Civil',
+    source: 'Doctrina italiana de 1922',
+    module: 'doctrina',
+    matter: 'Derecho Procesal Civil',
+    content: 'El tratado menciona incidentalmente algunas reglas de un código civil extranjero.'
+  }, {
+    id: 'codigo_civil'
+  }), false);
 });
 
 test('una consulta laboral excluye doctrina civil aunque la confianza del área sea media', () => {
