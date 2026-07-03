@@ -23,6 +23,7 @@ const { createKnowledgeEngine } = require('./knowledge');
 
 const {
   buildSourceSummary,
+  buildRagContext,
   splitTextForLegalKnowledge,
   inferLegalKnowledgeModule
 } = createKnowledgeEngine({
@@ -155,6 +156,34 @@ test('una fuente web normativa puede identificarse por su contenido recuperado',
   }, {
     id: 'codigo_civil'
   }), false);
+});
+
+test('el RAG prioriza una fuente web oficial recuperada sobre doctrina histórica', () => {
+  const rag = buildRagContext('Código Civil peruano fuente oficial', [
+    {
+      id: 'historical-doctrine',
+      titulo: 'Principios de Derecho Procesal Civil',
+      fuente: 'Doctrina italiana de 1922',
+      modulo: 'doctrina',
+      materia: 'Derecho Procesal Civil',
+      contenido: 'Tratado histórico con referencias generales al derecho civil.',
+      relevance: 500
+    },
+    {
+      id: 'official-live-web',
+      titulo: 'Código Civil peruano',
+      fuente: 'gob.pe',
+      modulo: 'normativa',
+      materia: 'Derecho Civil',
+      url: 'https://www.gob.pe/institucion/minjus/informes-publicaciones/codigo-civil',
+      contenido: 'Publicación oficial del Código Civil peruano.',
+      relevance: 50,
+      liveWeb: true
+    }
+  ], 2);
+
+  assert.equal(rag.results[0].title, 'Código Civil peruano');
+  assert.equal(rag.results[0].liveWeb, true);
 });
 
 test('una consulta laboral excluye doctrina civil aunque la confianza del área sea media', () => {
