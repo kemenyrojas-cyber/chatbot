@@ -133,6 +133,19 @@ test('la recuperación normativa no mezcla Constitución, Código Penal y Códig
   }
 });
 
+test('una fuente web normativa puede identificarse por su contenido recuperado', () => {
+  assert.equal(resultMatchesNormativeSource({
+    id: 'web-source',
+    title: 'Publicación jurídica oficial',
+    source: 'gob.pe',
+    module: 'normativa',
+    url: 'https://www.gob.pe/institucion/minjus/informes-publicaciones/ejemplo',
+    content: 'Esta publicación contiene y explica disposiciones del Código Civil peruano.'
+  }, {
+    id: 'codigo_civil'
+  }), true);
+});
+
 test('una consulta laboral excluye doctrina civil aunque la confianza del área sea media', () => {
   const rag = {
     context: 'contexto mixto',
@@ -482,6 +495,111 @@ test('el orquestador expone expediente, análisis dual y selección de calidad',
   assert.match(capturedProviderMessages[0].content, /Está prohibido responder solo con acuse de recibo y otra pregunta/);
   assert.match(capturedProviderMessages[0].content, /no cierres con otra pregunta/);
   assert.match(capturedProviderMessages[0].content, /No los reformules con otras palabras/);
+});
+
+test('una consulta normativa insuficiente amplía el RAG a la web y llega al proveedor', async () => {
+  let externalSearches = 0;
+  let providerCalls = 0;
+  const normativeIntent = {
+    ...intent,
+    type: { id: 'consulta_normativa', label: 'Consulta normativa', confidence: 'alta' },
+    area: { id: 'derecho_civil', label: 'Derecho Civil', confidence: 'alta' },
+    topic: { id: 'codigo_civil', label: 'Código Civil', confidence: 'alta' },
+    conversationMode: { id: 'norm_request', label: 'Pedido de norma', deterministic: true },
+    interpretation: {
+      normativeSource: { id: 'codigo_civil', label: 'Código Civil' },
+      dialogue: {
+        speechAct: 'question',
+        currentFocus: 'Código Civil',
+        responsePlan: { maxQuestions: 0, includeSources: true }
+      }
+    }
+  };
+  const webResult = {
+    id: 'web:codigo-civil',
+    titulo: 'Código Civil del Perú',
+    fuente: 'gob.pe',
+    modulo: 'normativa',
+    materia: 'Derecho Civil',
+    url: 'https://www.gob.pe/codigo-civil',
+    resumen: 'Texto oficial del Código Civil peruano.',
+    contenido: 'El Código Civil regula relaciones y derechos civiles en el Perú.',
+    relevance: 90
+  };
+  const engine = createLexiaEngine({
+    brain: {
+      interpret: async () => normativeIntent,
+      mergeIntent: current => current,
+      buildInterpretationSearchQuery: query => query,
+      isGreetingOnly: () => false,
+      isConversationalFollowUp: () => false,
+      isShortUserInput: () => true
+    },
+    memory: {
+      normalizeMessages: messages => messages,
+      buildSearchQuery: query => query,
+      buildContext: () => ''
+    },
+    knowledge: {
+      ensureAvailable: async () => {},
+      search: () => [],
+      searchExternal: async () => {
+        externalSearches += 1;
+        return { results: [webResult], errors: [], providers: [{ provider: 'mock-web', results: 1 }] };
+      },
+      evaluateSufficiency: (_query, results) => ({
+        localSearchStatus: results.length ? 'strong' : 'empty',
+        shouldUseExternalSources: !results.length,
+        reason: results.length ? 'fuente encontrada' : 'sin resultados',
+        metrics: { resultCount: results.length, topRelevance: results[0]?.relevance || 0, genericRatio: 0 }
+      }),
+      logSufficiency: () => {},
+      buildRagContext: (_query, results) => ({
+        context: results.length ? 'CONTEXTO RAG: Código Civil desde gob.pe.' : '',
+        results,
+        sources: results.map((item, index) => ({ id: `R${index + 1}`, title: item.titulo, url: item.url }))
+      })
+    },
+    reasoner: {
+      buildProfile: () => ({ legalIssues: ['alcance del Código Civil'], risks: [], nextSteps: [] }),
+      buildContext: () => '',
+      buildGraph: () => ({}),
+      buildGraphContext: () => ''
+    },
+    response: {
+      buildSystemPrompt: () => 'Responde usando fuentes verificadas.',
+      buildGreetingAnswer: () => 'Hola.',
+      buildFollowUpClarificationAnswer: () => 'Aclara el caso.',
+      buildLocalAnswer: () => 'No pude verificar una fuente específica.'
+    },
+    providers: {
+      generate: async () => {
+        providerCalls += 1;
+        return {
+          answer: 'El Código Civil regula relaciones privadas y debe aplicarse según el asunto concreto planteado.',
+          provider: 'mock',
+          model: 'mock-model',
+          source: 'Mock',
+          providerErrors: []
+        };
+      }
+    },
+    config: {
+      temperature: () => 0.2,
+      providerConfig: () => ({}),
+      externalProviderRequested: () => true
+    }
+  });
+
+  const result = await engine.runLegalIntelligence({
+    userQuery: 'Explícame el Código Civil.',
+    role: 'usuario'
+  });
+
+  assert.equal(externalSearches, 1);
+  assert.equal(providerCalls, 1);
+  assert.equal(result.metadata.localSearchEvaluation.externalRetrieval.results, 1);
+  assert.equal(result.metadata.engineStage, 'providers:answer');
 });
 
 test('el orquestador sintetiza todas las consultas de apoyo antes de responder', async () => {

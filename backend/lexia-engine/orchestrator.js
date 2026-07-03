@@ -121,7 +121,9 @@ function resultMatchesNormativeSource(item = {}, normativeSource = null) {
     item.source,
     item.module,
     item.matter,
-    item.url
+    item.url,
+    item.excerpt,
+    String(item.content || '').slice(0, 4000)
   ].filter(Boolean).join(' '));
   return pattern.test(metadata);
 }
@@ -361,12 +363,58 @@ function createLexiaEngine(deps) {
     const dialogueMode = !['source_request', 'norm_request'].includes(conversationModeId)
       || conversationMemory.length > 0
       || brain.isShortUserInput(userQuery);
-    const ragContext = filterRagContextForIntent(
+    let ragContext = filterRagContextForIntent(
       knowledge.buildRagContext(interpretationSearchQuery, localResults, dialogueMode ? 3 : 8),
       userQuery,
       intent
     );
-    const localSearchEvaluation = knowledge.evaluateSufficiency(interpretationSearchQuery, ragContext.results);
+    const initialSearchEvaluation = knowledge.evaluateSufficiency(interpretationSearchQuery, ragContext.results);
+    const externalRetrieval = {
+      attempted: false,
+      results: 0,
+      errors: [],
+      providers: []
+    };
+    if (
+      initialSearchEvaluation.shouldUseExternalSources
+      && typeof knowledge.searchExternal === 'function'
+    ) {
+      externalRetrieval.attempted = true;
+      try {
+        const external = await knowledge.searchExternal(interpretationSearchQuery, {
+          limit: dialogueMode ? 3 : 5,
+          intent
+        });
+        const externalResults = Array.isArray(external) ? external : (external?.results || []);
+        externalRetrieval.results = externalResults.length;
+        externalRetrieval.errors = Array.isArray(external?.errors) ? external.errors : [];
+        externalRetrieval.providers = Array.isArray(external?.providers) ? external.providers : [];
+        if (externalResults.length) {
+          const combinedResults = [...localResults, ...externalResults].reduce((items, item) => {
+            const key = String(item?.url || item?.id || '').trim();
+            if (!key || !items.some(existing => String(existing?.url || existing?.id || '').trim() === key)) {
+              items.push(item);
+            }
+            return items;
+          }, []);
+          ragContext = filterRagContextForIntent(
+            knowledge.buildRagContext(interpretationSearchQuery, combinedResults, dialogueMode ? 5 : 8),
+            userQuery,
+            intent
+          );
+        }
+      } catch (error) {
+        externalRetrieval.errors.push({
+          provider: 'trusted-web',
+          error: error.message || 'No se pudo consultar la web jurídica.'
+        });
+      }
+    }
+    const localSearchEvaluation = {
+      ...knowledge.evaluateSufficiency(interpretationSearchQuery, ragContext.results),
+      initial: initialSearchEvaluation,
+      externalRetrieval
+    };
     knowledge.logSufficiency('Lexia Engine', interpretationSearchQuery, localSearchEvaluation);
     const legalReasoningProfile = reasoner.buildProfile(userQuery, intent, effectiveConversationMemory, ragContext.results);
     const legalReasoningContext = reasoner.buildContext(legalReasoningProfile);
@@ -383,55 +431,6 @@ function createLexiaEngine(deps) {
       legalGraphReasoning,
       effectiveConversationMemory
     );
-
-    const deterministicModes = new Set(['source_request', 'norm_request']);
-    if (intent?.conversationMode?.deterministic && deterministicModes.has(conversationModeId)) {
-      const localEvaluation = evaluateCandidate({
-        id: 'local-synthesis',
-        answer: localSynthesis
-      }, {
-        ...candidateContext,
-        results: ragContext.results,
-      });
-      return {
-        answer: localSynthesis,
-        intent,
-        results: ragContext.results,
-        ragSources: ragContext.sources,
-        source: 'LEXIA Conversational Controller',
-        fallback: false,
-        model: 'local-conversation-controller',
-        provider: 'local',
-        retrieval: {
-          mode: 'rag',
-          results: ragContext.results.length,
-          memoryMessages: effectiveConversationMemory.length
-        },
-        metadata: {
-          model: 'local-conversation-controller',
-          source: 'LEXIA Conversational Controller',
-          ragSources: ragContext.sources,
-          localSynthesis,
-          memoryMessages: effectiveConversationMemory.length,
-          localSearchEvaluation,
-          legalReasoningProfile,
-          legalGraphReasoning,
-          caseFile,
-          dualAnalysis,
-          lexiaScore: localEvaluation.quality,
-          candidateSelection: {
-            selected: 'local-synthesis',
-            candidates: [{ id: 'local-synthesis', score: localEvaluation.quality.score100, hardGate: localEvaluation.hardGate }]
-          },
-          legalInterpretation: intent,
-          conversationMode: intent.conversationMode,
-          providerErrors: [],
-          providerStrategy: 'controlled',
-          providerChecks: [],
-          engineStage: `conversation:${intent.conversationMode.id}`
-        }
-      };
-    }
 
     const dialogueInstruction = dialogueMode
       ? [

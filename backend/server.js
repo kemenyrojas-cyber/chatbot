@@ -1558,6 +1558,70 @@ async function discoverLegalSourceCandidates({ query = '', seedUrls = [], limit 
   return { candidates: candidates.slice(0, maxLimit), errors, providers };
 }
 
+async function searchTrustedLegalWebForChat(query = '', options = {}) {
+  if (process.env.LEGAL_WEB_SEARCH_ENABLED === 'false' || !String(query || '').trim()) {
+    return { results: [], errors: [], providers: [] };
+  }
+
+  const limit = Math.max(1, Math.min(Number(options.limit || 3), 5));
+  const gobSearchUrl = `https://www.gob.pe/busquedas?term=${encodeURIComponent(String(query || '').trim().slice(0, 180))}`;
+  const discovery = await discoverLegalSourceCandidates({
+    query,
+    seedUrls: [gobSearchUrl, ...getLegalDiscoverySeedUrls()].slice(0, 3),
+    limit: Math.max(limit * 2, 4)
+  });
+  const queryTerms = getQueryTerms(query).filter(term => term.length >= 4).slice(0, 12);
+  const settled = await Promise.allSettled(
+    discovery.candidates.slice(0, Math.max(limit * 2, 4)).map(async candidate => {
+      const source = await fetchLegalWebSource(candidate.url);
+      const evaluation = evaluateLegalContent(source.text, source.title, candidate.url);
+      if (!evaluation.isLegal) return null;
+      const normalizedContent = normalizeText(`${source.title} ${source.text.slice(0, 24000)}`);
+      const matchingTerms = queryTerms.filter(term => normalizedContent.includes(term)).length;
+      if (queryTerms.length >= 2 && matchingTerms === 0) return null;
+      const host = new URL(candidate.url).hostname.replace(/^www\./, '');
+      const content = String(source.text || '').replace(/\s+/g, ' ').trim().slice(0, 14000);
+      const module = /\b(ley|decreto|codigo|código|constitucion|constitución|reglamento|articulo|artículo)\b/i
+        .test(`${source.title} ${content.slice(0, 3000)}`)
+        ? 'normativa'
+        : 'fuente_web';
+      return {
+        id: `web:${crypto.createHash('sha256').update(candidate.url).digest('hex').slice(0, 16)}`,
+        titulo: source.title || candidate.title || host,
+        fuente: host,
+        materia: options.intent?.area?.label || '',
+        modulo: module,
+        url: candidate.url,
+        resumen: content.slice(0, 900),
+        contenido: content,
+        relevance: Math.min(100, 35 + matchingTerms * 10 + Number(candidate.relevance || 0) * 5),
+        liveWeb: true
+      };
+    })
+  );
+
+  const results = [];
+  const errors = [...discovery.errors];
+  for (const item of settled) {
+    if (item.status === 'fulfilled' && item.value) {
+      results.push(item.value);
+    } else if (item.status === 'rejected') {
+      errors.push({
+        provider: 'trusted-web-fetch',
+        error: item.reason?.message || 'No se pudo leer una fuente jurídica.'
+      });
+    }
+  }
+
+  return {
+    results: results
+      .sort((a, b) => Number(b.relevance || 0) - Number(a.relevance || 0))
+      .slice(0, limit),
+    errors,
+    providers: discovery.providers
+  };
+}
+
 function evaluateLegalContent(text, title = '', url = '') {
   const normalized = normalizeText(`${title} ${url} ${text.slice(0, 30000)}`);
   const legalTerms = [
@@ -3720,7 +3784,7 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
     ? intent.topic.label
     : 'ese punto';
 
-  if (!primary || !legalBadges.length) {
+  if (!primary) {
     return [
       modeId === 'norm_request'
         ? `Entiendo tu pedido de norma para **${topicLabel}**. No voy a inventar un artículo sin verificarlo.`
@@ -3734,6 +3798,18 @@ function buildSourceOrNormAnswer(query, intent, results = [], modeId = 'source_r
 
   const fullText = getFullResultText(primary);
   const excerpt = truncateForRag(fullText, modeId === 'norm_request' ? 520 : 360);
+  if (!legalBadges.length) {
+    const publicSource = getPublicLegalSource(primary);
+    const lines = [
+      `Encontré una referencia jurídica sobre **${topicLabel}** y la uso para responder tu consulta.`,
+      ''
+    ];
+    if (excerpt) lines.push(`En simple: **${excerpt}**`, '');
+    lines.push('La fuente recuperada no identifica con claridad un artículo concreto, por eso no atribuyo un número que no esté verificado.');
+    if (publicSource) lines.push('', `Fuente: **${publicSource}**.`);
+    if (primary.url) lines.push(`URL: ${primary.url}`);
+    return lines.join('\n');
+  }
   const lines = [
     modeId === 'norm_request'
       ? `Sí. La referencia legal para **${topicLabel}** es ${legalBadges.map(item => `[${item}]`).join(' ')}.`
@@ -5289,6 +5365,7 @@ function getLexiaEngine() {
     knowledge: {
       ensureAvailable: ensureLegalKnowledgeAvailable,
       search: searchLegalKnowledgeBase,
+      searchExternal: searchTrustedLegalWebForChat,
       evaluateSufficiency: evaluateLocalSearchSufficiency,
       logSufficiency: logLocalSearchSufficiency,
       buildRagContext
